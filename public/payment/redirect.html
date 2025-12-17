@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>支付跳转...</title>
+</head>
+<body>
+<script>
+    function base64Decode(str) {
+        try {
+            return decodeURIComponent(escape(atob(str)));
+        } catch (e) {
+            return null;
+        }
+    }
+
+    let urlParams = new URLSearchParams(window.location.search);
+    let payUrl = urlParams.get('pay_url');
+    if (payUrl) {
+        console.log(payUrl, base64Decode(payUrl));
+        document.body.innerHTML = "<h3>正在跳转微信支付，请稍候...</h3>";
+
+        // **优化点 1：延迟跳转**
+        setTimeout(function() {
+            window.open(base64Decode(payUrl), '_self');  // **避免被拦截**
+        }, 500);  // **延迟 500ms，保证页面渲染**
+        // window.location.href = base64Decode(payUrl);
+    } else {
+        document.body.innerHTML = "<h3>支付链接获取失败，请重试</h3>";
+    }
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<?php
+
+/*
+ * This file is part of the hedeqiang/umeng.
+ *
+ * (c) hedeqiang <laravel_code@163.com>
+ *
+ * This source file is subject to the MIT license that is bundled
+ * with this source code in the file LICENSE.
+ */
+
+return [
+    'Android' => [
+        'appKey'          => env('ANDROID_PUSH_APP_KEY', ''),
+        'appMasterSecret' => env('ANDROID_PUSH_APP_MASTER_SECRET', ''),
+        'productionMode'  => env('ANDROID_PUSH_PRODUCTION_MODE', true),
+    ],
+    'iOS' => [
+        'appKey'          => env('IOS_PUSH_APP_KEY', ''),
+        'appMasterSecret' => env('IOS_PUSH_APP_MASTER_SECRET', ''),
+        'productionMode'  => env('IOS_PUSH_PRODUCTION_MODE', true),
+    ],
+
+    'jPush' => [
+        'appKey'          => env('J_PUSH_APP_KEY', ''),
+        'masterSecret'    =>env('J_PUSH_MASTER_SECRET', ''),
+    ]
+];
