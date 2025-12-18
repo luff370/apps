@@ -231,44 +231,31 @@ class AuthController extends Controller
         return $this->success(['token' => $token, 'login_way' => 'apple', 'is_reg' => 1]);
     }
 
-    public function alipayAuth(Request $request, \App\Services\Alipay\AuthService  $alipayAuthService)
+    public function alipayAuth(Request $request)
     {
         $request->validate([
             'auth_code' => 'required|string',
         ]);
 
         $alipayService = new AlipayService(config('alipay'));
-        // $userInfo = $alipayService->getUserInfo('composeB380f9bea6de149b3bbc26795cf122F28');
-        // dd($userInfo);
-
-        $tokenData = $alipayService->systemOauthToken($request->get("auth_code"));
-        if (isset($tokenData['alipay_system_oauth_token_response']['access_token'])){
-            $userInfo = $alipayService->getUserInfo($tokenData['alipay_system_oauth_token_response']['access_token']);
-            dd($userInfo);
-        }
-        dd($tokenData);
-
         try {
             // 1. 获取 access_token
-            $tokenData = $alipayAuthService->getAccessToken($request->get("auth_code"));
+            $tokenData = $alipayService->systemOauthToken($request->get("auth_code"));
 
             // 2. 获取用户信息
-            $userInfo = $alipayAuthService->getUserInfo($tokenData['access_token']);
-        }catch (\Exception $e){
-            return response()->json(['message' => $e->getMessage()], 400);
-        }
+            $userInfo = $alipayService->getUserInfo($tokenData['access_token']);
+            logger()->info('alipay auth userinfo', $userInfo);
 
-        if ($tokenData && $tokenData['alipay_user_id']) {
-            $userId = $tokenData['alipay_user_id'];
-            $accessToken = $tokenData['access_token'];
+            if (empty($userInfo['user_id'])) {
+                return $this->fail('无用户ID授权');
+            }
 
             // 绑定支付宝user_id到你自己系统的用户
-            User::query()->where('id', authUserId())->update(['alipay_user_id' => $userId]);
+            User::query()->where('id', authUserId())->update(['alipay_user_id' => $userInfo['user_id']]);
 
-            return response()->json(['message' => '授权成功', 'user_id' => $userId]);
+            return $this->success('授权成功');
+        } catch (\Exception $e) {
+            return $this->fail($e->getMessage());
         }
-
-        return response()->json(['message' => '授权失败'], 400);
-
     }
 }
