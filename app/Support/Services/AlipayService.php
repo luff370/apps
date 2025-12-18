@@ -96,7 +96,7 @@ class AlipayService
 
         if (empty($data['alipay_system_oauth_token_response'])){
             logger()->error('获取access_token 失败', $data);
-            throw new \Exception('获取access_token 错误'.($data['sub_msg'] ?? ''));
+            throw new \Exception('获取access_token 错误'.($data['error_response']['sub_msg'] ?? ''));
         }
 
         return $data['alipay_system_oauth_token_response'];
@@ -129,7 +129,7 @@ class AlipayService
 
         if (empty($data['alipay_user_info_share_response'])){
             logger()->error('获取alipay_user_info 失败', $data);
-            throw new \Exception('获取alipay_user_info 错误'.($data['sub_msg'] ?? ''));
+            throw new \Exception('获取alipay_user_info 错误'.($data['error_response']['sub_msg'] ?? ''));
         }
 
         return $data['alipay_user_info_share_response'];
