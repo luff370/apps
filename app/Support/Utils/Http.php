@@ -117,7 +117,7 @@ class Http
         self::$headerStr = trim(substr($content, 0, $status['header_size']));
         $content = trim(substr($content, $status['header_size']));
 
-        logger()->info($method . ' ' . $url . ' ' . $status . ' ' . $content);
+        logger()->info($method . ' ' . $url . ' ' . $status['http_code'] . ' ' . $content);
 
         return (intval($status["http_code"]) === 200) ? $content : false;
     }
