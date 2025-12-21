@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Support\Utils\Http;
 use Illuminate\Http\Request;
 
+const CH = 'uu03qqd';
 const CH_USER_KEY = 'zZ34i6FN6bTigUmS5eMbmNiR';
 
 class ReadTaskController extends Controller
@@ -13,7 +14,7 @@ class ReadTaskController extends Controller
     {
         $url = 'http://47.57.244.93/read_channel_api/get_url';
         $param = [
-            'ch' => '',
+            'ch' => CH,
             'ch_user_key' => CH_USER_KEY,
         ];
         $result = Http::getRequest($url, $param);
