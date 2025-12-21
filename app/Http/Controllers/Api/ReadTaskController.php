@@ -23,25 +23,26 @@ class ReadTaskController extends Controller
         }
 
         $data = json_decode($result, true);
+        if (empty($data['data'])) {
+            return $this->fail('获取任务失败' . $result);
+        }
+
         return $this->success($data['data'] ?? []);
     }
 
     public function completedTaskCallback(Request $request)
     {
         $data = $request->all();
-        logger()->info('completedTaskCallback',$data);
+        logger()->info('completedTaskCallback', $data);
 
         if (empty($dada['ch']) || empty($dada['ch_user_key']) || empty($dada['date'])) {
             return $this->fail('请求参数缺失');
         }
 
-        if ($dada['ch_user_key'] != CH_USER_KEY){
+        if ($dada['ch_user_key'] != CH_USER_KEY) {
             return $this->fail('密匙效验失败');
         }
 
-
-
         echo 'success';
     }
-
 }
