@@ -177,3 +177,11 @@ Route::prefix('user/stat')->group(
     }
 );
 
+Route::prefix('read_task')->middleware(['token_auth'])->group(
+    function (\Illuminate\Routing\Router $route) {
+        // 获取任务状态
+        $route->post('get', 'ReadTaskController@getReadTask');
+    });
+// 完成任务回调
+Route::get('read_task/completed', 'ReadTaskController@completedTaskCallback');
+

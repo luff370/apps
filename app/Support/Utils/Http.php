@@ -116,7 +116,8 @@ class Http
         self::$status = $status;
         self::$headerStr = trim(substr($content, 0, $status['header_size']));
         $content = trim(substr($content, $status['header_size']));
-        dd($content);
+
+        logger()->info($method . ' ' . $url . ' ' . $status . ' ' . $content);
 
         return (intval($status["http_code"]) === 200) ? $content : false;
     }
@@ -152,7 +153,7 @@ class Http
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        return  $response;
+        return $response;
     }
 
     /**
