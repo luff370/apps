@@ -86,7 +86,7 @@ Route::prefix('user')->middleware(['token_auth'])->group(
         );
     });
 
-    Route::post('coin/packages', 'UserWithdrawalController@products');
+Route::post('coin/packages', 'UserWithdrawalController@products');
 
 Route::prefix('content')->group(
     function (\Illuminate\Routing\Router $route) {
@@ -121,7 +121,6 @@ Route::prefix('member')->middleware(['token_auth'])->group(
         // 购买、订阅
         $route->post('order', 'MemberController@order');
     });
-
 
 Route::prefix('task')->middleware(['token_auth'])->group(
     function (\Illuminate\Routing\Router $route) {
@@ -177,11 +176,12 @@ Route::prefix('user/stat')->group(
     }
 );
 
-Route::prefix('read_task')->middleware(['token_auth'])->group(
+Route::prefix('read_task')->group(
     function (\Illuminate\Routing\Router $route) {
         // 获取任务状态
         $route->post('get', 'ReadTaskController@getReadTask');
+        // 完成任务回调
+        $route->get('completed', 'ReadTaskController@completedTaskCallback');
     });
-// 完成任务回调
-Route::get('read_task/completed', 'ReadTaskController@completedTaskCallback');
+
 
