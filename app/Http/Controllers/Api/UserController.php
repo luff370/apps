@@ -37,6 +37,7 @@ class UserController extends Controller
             'login_way' => $userInfo['login_way'],
             'is_vip' => $userInfo['is_vip'],
             'vip_type' => $userInfo['vip_type'],
+            'alipay_user_id' => $userInfo['alipay_user_id'],
             'overdue_time' => $userInfo['is_vip'] ? Carbon::parse($userInfo['overdue_time'])->toDateString() : null,
         ];
 

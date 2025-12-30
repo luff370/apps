@@ -246,12 +246,12 @@ class AuthController extends Controller
             $userInfo = $alipayService->getUserInfo($tokenData['access_token']);
             logger()->info('alipay auth userinfo', $userInfo);
 
-            if (empty($userInfo['user_id'])) {
-                return $this->fail('无用户ID授权');
+            if (empty($userInfo['open_id'])) {
+                return $this->fail('授权失败，未获取到open_id');
             }
 
             // 绑定支付宝user_id到你自己系统的用户
-            User::query()->where('id', authUserId())->update(['alipay_user_id' => $userInfo['user_id']]);
+            User::query()->where('id', authUserId())->update(['alipay_user_id' => $userInfo['open_id']]);
 
             return $this->success('授权成功');
         } catch (\Exception $e) {
