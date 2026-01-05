@@ -184,4 +184,13 @@ Route::prefix('read_task')->group(
         $route->get('completed', 'ReadTaskController@completedTaskCallback');
     });
 
+Route::prefix('xiongfeng')->group(
+    function (\Illuminate\Routing\Router $route) {
+        // 获取任务平台链接
+        $route->post('getTaskDomain', 'XiongfengAdController@getTaskDomain');
+        // 获取广告投放链接(返回量专用)
+        $route->post('getReadDomain', 'XiongfengAdController@getReadDomain');
+        // 完成任务回调
+        $route->get('completed', 'XiongfengAdController@completedCallback');
+    });
 
