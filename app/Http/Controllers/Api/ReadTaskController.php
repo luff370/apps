@@ -14,6 +14,7 @@ class ReadTaskController extends Controller
     {
         $url = 'http://47.57.244.93/read_channel_api/get_url';
         $param = [
+            // 'openid'=>'',
             'ch' => CH,
             'ch_user_key' => CH_USER_KEY,
         ];
@@ -23,11 +24,11 @@ class ReadTaskController extends Controller
         }
 
         $data = json_decode($result, true);
-        if (empty($data['data'])) {
-            return $this->fail('获取任务失败' . $result);
-        }
+        // if (empty($data['data'])) {
+        //     return $this->fail('获取任务失败' . $result);
+        // }
 
-        return $this->success($data['data'] ?? []);
+        return $this->success($data['data']);
     }
 
     public function completedTaskCallback(Request $request)
@@ -42,6 +43,9 @@ class ReadTaskController extends Controller
         if ($dada['ch_user_key'] != CH_USER_KEY) {
             return $this->fail('密匙效验失败');
         }
+
+        $date = $dada['date'];
+        $readTimes = $dada['read_times'] ?? 0;
 
         echo 'success';
     }
