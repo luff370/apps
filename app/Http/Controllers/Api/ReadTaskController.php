@@ -12,9 +12,9 @@ class ReadTaskController extends Controller
 {
     public function getReadTask()
     {
-        $url = 'http://47.57.244.93/read_channel_api/get_url';
+        $url = 'http://47.57.244.93/read_channel_api/get_read_url';
         $param = [
-            // 'openid'=>'',
+            'openid' => $this->getUuid(),
             'ch' => CH,
             'ch_user_key' => CH_USER_KEY,
         ];
