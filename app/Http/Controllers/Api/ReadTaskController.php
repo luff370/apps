@@ -28,7 +28,7 @@ class ReadTaskController extends Controller
         //     return $this->fail('获取任务失败' . $result);
         // }
 
-        return $this->success($data['data']);
+        return $this->success($data);
     }
 
     public function completedTaskCallback(Request $request)
