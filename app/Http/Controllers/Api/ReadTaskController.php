@@ -12,7 +12,7 @@ const CH_USER_KEY = 'zZ34i6FN6bTigUmS5eMbmNiR';
 class ReadTaskController extends Controller
 {
 
-    /*public function getReadTask(Request $request)
+    public function getReadTask(Request $request)
     {
         $ch = $request->get('ch', 'uu03qqd');
 
@@ -23,9 +23,9 @@ class ReadTaskController extends Controller
         } catch (\Throwable $e) {
             return $this->fail($e->getMessage());
         }
-    }*/
+    }
 
-    /*public function completedTaskCallback(Request $request)
+    public function completedTaskCallback(Request $request)
     {
         try {
             $ch = $request->get('ch');
@@ -36,9 +36,9 @@ class ReadTaskController extends Controller
             logger()->error('callback error', ['msg' => $e->getMessage()]);
             return $this->fail($e->getMessage());
         }
-    }*/
+    }
 
-    public function getReadTask()
+    /*public function getReadTask()
     {
         $url = 'http://47.57.244.93/read_channel_api/get_read_url';
         $param = [
@@ -57,9 +57,9 @@ class ReadTaskController extends Controller
         // }
 
         return $this->success($data);
-    }
+    }*/
 
-    public function completedTaskCallback(Request $request)
+    /*public function completedTaskCallback(Request $request)
     {
         $data = $request->all();
         logger()->info('completedTaskCallback', $data);
@@ -76,5 +76,5 @@ class ReadTaskController extends Controller
         $readTimes = $data['read_times'] ?? 0;
 
         echo 'success';
-    }
+    }*/
 }

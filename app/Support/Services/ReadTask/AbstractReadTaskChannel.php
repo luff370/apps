@@ -9,15 +9,14 @@ use Illuminate\Http\Request;
 abstract class AbstractReadTaskChannel implements ReadTaskChannelInterface
 {
     protected string $ch;
-    protected string $chUserKey;
     protected string $getReadUrl;
 
     public function getReadTask(string $openid): array
     {
         $params = [
-            'openid'       => $openid,
-            'ch'           => $this->ch,
-            'ch_user_key'  => $this->chUserKey,
+            'openid' => $openid,
+            'ch' => $this->ch,
+            'ch_user_key' => $openid,
         ];
 
         $result = Http::getRequest($this->getReadUrl, $params);
@@ -31,13 +30,13 @@ abstract class AbstractReadTaskChannel implements ReadTaskChannelInterface
 
     public function verifyCallback(array $data): bool
     {
-        return !empty($data['ch_user_key'])
-            && $data['ch_user_key'] === $this->chUserKey;
+        return true;
     }
 
     public function handleCallback(Request $request): void
     {
         $data = $request->all();
+        logger()->info("readTask 异步回调", $data);
 
         if (!$this->verifyCallback($data)) {
             throw new \Exception('密钥校验失败');

@@ -181,7 +181,7 @@ Route::prefix('read_task')->group(
         // 获取任务状态
         $route->post('get', 'ReadTaskController@getReadTask');
         // 完成任务回调
-        $route->get('completed', 'ReadTaskController@completedTaskCallback');
+        $route->any('completed', 'ReadTaskController@completedTaskCallback');
     });
 
 Route::prefix('xiongfeng')->group(
