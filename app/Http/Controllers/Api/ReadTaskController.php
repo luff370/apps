@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Services\ReadTask\ChannelFactory;
 use App\Support\Utils\Http;
 use Illuminate\Http\Request;
 
@@ -10,6 +11,33 @@ const CH_USER_KEY = 'zZ34i6FN6bTigUmS5eMbmNiR';
 
 class ReadTaskController extends Controller
 {
+
+    /*public function getReadTask(Request $request)
+    {
+        $ch = $request->get('ch', 'uu03qqd');
+
+        try {
+            $channel = ChannelFactory::make($ch);
+            $data = $channel->getReadTask($this->getUuid());
+            return $this->success($data);
+        } catch (\Throwable $e) {
+            return $this->fail($e->getMessage());
+        }
+    }*/
+
+    /*public function completedTaskCallback(Request $request)
+    {
+        try {
+            $ch = $request->get('ch');
+            $channel = ChannelFactory::make($ch);
+            $channel->handleCallback($request);
+            return response('success');
+        } catch (\Throwable $e) {
+            logger()->error('callback error', ['msg' => $e->getMessage()]);
+            return $this->fail($e->getMessage());
+        }
+    }*/
+
     public function getReadTask()
     {
         $url = 'http://47.57.244.93/read_channel_api/get_read_url';
