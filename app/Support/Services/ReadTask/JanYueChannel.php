@@ -6,7 +6,7 @@ class JanYueChannel extends AbstractReadTaskChannel
 {
 
     protected string $ch = '6994';
-    protected string $getReadUrl = 'https://xxx.com/api';
+    protected string $getReadUrl = 'http://rdapi.hzjianyue.cn/api/getTaskUrl2';
 
     protected function processCallback(array $data): void
     {
