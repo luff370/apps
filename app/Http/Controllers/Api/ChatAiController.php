@@ -109,7 +109,8 @@ class ChatAiController extends Controller
         }
         $type = $request->get('type');
         $result = ImageRecognition::recognize($type, $imagePath,[
-            'top_num' => 3
+            'top_num' => 3,
+            'baike_num'=>1
         ]);
 
         return $this->success($result);
