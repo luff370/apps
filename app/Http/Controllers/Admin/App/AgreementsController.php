@@ -26,7 +26,7 @@ class AgreementsController extends Controller
             ['status', ''],
             ['keyword', ''],
         ]);
-        $data = $this->service->getAllByPage($where, ['*'], ['id' => 'desc'], ['app']);
+        $data = $this->service->getAllByPage($where, ['*'], ['id' => 'desc'], ['app.merchant']);
 
         return $this->success($data);
     }

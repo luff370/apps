@@ -36,7 +36,11 @@ class AgreementService extends Service
         $typesMap = AppAgreement::typesMap();
         $channelsMap = SystemApp::marketChannelsMap();
         foreach ($list as &$item) {
-            $item['url'] = url(sprintf('/agreement/%s/%s/%s', $item['type'], $item['app_id'], $item['platform']));
+            if (!empty($item['app']['merchant']['domain'])) {
+                $item['url'] = $item['app']['merchant']['domain'] . sprintf('/agreement/%s/%s/%s', $item['type'], $item['app_id'], $item['platform']);
+            } else {
+                $item['url'] = url(sprintf('/agreement/%s/%s/%s', $item['type'], $item['app_id'], $item['platform']));
+            }
             $item['type_name'] = $typesMap[$item['type']] ?? '';
             $item['platform'] = $channelsMap[$item['platform']] ?? '全部';
             $item['version'] = $item['version'] == 'all' ? '全部' : $item['version'];
