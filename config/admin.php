@@ -10,7 +10,7 @@ return [
     /*
     * Admin 域名
     */
-    'url' => env('ADMIN_URL','http://storeapi.appasd.com'),
+    'url' => env('ADMIN_URL','http://lc.app.com'),
 
     /*
      * 路由配置
@@ -27,5 +27,5 @@ return [
     /*
      * 前端项目路径
      */
-    'view_path' => '/Users/mac/code/web/apps-admin/src/',
+    'view_path' => '../apps-admin/src/',
 ];

@@ -28,8 +28,6 @@ class Merchant extends Model
 
 	protected $casts = [
 		'type' => 'int',
-		'create_time' => 'int',
-		'update_time' => 'int'
 	];
 
 	protected $fillable = [
@@ -38,7 +36,14 @@ class Merchant extends Model
 		'domain',
 		'corporate',
 		'registered_address',
-		'create_time',
-		'update_time'
 	];
+
+    public static function typeNameMap()
+    {
+        return [
+            1 => '有限责任公司',
+            2 => '个体工商户',
+            3 => '个人',
+        ];
+    }
 }

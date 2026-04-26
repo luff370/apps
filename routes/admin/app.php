@@ -43,4 +43,9 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::resource('app_config', 'AppConfigController');
     Route::put('app_config/set_field_value/{id}/{value}/{field}', 'AppConfigController@setFieldValue');
     Route::post('app_config/{id}/copy', 'AppConfigController@copy');
+
+    // 商户管理
+    Route::resource('merchant', 'MerchantController');
+    Route::put('merchant/set_field_value/{id}/{value}/{field}', 'MerchantController::class@setFieldValue');
+
 });

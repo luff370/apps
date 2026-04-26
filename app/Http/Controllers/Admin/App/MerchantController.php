@@ -1,9 +1,9 @@
 <?php
 
-namespace App\Http\Controllers\Admin\Merchant;
+namespace App\Http\Controllers\Admin\App;
 
 use App\Http\Controllers\Admin\Controller;
-use App\Services\Merchant\MerchantService;
+use App\Services\App\MerchantService;
 
 /**
  * MerchantController
@@ -51,8 +51,6 @@ class MerchantController extends Controller
             ['type', '1'],
             ['corporate', ''],
             ['registered_address', ''],
-            ['create_time', ''],
-            ['update_time', ''],
         ]);
 
         $this->service->save($data);
@@ -84,8 +82,6 @@ class MerchantController extends Controller
             ['type', '1'],
             ['corporate', ''],
             ['registered_address', ''],
-            ['create_time', ''],
-            ['update_time', ''],
         ]);
         $this->service->update($id, $data);
 
