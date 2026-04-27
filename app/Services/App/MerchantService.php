@@ -72,6 +72,7 @@ class MerchantService extends Service
     {
         $f[] = Form::text('name', '公司名称', $info['name'] ?? '')->required();
         $f[] = Form::text('domain', '商户域名', $info['domain'] ?? '')->required();
+        $f[] = Form::date('domain_expired_date', '域名到期时间', $info['domain_expired_date'] ?? '')->required();
         $f[] = Form::select('type', '企业类型', $info['type'] ?? 1)->options(FormOptions::toFormOptions(Merchant::typeNameMap()));
         $f[] = Form::text('corporate', '企业法人', $info['corporate'] ?? '');
         $f[] = Form::textarea('registered_address', '注册地址', $info['registered_address'] ?? '');

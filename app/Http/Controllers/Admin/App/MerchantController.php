@@ -48,6 +48,7 @@ class MerchantController extends Controller
         $data = $this->getMore([
             ['name', ''],
             ['domain', ''],
+            ['domain_expired_date', ''],
             ['type', '1'],
             ['corporate', ''],
             ['registered_address', ''],
@@ -79,6 +80,7 @@ class MerchantController extends Controller
         $data = $this->getMore([
             ['name', ''],
             ['domain', ''],
+            ['domain_expired_date', ''],
             ['type', '1'],
             ['corporate', ''],
             ['registered_address', ''],

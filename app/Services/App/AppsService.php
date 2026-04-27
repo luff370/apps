@@ -31,6 +31,26 @@ class AppsService extends Service
     }
 
     /**
+     * 列表数据处理
+     */
+    public function tidyListData($list)
+    {
+        foreach ($list as &$item) {
+
+            // 域名到期警告
+            $item['domain_expired_warning'] = false;
+            if (!empty($item['merchant']['domain_expired_date'])) {
+                $days = today()->diffInDays($item['merchant']['domain_expired_date']);
+                if ($days < 30) {
+                    $item['domain_expired_warning'] = true;
+                }
+            }
+        }
+
+        return $list;
+    }
+
+    /**
      * @throws \App\Exceptions\AdminException
      */
     public function save($data)

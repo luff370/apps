@@ -24,7 +24,8 @@ class AppsController extends Controller
     {
         $where = $this->getMore([
             ['is_enable', ''],
-            ['name', ''],
+            ['keyword', ''],
+            ['mer_id', ''],
         ]);
         $where['is_del'] = 0;
         $data = $this->service->getAllByPage($where, ['*'], ['id' => 'desc'], ['merchant']);
