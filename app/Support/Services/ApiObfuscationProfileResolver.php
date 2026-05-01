@@ -27,12 +27,19 @@ class ApiObfuscationProfileResolver
 
     private function normalizeProfile(array $profile): array
     {
+        $defaultProfile = config('api_obfuscation.profiles.default', []);
+        $merged = array_replace_recursive($defaultProfile, $profile);
+
         return [
-            'enabled' => (bool) ($profile['enabled'] ?? false),
-            'route_aliases' => $profile['route_aliases'] ?? [],
-            'request_key_map' => $profile['request_key_map'] ?? [],
-            'response_key_map' => $profile['response_key_map'] ?? [],
-            'response_data_key_map' => $profile['response_data_key_map'] ?? [],
+            'enabled' => (bool) (config('api_obfuscation.enabled', false) && ($merged['enabled'] ?? false)),
+            'route_aliases' => $merged['route_aliases'] ?? [],
+            'request_key_map' => $merged['request_key_map'] ?? [],
+            'response_key_map' => $merged['response_key_map'] ?? [],
+            'response_data_key_map' => $merged['response_data_key_map'] ?? [],
+            'protocol' => $merged['protocol'] ?? [],
+            'security' => $merged['security'] ?? [],
+            'crypto' => $merged['crypto'] ?? [],
+            'image_url' => $merged['image_url'] ?? [],
         ];
     }
 }
