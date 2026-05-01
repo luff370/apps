@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// 混淆网关入口（按应用配置路由别名转发到真实接口）
+Route::any('v/{alias}', 'ObfuscatedGatewayController@dispatch');
+
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');
 // 获取配置数据
