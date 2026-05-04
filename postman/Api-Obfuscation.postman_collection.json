@@ -1,0 +1,366 @@
+{
+  "info": {
+    "_postman_id": "e7f2b8a1-6c44-4f1d-9a3e-apps-obfuscation",
+    "name": "API Obfuscation (Laravel)",
+    "description": "测试 `/api/*` 混淆层：网关 `POST /api/v/{alias}`、加密包、`App-Id`/`Package-Name` 头。\n\n**前置**：在 Postman 设置里确认 **Settings → Security → 允许读取文件系统** 非必须；本集合使用官方沙箱 `require('crypto-js')`（Postman 10+ 一般已内置）。若报找不到模块，在 Postman 安装 **crypto-js** 或使用 Desktop 版。\n\n**环境**：导入同级 `*.postman_environment.json`，激活对应 App 后再发请求。\n\n**明文 vs 加密**：当 `REQUEST_MODE=plaintext`（环境变量）时，仅用内部参数 JSON；当 `encrypted` 时由预请求脚本生成 `bx/sg/tm/nn`（或各 App 协议字段）。\n\n**响应**：加密开启时需用 Tests 里脚本或线下解密 `payload`（Base64 密文解密后为 API 原有 JSON：`status/msg/data`）。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 公共请求头（与后端 CommonArgsTrait 一致）",
+          "function setHdr(k, v) {",
+          "  if (v === undefined || v === null || v === '') return;",
+          "  pm.request.headers.upsert({ key: k, value: String(v) });",
+          "}",
+          "setHdr('Content-Type', 'application/json');",
+          "setHdr('Accept', 'application/json');",
+          "setHdr('App-Id', pm.environment.get('APP_ID'));",
+          "setHdr('Package-Name', pm.environment.get('PACKAGE_NAME'));",
+          "setHdr('App-Version', pm.environment.get('APP_VERSION') || '1.0.0');",
+          "setHdr('Market-Channel', pm.environment.get('MARKET_CHANNEL') || 'default');",
+          "setHdr('Uuid', pm.environment.get('CLIENT_UUID'));",
+          "setHdr('Platform', pm.environment.get('PLATFORM') || 'ios');",
+          "setHdr('OS-Version', pm.environment.get('OS_VERSION') || '17.0');",
+          "setHdr('Language', pm.environment.get('LANGUAGE') || 'zh');",
+          "setHdr('Time', String(Math.floor(Date.now() / 1000)));",
+          "const tok = pm.environment.get('TOKEN');",
+          "if (tok) setHdr('Token', tok);"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost" }
+  ],
+  "item": [
+    {
+      "name": "App 10001",
+      "item": [
+        {
+          "name": "Plain — POST /api/auth/login_by_uuid",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const mode = pm.environment.get('REQUEST_MODE') || 'plaintext';",
+                  "if (mode !== 'plaintext') {",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  const inner = {};",
+                  "  const keyB64 = pm.environment.get('OBF_KEY');",
+                  "  const ivB64 = pm.environment.get('OBF_IV');",
+                  "  const signKey = pm.environment.get('OBF_SIGN_KEY');",
+                  "  const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "  const sf = pm.environment.get('SIGN_FIELD');",
+                  "  const tf = pm.environment.get('TS_FIELD');",
+                  "  const nf = pm.environment.get('NONCE_FIELD');",
+                  "  const ts = String(Math.floor(Date.now() / 1000));",
+                  "  const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2, 14)).slice(0, 24);",
+                  "  const plain = JSON.stringify(inner);",
+                  "  const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "  const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "  const src = CryptoJS.enc.Utf8.parse(plain);",
+                  "  const enc = CryptoJS.AES.encrypt(src, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "  const bx = CryptoJS.enc.Base64.stringify(enc.ciphertext);",
+                  "  const signPayload = bx + '|' + ts + '|' + nonce;",
+                  "  const sg = CryptoJS.HmacSHA256(signPayload, signKey).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.body.raw = JSON.stringify({ [pf]: bx, [sf]: sg, [tf]: ts, [nf]: nonce });",
+                  "} else {",
+                  "  pm.request.body.raw = '{}';",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/auth/login_by_uuid",
+            "description": "明文：`REQUEST_MODE=plaintext`，body `{}`。UUID 取自头 `Uuid`。\n加密：设为 `encrypted` 且服务端 `API_OBFUSCATION_ENCRYPTION_ENABLED=true`。"
+          },
+          "response": []
+        },
+        {
+          "name": "Gateway — POST /api/v/j9a1 (→ auth/login_by_uuid)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const mode = pm.environment.get('REQUEST_MODE') || 'plaintext';",
+                  "if (mode !== 'plaintext') {",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  const inner = {};",
+                  "  const keyB64 = pm.environment.get('OBF_KEY');",
+                  "  const ivB64 = pm.environment.get('OBF_IV');",
+                  "  const signKey = pm.environment.get('OBF_SIGN_KEY');",
+                  "  const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "  const sf = pm.environment.get('SIGN_FIELD');",
+                  "  const tf = pm.environment.get('TS_FIELD');",
+                  "  const nf = pm.environment.get('NONCE_FIELD');",
+                  "  const ts = String(Math.floor(Date.now() / 1000));",
+                  "  const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2, 14)).slice(0, 24);",
+                  "  const plain = JSON.stringify(inner);",
+                  "  const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "  const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "  const src = CryptoJS.enc.Utf8.parse(plain);",
+                  "  const enc = CryptoJS.AES.encrypt(src, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "  const bx = CryptoJS.enc.Base64.stringify(enc.ciphertext);",
+                  "  const signPayload = bx + '|' + ts + '|' + nonce;",
+                  "  const sg = CryptoJS.HmacSHA256(signPayload, signKey).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.body.raw = JSON.stringify({ [pf]: bx, [sf]: sg, [tf]: ts, [nf]: nonce });",
+                  "} else {",
+                  "  pm.request.body.raw = '{}';",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code !== 200) return;",
+                  "let body;",
+                  "try { body = pm.response.json(); } catch (e) { return; }",
+                  "const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "if (!body || !body[pf]) return;",
+                  "const CryptoJS = require('crypto-js');",
+                  "const keyB64 = pm.environment.get('OBF_KEY');",
+                  "const ivB64 = pm.environment.get('OBF_IV');",
+                  "const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "const ct = CryptoJS.enc.Base64.parse(body[pf]);",
+                  "const params = CryptoJS.lib.CipherParams.create({ ciphertext: ct });",
+                  "const dec = CryptoJS.AES.decrypt(params, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "const txt = dec.toString(CryptoJS.enc.Utf8);",
+                  "console.log('Decrypted envelope:', txt);",
+                  "try { console.log('Parsed:', JSON.parse(txt)); } catch (e) {}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v/j9a1",
+            "description": "服务端若开启 `encrypt_response`，响应 `{ bx, sg, tm, nn, vr }`。本请求的 Tests 会尝试把 `bx` 解密并写入 Console。"
+          },
+          "response": []
+        },
+        {
+          "name": "Plain — POST /api/content/list (混淆参数 pg/sz/kw)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const mode = pm.environment.get('REQUEST_MODE') || 'plaintext';",
+                  "const innerObj = { pg: '1', sz: '10', kw: '' };",
+                  "if (mode !== 'plaintext') {",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  const keyB64 = pm.environment.get('OBF_KEY');",
+                  "  const ivB64 = pm.environment.get('OBF_IV');",
+                  "  const signKey = pm.environment.get('OBF_SIGN_KEY');",
+                  "  const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "  const sf = pm.environment.get('SIGN_FIELD');",
+                  "  const tf = pm.environment.get('TS_FIELD');",
+                  "  const nf = pm.environment.get('NONCE_FIELD');",
+                  "  const ts = String(Math.floor(Date.now() / 1000));",
+                  "  const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2, 14)).slice(0, 24);",
+                  "  const plain = JSON.stringify(innerObj);",
+                  "  const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "  const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "  const src = CryptoJS.enc.Utf8.parse(plain);",
+                  "  const enc = CryptoJS.AES.encrypt(src, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "  const bx = CryptoJS.enc.Base64.stringify(enc.ciphertext);",
+                  "  const signPayload = bx + '|' + ts + '|' + nonce;",
+                  "  const sg = CryptoJS.HmacSHA256(signPayload, signKey).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.body.raw = JSON.stringify({ [pf]: bx, [sf]: sg, [tf]: ts, [nf]: nonce });",
+                  "} else {",
+                  "  pm.request.body.raw = JSON.stringify(innerObj);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{ \"pg\": \"1\", \"sz\": \"10\", \"kw\": \"\" }",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/content/list",
+            "description": "中间件将 `pg→page`，`sz→limit`，`kw→keywords`（与 config 中 10001 一致）。"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "App 10002",
+      "item": [
+        {
+          "name": "Gateway — POST /api/v/a4m8 (→ auth/login_by_uuid)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const mode = pm.environment.get('REQUEST_MODE') || 'plaintext';",
+                  "if (mode !== 'plaintext') {",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  const inner = {};",
+                  "  const keyB64 = pm.environment.get('OBF_KEY');",
+                  "  const ivB64 = pm.environment.get('OBF_IV');",
+                  "  const signKey = pm.environment.get('OBF_SIGN_KEY');",
+                  "  const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "  const sf = pm.environment.get('SIGN_FIELD');",
+                  "  const tf = pm.environment.get('TS_FIELD');",
+                  "  const nf = pm.environment.get('NONCE_FIELD');",
+                  "  const ts = String(Math.floor(Date.now() / 1000));",
+                  "  const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2, 14)).slice(0, 24);",
+                  "  const plain = JSON.stringify(inner);",
+                  "  const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "  const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "  const src = CryptoJS.enc.Utf8.parse(plain);",
+                  "  const enc = CryptoJS.AES.encrypt(src, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "  const bx = CryptoJS.enc.Base64.stringify(enc.ciphertext);",
+                  "  const signPayload = bx + '|' + ts + '|' + nonce;",
+                  "  const sg = CryptoJS.HmacSHA256(signPayload, signKey).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.body.raw = JSON.stringify({ [pf]: bx, [sf]: sg, [tf]: ts, [nf]: nonce });",
+                  "} else {",
+                  "  pm.request.body.raw = '{}';",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v/a4m8"
+          },
+          "response": []
+        },
+        {
+          "name": "Plain — POST /api/ad/list (参数 did/pn/ps)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const mode = pm.environment.get('REQUEST_MODE') || 'plaintext';",
+                  "const innerObj = { pn: '1', ps: '20' };",
+                  "if (mode !== 'plaintext') {",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  const keyB64 = pm.environment.get('OBF_KEY');",
+                  "  const ivB64 = pm.environment.get('OBF_IV');",
+                  "  const signKey = pm.environment.get('OBF_SIGN_KEY');",
+                  "  const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "  const sf = pm.environment.get('SIGN_FIELD');",
+                  "  const tf = pm.environment.get('TS_FIELD');",
+                  "  const nf = pm.environment.get('NONCE_FIELD');",
+                  "  const ts = String(Math.floor(Date.now() / 1000));",
+                  "  const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2, 14)).slice(0, 24);",
+                  "  const plain = JSON.stringify(innerObj);",
+                  "  const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "  const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "  const src = CryptoJS.enc.Utf8.parse(plain);",
+                  "  const enc = CryptoJS.AES.encrypt(src, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "  const bx = CryptoJS.enc.Base64.stringify(enc.ciphertext);",
+                  "  const signPayload = bx + '|' + ts + '|' + nonce;",
+                  "  const sg = CryptoJS.HmacSHA256(signPayload, signKey).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.body.raw = JSON.stringify({ [pf]: bx, [sf]: sg, [tf]: ts, [nf]: nonce });",
+                  "} else {",
+                  "  pm.request.body.raw = JSON.stringify(innerObj);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{ \"pn\": \"1\", \"ps\": \"20\" }",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/ad/list"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Package com.demo.reader",
+      "item": [
+        {
+          "name": "Gateway — POST /api/v/m3e1 (→ content/detail)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const mode = pm.environment.get('REQUEST_MODE') || 'plaintext';",
+                  "const innerObj = { aid: '1' };",
+                  "if (mode !== 'plaintext') {",
+                  "  const CryptoJS = require('crypto-js');",
+                  "  const keyB64 = pm.environment.get('OBF_KEY');",
+                  "  const ivB64 = pm.environment.get('OBF_IV');",
+                  "  const signKey = pm.environment.get('OBF_SIGN_KEY');",
+                  "  const pf = pm.environment.get('PAYLOAD_FIELD');",
+                  "  const sf = pm.environment.get('SIGN_FIELD');",
+                  "  const tf = pm.environment.get('TS_FIELD');",
+                  "  const nf = pm.environment.get('NONCE_FIELD');",
+                  "  const ts = String(Math.floor(Date.now() / 1000));",
+                  "  const nonce = (Date.now().toString(36) + Math.random().toString(36).slice(2, 14)).slice(0, 24);",
+                  "  const plain = JSON.stringify(innerObj);",
+                  "  const key = CryptoJS.enc.Base64.parse(keyB64);",
+                  "  const iv = CryptoJS.enc.Base64.parse(ivB64);",
+                  "  const src = CryptoJS.enc.Utf8.parse(plain);",
+                  "  const enc = CryptoJS.AES.encrypt(src, key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });",
+                  "  const bx = CryptoJS.enc.Base64.stringify(enc.ciphertext);",
+                  "  const signPayload = bx + '|' + ts + '|' + nonce;",
+                  "  const sg = CryptoJS.HmacSHA256(signPayload, signKey).toString(CryptoJS.enc.Hex);",
+                  "  pm.request.body.raw = JSON.stringify({ [pf]: bx, [sf]: sg, [tf]: ts, [nf]: nonce });",
+                  "} else {",
+                  "  pm.request.body.raw = JSON.stringify(innerObj);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "{ \"aid\": \"1\" }",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/api/v/m3e1",
+            "description": "使用环境 `APP_ID` 留空或填未在 config 出现的值，以便按 `Package-Name` 命中 reader profile。本集合 Reader 环境 `APP_ID=0`。"
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
