@@ -252,20 +252,50 @@ class ApiObfuscationMiddleware
             }
 
             $shouldCheck = empty($fields) || in_array((string) $key, $fields, true);
-            if (!$shouldCheck || $this->isAbsoluteUrl($value)) {
+            if (!$shouldCheck) {
                 continue;
             }
 
-            $normalized = str_replace('\\', '/', $value);
-            foreach ($prefixes as $prefix) {
-                if (str_starts_with($normalized, $prefix)) {
-                    $payload[$key] = rtrim($domain, '/') . '/' . ltrim($normalized, '/');
-                    break;
-                }
+            $rewritten = $this->rewriteSingleImageUrl($value, $domain, $prefixes);
+            if ($rewritten !== null) {
+                $payload[$key] = $rewritten;
             }
         }
 
         return $payload;
+    }
+
+    private function rewriteSingleImageUrl(string $value, string $domain, array $prefixes): ?string
+    {
+        $normalized = str_replace('\\', '/', $value);
+
+        if ($this->isAbsoluteUrl($normalized)) {
+            $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
+            if ($this->matchesImagePrefix($path, $prefixes)) {
+                $query = (string) (parse_url($normalized, PHP_URL_QUERY) ?? '');
+                $target = rtrim($domain, '/') . '/' . ltrim($path, '/');
+                return $query !== '' ? $target . '?' . $query : $target;
+            }
+
+            return null;
+        }
+
+        if ($this->matchesImagePrefix($normalized, $prefixes)) {
+            return rtrim($domain, '/') . '/' . ltrim($normalized, '/');
+        }
+
+        return null;
+    }
+
+    private function matchesImagePrefix(string $value, array $prefixes): bool
+    {
+        foreach ($prefixes as $prefix) {
+            if (str_starts_with($value, (string) $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isAbsoluteUrl(string $value): bool

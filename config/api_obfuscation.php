@@ -51,7 +51,7 @@ return [
                 'domain' => null,
                 // Empty means scan all string fields recursively.
                 'fields' => [],
-                'path_prefixes' => ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/'],
+                'path_prefixes' => ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/', 'storage/attach/', '/storage/attach/'],
             ],
         ],
 
