@@ -48,4 +48,12 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::resource('merchant', 'MerchantController');
     Route::put('merchant/set_field_value/{id}/{value}/{field}', 'MerchantController::class@setFieldValue');
 
+    // API 混淆配置与接口管理
+    Route::get('obfuscation/profile', 'ApiObfuscationController@profile');
+    Route::post('obfuscation/profile', 'ApiObfuscationController@saveProfile');
+    Route::get('obfuscation/interfaces', 'ApiObfuscationController@interfaces');
+    Route::post('obfuscation/interfaces', 'ApiObfuscationController@saveInterface');
+    Route::delete('obfuscation/interfaces/{id}', 'ApiObfuscationController@deleteInterface');
+    Route::post('obfuscation/interfaces/generate_aliases', 'ApiObfuscationController@generateAliases');
+
 });
