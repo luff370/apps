@@ -123,6 +123,15 @@ Route::name('system')->prefix('system')->namespace('System')->group( function ()
     //重命名文件
     Route::get('file/rename', 'SystemFileController@rename');
 
+    // 公共 API 接口管理
+    Route::get('api/interfaces', 'ApiInterfaceController@index');
+    Route::get('api/interfaces/route_sql', 'ApiInterfaceController@routeSql');
+    Route::get('api/interfaces/import_routes', 'ApiInterfaceController@importRoutes');
+    Route::post('api/interfaces/import_routes', 'ApiInterfaceController@importRoutes');
+    Route::get('api/interfaces/{id}', 'ApiInterfaceController@detail');
+    Route::post('api/interfaces', 'ApiInterfaceController@save');
+    Route::delete('api/interfaces/{id}', 'ApiInterfaceController@delete');
+
     // 短信发送记录
     Route::get('sms/records', 'SmsRecordController@index');
 });

@@ -48,12 +48,15 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::resource('merchant', 'MerchantController');
     Route::put('merchant/set_field_value/{id}/{value}/{field}', 'MerchantController::class@setFieldValue');
 
-    // API 混淆配置与接口管理
+    // API 混淆配置（应用侧只管理别名、映射、导出）
     Route::get('obfuscation/profile', 'ApiObfuscationController@profile');
     Route::post('obfuscation/profile', 'ApiObfuscationController@saveProfile');
-    Route::get('obfuscation/interfaces', 'ApiObfuscationController@interfaces');
-    Route::post('obfuscation/interfaces', 'ApiObfuscationController@saveInterface');
-    Route::delete('obfuscation/interfaces/{id}', 'ApiObfuscationController@deleteInterface');
-    Route::post('obfuscation/interfaces/generate_aliases', 'ApiObfuscationController@generateAliases');
+    Route::post('obfuscation/profile/generate_defaults', 'ApiObfuscationController@generateDefaults');
+    Route::get('obfuscation/aliases', 'ApiObfuscationController@aliases');
+    Route::post('obfuscation/aliases', 'ApiObfuscationController@saveAlias');
+    Route::delete('obfuscation/aliases/{id}', 'ApiObfuscationController@deleteAlias');
+    Route::post('obfuscation/aliases/generate', 'ApiObfuscationController@generateAliases');
+    Route::get('obfuscation/aliases/{id}/preview', 'ApiObfuscationController@previewAlias');
+    Route::get('obfuscation/export', 'ApiObfuscationController@exportAliases');
 
 });

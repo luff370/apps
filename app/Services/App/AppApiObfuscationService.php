@@ -2,211 +2,87 @@
 
 namespace App\Services\App;
 
-use App\Dao\App\AppApiInterfaceDao;
-use App\Services\Service;
-use Illuminate\Support\Str;
+use App\Dao\App\AppApiObfuscationAliasDao;
 use App\Dao\App\AppApiObfuscationProfileDao;
+use App\Dao\System\SystemApiInterfaceDao;
+use App\Services\Service;
 
 class AppApiObfuscationService extends Service
 {
-    public function __construct(
-        AppApiObfuscationProfileDao $dao,
-        private AppApiInterfaceDao $interfaceDao
-    ) {
-        $this->dao = $dao;
-    }
+    public function __construct(AppApiObfuscationProfileDao $dao, private AppApiObfuscationAliasDao $aliasDao, private SystemApiInterfaceDao $interfaceDao) { $this->dao = $dao; }
 
     public function getProfile(int $appId = 0, string $packageName = ''): array
     {
-        $profile = $this->dao->search(['app_id' => $appId, 'package_name' => $packageName])->first();
-        if (empty($profile)) {
-            $default = config('api_obfuscation.profiles.default', []);
-            return array_merge([
-                'id' => 0,
-                'app_id' => $appId,
-                'package_name' => $packageName,
-                'alias_rule' => 'hash4',
-            ], $default);
-        }
-
-        $result = $profile->toArray();
-        $result['route_aliases'] = $this->buildRouteAliases($appId, $packageName);
-        return $result;
+        $p = $this->findProfile($appId, $packageName);
+        if (!$p) return array_merge(['id' => 0, 'app_id' => $appId, 'package_name' => $packageName, 'alias_rule' => 'hash4'], config('api_obfuscation.profiles.default', []));
+        $r = $p->toArray(); $r['route_aliases'] = $this->buildRouteAliasesByProfile((int) $r['id']); return $r;
     }
 
-    public function saveProfile(array $data): array
+    public function saveProfile(array $d): array
     {
-        $where = [
-            'app_id' => intval($data['app_id'] ?? 0),
-            'package_name' => (string) ($data['package_name'] ?? ''),
-        ];
-        $profile = $this->dao->search($where)->first();
-
-        $protocol = [
-            'encrypt_request' => (bool) ($data['encrypt_request'] ?? 0),
-            'encrypt_response' => (bool) ($data['encrypt_response'] ?? 0),
-            'allow_plaintext_request' => (bool) ($data['allow_plaintext_request'] ?? 1),
-            'payload_field' => (string) ($data['payload_field'] ?? 'payload'),
-            'sign_field' => (string) ($data['sign_field'] ?? 'sign'),
-            'timestamp_field' => (string) ($data['timestamp_field'] ?? 'ts'),
-            'nonce_field' => (string) ($data['nonce_field'] ?? 'nonce'),
-            'version_field' => (string) ($data['version_field'] ?? 'ver'),
-        ];
-
-        $imageUrl = [
-            'enabled' => (bool) ($data['image_url_enabled'] ?? 0),
-            'domain' => (string) ($data['image_domain'] ?? ''),
-            'fields' => $this->splitLinesToArray((string) ($data['image_fields'] ?? '')),
-            'path_prefixes' => $this->splitLinesToArray((string) ($data['image_prefixes'] ?? '')),
-        ];
-
-        $security = [
-            'timestamp_window_seconds' => intval($data['timestamp_window_seconds'] ?? 300),
-            'nonce_ttl_seconds' => intval($data['nonce_ttl_seconds'] ?? 300),
-        ];
-
-        $crypto = [
-            'cipher' => (string) ($data['cipher'] ?? 'AES-256-CBC'),
-            'key' => (string) ($data['crypto_key'] ?? ''),
-            'iv' => (string) ($data['crypto_iv'] ?? ''),
-            'sign_key' => (string) ($data['crypto_sign_key'] ?? ''),
-        ];
-
-        $save = [
-            'enabled' => intval($data['enabled'] ?? 0),
-            'encrypt_request' => intval($data['encrypt_request'] ?? 0),
-            'encrypt_response' => intval($data['encrypt_response'] ?? 0),
-            'allow_plaintext_request' => intval($data['allow_plaintext_request'] ?? 1),
-            'image_url_enabled' => intval($data['image_url_enabled'] ?? 0),
-            'image_domain' => (string) ($data['image_domain'] ?? ''),
-            'alias_rule' => (string) ($data['alias_rule'] ?? 'hash4'),
-            'request_key_map' => $this->decodeJson((string) ($data['request_key_map'] ?? '{}')),
-            'response_key_map' => $this->decodeJson((string) ($data['response_key_map'] ?? '{}')),
-            'response_data_key_map' => $this->decodeJson((string) ($data['response_data_key_map'] ?? '{}')),
-            'protocol' => $protocol,
-            'security' => $security,
-            'crypto' => $crypto,
-            'image_url' => $imageUrl,
-            'route_aliases' => $this->buildRouteAliases($where['app_id'], $where['package_name']),
-        ];
-
-        if ($profile) {
-            $this->dao->update($profile['id'], $save);
-        } else {
-            $save = array_merge($where, $save);
-            $profile = $this->dao->save($save);
-        }
-
-        return $this->getProfile($where['app_id'], $where['package_name']);
+        $appId = intval($d['app_id'] ?? 0); $pkg = (string) ($d['package_name'] ?? ''); $p = $this->findProfile($appId, $pkg);
+        $save = ['enabled'=>intval($d['enabled']??0),'encrypt_request'=>intval($d['encrypt_request']??0),'encrypt_response'=>intval($d['encrypt_response']??0),'allow_plaintext_request'=>intval($d['allow_plaintext_request']??1),'image_url_enabled'=>intval($d['image_url_enabled']??0),'image_domain'=>(string)($d['image_domain']??''),'alias_rule'=>(string)($d['alias_rule']??'hash4'),'request_key_map'=>$this->decodeJson((string)($d['request_key_map']??'{}')),'response_key_map'=>$this->decodeJson((string)($d['response_key_map']??'{}')),'response_data_key_map'=>$this->decodeJson((string)($d['response_data_key_map']??'{}')),'protocol'=>['encrypt_request'=>(bool)($d['encrypt_request']??0),'encrypt_response'=>(bool)($d['encrypt_response']??0),'allow_plaintext_request'=>(bool)($d['allow_plaintext_request']??1),'payload_field'=>(string)($d['payload_field']??'payload'),'sign_field'=>(string)($d['sign_field']??'sign'),'timestamp_field'=>(string)($d['timestamp_field']??'ts'),'nonce_field'=>(string)($d['nonce_field']??'nonce'),'version_field'=>(string)($d['version_field']??'ver')],'security'=>['timestamp_window_seconds'=>intval($d['timestamp_window_seconds']??300),'nonce_ttl_seconds'=>intval($d['nonce_ttl_seconds']??300)],'crypto'=>['cipher'=>(string)($d['cipher']??'AES-256-CBC'),'key'=>(string)($d['crypto_key']??''),'iv'=>(string)($d['crypto_iv']??''),'sign_key'=>(string)($d['crypto_sign_key']??'')],'image_url'=>['enabled'=>(bool)($d['image_url_enabled']??0),'domain'=>(string)($d['image_domain']??''),'fields'=>$this->lines((string)($d['image_fields']??'')),'path_prefixes'=>$this->lines((string)($d['image_prefixes']??''))]];
+        $p ? $this->dao->update($p['id'], $save) : $this->dao->save(array_merge(['app_id'=>$appId,'package_name'=>$pkg], $save));
+        $p = $this->findProfile($appId, $pkg); if ($p) $this->refreshRouteAliases((int)$p['id']); return $this->getProfile($appId, $pkg);
     }
 
-    public function generateAliases(array $data): array
+    public function aliases(array $w): array
     {
-        $appId = intval($data['app_id'] ?? 0);
-        $packageName = (string) ($data['package_name'] ?? '');
-        $rule = (string) ($data['rule'] ?? 'hash4');
-        $overwrite = intval($data['overwrite'] ?? 0) === 1;
-
-        $rows = $this->interfaceDao->search(['app_id' => $appId, 'package_name' => $packageName])->get();
-        $used = [];
-        foreach ($rows as $row) {
-            if (!empty($row['alias'])) {
-                $used[$row['alias']] = true;
-            }
-        }
-
-        $updated = 0;
-        foreach ($rows as $row) {
-            if (!$overwrite && !empty($row['alias'])) {
-                continue;
-            }
-
-            $seed = strtoupper($row['method']) . ':' . trim($row['path'], '/');
-            $alias = $this->makeAlias($seed, $rule, $used);
-            $this->interfaceDao->update($row['id'], ['alias' => $alias]);
-            $updated++;
-        }
-
-        $this->saveProfile([
-            'app_id' => $appId,
-            'package_name' => $packageName,
-            'alias_rule' => $rule,
-        ]);
-
-        return ['updated' => $updated, 'rule' => $rule];
+        $p = $this->findProfile((int)($w['app_id']??0), (string)($w['package_name']??'')); if (!$p) return ['list'=>[],'count'=>0];
+        $q = $this->aliasDao->search(['profile_id'=>$p['id']])->with('apiInterface'); $count = $q->count(); $page=(int)request()->get('page',1); $limit=(int)request()->get('limit',15);
+        $list = $q->orderByDesc('id')->offset(($page-1)*$limit)->limit($limit)->get()->toArray();
+        return ['list'=>array_map(fn($x)=>$this->formatAliasRow($x), $list),'count'=>$count];
     }
 
-    public function buildRouteAliases(int $appId, string $packageName): array
+    public function saveAlias(array $d): void
     {
-        $list = $this->interfaceDao->search([
-            'app_id' => $appId,
-            'package_name' => $packageName,
-            'is_enable' => 1
-        ])->get();
-
-        $aliases = [];
-        foreach ($list as $item) {
-            if (empty($item['alias']) || empty($item['path'])) {
-                continue;
-            }
-            $aliases[$item['alias']] = [
-                'path' => ltrim($item['path'], '/'),
-                'method' => strtoupper((string) $item['method']),
-            ];
-        }
-
-        return $aliases;
+        $p = $this->ensureProfile((int)($d['app_id']??0), (string)($d['package_name']??''));
+        $s = ['profile_id'=>(int)$p['id'],'interface_id'=>intval($d['interface_id']??0),'alias'=>(string)($d['alias']??''),'request_key_map'=>$this->decodeMap($d['request_key_map']??[]),'response_key_map'=>$this->decodeMap($d['response_key_map']??[]),'response_data_key_map'=>$this->decodeMap($d['response_data_key_map']??[]),'is_enable'=>intval($d['is_enable']??1),'remark'=>(string)($d['remark']??'')];
+        $id = intval($d['id']??0); if ($id>0) $this->aliasDao->update($id,$s); else { $old=$this->aliasDao->search(['profile_id'=>$s['profile_id'],'interface_id'=>$s['interface_id']])->first(); $old?$this->aliasDao->update($old['id'],$s):$this->aliasDao->save($s); }
+        $this->refreshRouteAliases((int)$p['id']);
     }
 
-    private function decodeJson(string $json): array
+    public function deleteAlias(int $id): void { $r=$this->aliasDao->get($id); if(!$r)return; $pid=(int)$r['profile_id']; $this->aliasDao->delete($id); $this->refreshRouteAliases($pid); }
+
+    public function generateAliases(array $d): array
     {
-        $decoded = json_decode(trim($json), true);
-        return is_array($decoded) ? $decoded : [];
+        $p=$this->ensureProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); $rule=(string)($d['rule']??$p['alias_rule']??'hash4'); $overwrite=intval($d['overwrite']??0)===1; $used=[]; $updated=0;
+        foreach($this->interfaceDao->search(['is_enable'=>1])->get() as $i){ $old=$this->aliasDao->search(['profile_id'=>$p['id'],'interface_id'=>$i['id']])->first(); if(!$overwrite&&$old&&!empty($old['alias'])){$used[$old['alias']]=true;continue;} $alias=$this->makeAlias(strtoupper($i['method']).':'.trim($i['path'],'/').':'.$p['id'],$rule,$used); $save=array_merge(['profile_id'=>(int)$p['id'],'interface_id'=>(int)$i['id'],'alias'=>$alias,'is_enable'=>1],$this->generateMapsForInterface($i->toArray(),(string)($d['map_rule']??'short'))); $old?$this->aliasDao->update($old['id'],$save):$this->aliasDao->save($save); $updated++; }
+        $this->dao->update($p['id'],['alias_rule'=>$rule]); $this->refreshRouteAliases((int)$p['id']); return ['updated'=>$updated,'rule'=>$rule];
     }
 
-    private function splitLinesToArray(string $text): array
+    public function generateDefaultProfileFields(array $d): array
     {
-        $parts = preg_split('/\r\n|\r|\n/', $text);
-        return array_values(array_filter(array_map('trim', $parts ?: []), fn($v) => $v !== ''));
+        $img=['image','images','avatar','cover','thumb','icon','url']; $pre=['attach/','/attach/','uploads/attach/','/uploads/attach/','storage/attach/','/storage/attach/'];
+        if(($d['map_rule']??'short')==='biz') return ['request_key_map'=>['page'=>'cursor','limit'=>'batch','keywords'=>'query','uuid'=>'deviceCode','token'=>'sessionCode'],'response_key_map'=>['status'=>'code','msg'=>'message','data'=>'result'],'response_data_key_map'=>['list'=>'records','count'=>'totalCount','total'=>'total'],'image_fields'=>$img,'image_prefixes'=>$pre];
+        return ['request_key_map'=>['page'=>'pg','limit'=>'sz','keywords'=>'kw','uuid'=>'ud','token'=>'tk'],'response_key_map'=>['status'=>'s','msg'=>'m','data'=>'d'],'response_data_key_map'=>['list'=>'ls','count'=>'ct','total'=>'tt'],'image_fields'=>$img,'image_prefixes'=>$pre];
     }
 
-    private function makeAlias(string $seed, string $rule, array &$used): string
+    public function previewAlias(int $id): array
     {
-        $try = 0;
-        do {
-            $try++;
-            $alias = match ($rule) {
-                'hex6' => substr(md5($seed . ':' . $try), 0, 6),
-                'mix6' => $this->alphaNumFromHash($seed . ':' . $try, 6),
-                'word4' => $this->wordAlias($seed, $try),
-                default => substr(md5($seed . ':' . $try), 0, 4),
-            };
-        } while (isset($used[$alias]) && $try < 20);
-
-        $used[$alias] = true;
-        return $alias;
+        $r=$this->aliasDao->search(['id'=>$id])->with('apiInterface')->first(); if(!$r)return[]; $r=$this->formatAliasRow($r->toArray()); $req=$this->example((array)($r['request_params']??[])); $res=$this->example((array)($r['response_params']??[]));
+        return ['request'=>['origin_path'=>'/api/'.ltrim((string)$r['path'],'/'),'alias_path'=>'/api/v/'.(string)$r['alias'],'origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[]))],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_data_key_map']??[]))]];
     }
 
-    private function alphaNumFromHash(string $seed, int $length): string
+    public function exportAliases(array $d): array
     {
-        $chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-        $hex = md5($seed);
-        $result = '';
-        for ($i = 0; $i < $length; $i++) {
-            $n = hexdec($hex[$i]) % strlen($chars);
-            $result .= $chars[$n];
-        }
-        return $result;
+        $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return[]; $rows=$this->aliasDao->search(['profile_id'=>$p['id'],'is_enable'=>1])->with('apiInterface')->get()->toArray();
+        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'gateway_prefix'=>'/api/v/','items'=>array_map(fn($x)=>array_intersect_key($this->formatAliasRow($x),array_flip(['alias','path','method','request_key_map','response_key_map','response_data_key_map'])),$rows)];
     }
 
-    private function wordAlias(string $seed, int $salt): string
-    {
-        $prefix = ['ax', 'ke', 'zu', 'vo', 'mi', 'ra', 'ta', 'ny'];
-        $suffix = ['q', 'x', 'k', 'm', 'z', 't', 'v', 's'];
-        $hash = crc32($seed . ':' . $salt);
-        $p = $prefix[$hash % count($prefix)];
-        $s = $suffix[($hash >> 3) % count($suffix)];
-        return $p . substr(md5($seed), 0, 2) . $s;
-    }
+    public function buildRouteAliasesByProfile(int $pid): array { $a=[]; foreach($this->aliasDao->search(['profile_id'=>$pid,'is_enable'=>1])->with('apiInterface')->get() as $r) if($r->apiInterface&&$r['alias']) $a[$r['alias']]=['path'=>ltrim((string)$r->apiInterface['path'],'/'),'method'=>strtoupper((string)$r->apiInterface['method'])]; return $a; }
+    private function findProfile(int $appId,string $pkg){return $this->dao->search(['app_id'=>$appId,'package_name'=>$pkg])->first();}
+    private function ensureProfile(int $appId,string $pkg){return $this->findProfile($appId,$pkg)?:$this->dao->save(['app_id'=>$appId,'package_name'=>$pkg,'enabled'=>0,'alias_rule'=>'hash4','protocol'=>config('api_obfuscation.profiles.default.protocol',[]),'security'=>config('api_obfuscation.profiles.default.security',[]),'crypto'=>config('api_obfuscation.profiles.default.crypto',[]),'image_url'=>config('api_obfuscation.profiles.default.image_url',[]),'route_aliases'=>[]]);}
+    private function refreshRouteAliases(int $pid):void{$this->dao->update($pid,['route_aliases'=>$this->buildRouteAliasesByProfile($pid)]);}
+    private function formatAliasRow(array $r):array{$i=$r['api_interface']??[];return array_merge($r,['interface_name'=>$i['name']??'','module'=>$i['module']??'','path'=>$i['path']??'','method'=>$i['method']??'','request_params'=>$i['request_params']??[],'response_params'=>$i['response_params']??[]]);}
+    private function generateMapsForInterface(array $i,string $rule):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule),'response_key_map'=>[],'response_data_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule)];}
+    private function paramsMap(array $ps,string $rule):array{$m=[];$n=0;foreach($ps as $p){$k=(string)($p['key']??$p['name']??'');if($k==='')continue;$n++;$m[$k]=$rule==='mix'?$this->alphaNumFromHash($k.$n,5):(($rule==='biz'?'field':substr(preg_replace('/[^a-z0-9]/i','',$k),0,1)).$n);}return$m;}
+    private function example(array $ps):array{$r=[];foreach($ps as $p){if(!is_array($p))continue;$k=(string)($p['key']??$p['name']??'');if($k!=='')$r[$k]=$p['example']??'';}return$r;}
+    private function applyMap(array $d,array $m):array{$r=[];foreach($d as $k=>$v)$r[$m[$k]??$k]=$v;return$r;}
+    private function decodeJson(string $j):array{$d=json_decode(trim($j),true);return is_array($d)?$d:[];}
+    private function decodeMap($v):array{return is_array($v)?$v:$this->decodeJson((string)$v);}
+    private function lines(string $t):array{$p=preg_split('/\r\n|\r|\n/',$t);return array_values(array_filter(array_map('trim',$p?:[]),fn($v)=>$v!==''));}
+    private function makeAlias(string $seed,string $rule,array &$used):string{$try=0;do{$try++;$a=match($rule){'hex6'=>substr(md5($seed.':'.$try),0,6),'mix6'=>$this->alphaNumFromHash($seed.':'.$try,6),'word4'=>$this->wordAlias($seed,$try),'path3'=>'r'.$this->alphaNumFromHash($seed.':'.$try,4),default=>substr(md5($seed.':'.$try),0,4)};}while(isset($used[$a])&&$try<50);$used[$a]=true;return$a;}
+    private function alphaNumFromHash(string $seed,int $len):string{$c='abcdefghijklmnopqrstuvwxyz0123456789';$h=md5($seed);$r='';for($i=0;$i<$len;$i++)$r.=$c[hexdec($h[$i])%strlen($c)];return$r;}
+    private function wordAlias(string $seed,int $salt):string{$p=['ax','ke','zu','vo','mi','ra','ta','ny'];$s=['q','x','k','m','z','t','v','s'];$h=crc32($seed.':'.$salt);return$p[$h%count($p)].substr(md5($seed),0,2).$s[($h>>3)%count($s)];}
 }
-

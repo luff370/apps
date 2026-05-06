@@ -4,7 +4,7 @@ namespace App\Support\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use App\Models\AppApiInterface;
+use App\Models\AppApiObfuscationAlias;
 use App\Models\AppApiObfuscationProfile;
 
 class ApiObfuscationProfileResolver
@@ -79,21 +79,32 @@ class ApiObfuscationProfileResolver
 
     private function buildRouteAliases(int $appId, string $packageName): array
     {
-        $query = AppApiInterface::query()->where('is_enable', 1);
+        $profileQuery = AppApiObfuscationProfile::query();
         if ($packageName !== '') {
-            $query->where('package_name', $packageName);
+            $profileQuery->where('package_name', $packageName);
         } else {
-            $query->where('app_id', $appId);
+            $profileQuery->where('app_id', $appId);
+        }
+
+        $profile = $profileQuery->first();
+        if (!$profile) {
+            return [];
         }
 
         $aliases = [];
-        foreach ($query->get(['alias', 'path', 'method']) as $row) {
-            if (empty($row['alias']) || empty($row['path'])) {
+        $rows = AppApiObfuscationAlias::query()
+            ->where('profile_id', $profile['id'])
+            ->where('is_enable', 1)
+            ->with('apiInterface')
+            ->get();
+
+        foreach ($rows as $row) {
+            if (!$row->apiInterface || empty($row['alias']) || empty($row->apiInterface['path'])) {
                 continue;
             }
             $aliases[$row['alias']] = [
-                'path' => ltrim((string) $row['path'], '/'),
-                'method' => strtoupper((string) $row['method']),
+                'path' => ltrim((string) $row->apiInterface['path'], '/'),
+                'method' => strtoupper((string) $row->apiInterface['method']),
             ];
         }
 
