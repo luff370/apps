@@ -29,7 +29,19 @@ class AppApiObfuscationService extends Service
     public function aliases(array $w): array
     {
         $p = $this->findProfile((int)($w['app_id']??0), (string)($w['package_name']??'')); if (!$p) return ['list'=>[],'count'=>0];
-        $q = $this->aliasDao->search(['profile_id'=>$p['id']])->with('apiInterface'); $count = $q->count(); $page=(int)request()->get('page',1); $limit=(int)request()->get('limit',15);
+        $q = $this->aliasDao->search(['profile_id'=>$p['id']])->with('apiInterface');
+        $keyword = trim((string)($w['keyword'] ?? ''));
+        if ($keyword !== '') {
+            $q->where(function ($sub) use ($keyword) {
+                $sub->where('alias', 'like', '%' . $keyword . '%')
+                    ->orWhereHas('apiInterface', function ($api) use ($keyword) {
+                        $api->where('name', 'like', '%' . $keyword . '%')
+                            ->orWhere('module', 'like', '%' . $keyword . '%')
+                            ->orWhere('path', 'like', '%' . $keyword . '%');
+                    });
+            });
+        }
+        $count = $q->count(); $page=(int)request()->get('page',1); $limit=(int)request()->get('limit',15);
         $list = $q->orderByDesc('id')->offset(($page-1)*$limit)->limit($limit)->get()->toArray();
         return ['list'=>array_map(fn($x)=>$this->formatAliasRow($x), $list),'count'=>$count];
     }

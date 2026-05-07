@@ -57,36 +57,6 @@ class SystemApiInterfaceService extends Service
         return $data;
     }
 
-    public function buildInsertSqlFromApiRoutes(): string
-    {
-        $routes = $this->parseApiRoutes(base_path('routes/api.php'));
-        $values = [];
-        $now = time();
-
-        foreach ($routes as $route) {
-            if ($route['path'] === 'v/{alias}') {
-                continue;
-            }
-            $values[] = sprintf(
-                "('%s','%s','%s','%s',JSON_ARRAY(),JSON_ARRAY(),1,'由 routes/api.php 生成',%d,%d)",
-                addslashes($route['name']),
-                addslashes($route['module']),
-                addslashes($route['path']),
-                addslashes($route['method']),
-                $now,
-                $now
-            );
-        }
-
-        if (empty($values)) {
-            return '';
-        }
-
-        return "INSERT INTO `system_api_interfaces` (`name`,`module`,`path`,`method`,`request_params`,`response_params`,`is_enable`,`remark`,`create_time`,`update_time`) VALUES\n"
-            . implode(",\n", $values)
-            . "\nON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `module`=VALUES(`module`), `update_time`=VALUES(`update_time`);";
-    }
-
     public function importFromApiRoutes(): array
     {
         $routes = $this->parseApiRoutes(base_path('routes/api.php'));

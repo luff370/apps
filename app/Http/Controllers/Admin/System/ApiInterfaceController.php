@@ -21,7 +21,7 @@ class ApiInterfaceController extends Controller
             ['is_enable', ''],
         ]);
 
-        return $this->success($this->service->getAllByPage($where));
+        return $this->success($this->service->getAllByPage($where, ['*'], ['module' => 'asc', 'path' => 'asc']));
     }
 
     public function detail($id)
@@ -60,11 +60,6 @@ class ApiInterfaceController extends Controller
     {
         $this->service->delete((int) $id);
         return $this->success('删除成功');
-    }
-
-    public function routeSql()
-    {
-        return $this->success(['sql' => $this->service->buildInsertSqlFromApiRoutes()]);
     }
 
     public function importRoutes()

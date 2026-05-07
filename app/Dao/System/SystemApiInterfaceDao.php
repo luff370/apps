@@ -20,6 +20,14 @@ class SystemApiInterfaceDao extends BaseDao
         if (!empty($where['module'])) {
             $query->where('module', $where['module']);
         }
+        if (!empty($where['keyword'])) {
+            $keyword = (string) $where['keyword'];
+            $query->where(function ($sub) use ($keyword) {
+                $sub->where('name', 'like', '%' . $keyword . '%')
+                    ->orWhere('module', 'like', '%' . $keyword . '%')
+                    ->orWhere('path', 'like', '%' . $keyword . '%');
+            });
+        }
         if (!empty($where['path'])) {
             $query->where('path', ltrim($where['path'], '/'));
         }

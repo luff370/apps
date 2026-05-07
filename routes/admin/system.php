@@ -125,7 +125,6 @@ Route::name('system')->prefix('system')->namespace('System')->group( function ()
 
     // 公共 API 接口管理
     Route::get('api/interfaces', 'ApiInterfaceController@index');
-    Route::get('api/interfaces/route_sql', 'ApiInterfaceController@routeSql');
     Route::get('api/interfaces/import_routes', 'ApiInterfaceController@importRoutes');
     Route::post('api/interfaces/import_routes', 'ApiInterfaceController@importRoutes');
     Route::get('api/interfaces/{id}', 'ApiInterfaceController@detail');

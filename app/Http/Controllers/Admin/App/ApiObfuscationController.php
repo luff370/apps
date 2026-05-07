@@ -25,7 +25,7 @@ class ApiObfuscationController extends Controller
 
     public function aliases()
     {
-        $where = $this->getMore([['app_id', 0], ['package_name', '']]);
+        $where = $this->getMore([['app_id', 0], ['package_name', ''], ['keyword', '']]);
         return $this->success($this->obfuscationService->aliases($where));
     }
 
