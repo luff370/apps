@@ -67,4 +67,10 @@ class ApiObfuscationController extends Controller
         $data = $this->getMore([['app_id', 0], ['package_name', '']]);
         return $this->success($this->obfuscationService->exportAliases($data));
     }
+
+    public function exportProfile()
+    {
+        $data = $this->getMore([['app_id', 0], ['package_name', '']]);
+        return $this->success($this->obfuscationService->exportProfile($data));
+    }
 }

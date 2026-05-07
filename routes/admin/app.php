@@ -58,5 +58,6 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::post('obfuscation/aliases/generate', 'ApiObfuscationController@generateAliases');
     Route::get('obfuscation/aliases/{id}/preview', 'ApiObfuscationController@previewAlias');
     Route::get('obfuscation/export', 'ApiObfuscationController@exportAliases');
+    Route::get('obfuscation/export_profile', 'ApiObfuscationController@exportProfile');
 
 });

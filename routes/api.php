@@ -14,7 +14,9 @@ use Illuminate\Support\Facades\Route;
 */
 
 // 混淆网关入口（按应用配置路由别名转发到真实接口）
-Route::any('v/{alias}', 'ObfuscatedGatewayController@dispatch');
+foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
+    Route::any(trim($gatewayPrefix, '/') . '/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')->where('params', '.*');
+}
 
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');

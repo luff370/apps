@@ -15,7 +15,7 @@ class ObfuscatedGatewayController extends Controller
     ) {
     }
 
-    public function dispatch(Request $request, string $alias)
+    public function dispatch(Request $request, string $alias, string $params = '')
     {
         $profile = $this->resolver->resolve($request);
         if (!($profile['enabled'] ?? false)) {
@@ -32,6 +32,7 @@ class ObfuscatedGatewayController extends Controller
             return $this->fail('invalid route target', null, 400);
         }
 
+        $targetPath = $this->fillRouteParameters($targetPath, $params);
         $targetMethod = strtoupper((string) ($aliasRoute['method'] ?? $request->getMethod()));
         $forwardRequest = Request::create(
             '/api/' . $targetPath,
@@ -46,5 +47,19 @@ class ObfuscatedGatewayController extends Controller
         $forwardRequest->headers->set('X-Obfuscated-Gateway', '1');
 
         return $this->kernel->handle($forwardRequest);
+    }
+
+    private function fillRouteParameters(string $targetPath, string $params): string
+    {
+        if ($params === '' || !str_contains($targetPath, '{')) {
+            return $targetPath;
+        }
+
+        $segments = array_values(array_filter(explode('/', trim($params, '/')), fn($item) => $item !== ''));
+        $index = 0;
+
+        return preg_replace_callback('/\{[^}]+\}/', function () use (&$segments, &$index) {
+            return $segments[$index++] ?? '';
+        }, $targetPath) ?? $targetPath;
     }
 }
