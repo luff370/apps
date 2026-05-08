@@ -59,6 +59,7 @@ class AppApiObfuscationService extends Service
     public function generateAliases(array $d): array
     {
         $p=$this->ensureProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); $rule=(string)($d['rule']??$p['alias_rule']??'hash4'); $overwrite=intval($d['overwrite']??0)===1; $used=[]; $updated=0;
+        if($overwrite)$this->aliasDao->search(['profile_id'=>$p['id']])->update(['is_enable'=>0]);
         foreach($this->interfaceDao->search(['is_enable'=>1])->get() as $i){ $old=$this->aliasDao->search(['profile_id'=>$p['id'],'interface_id'=>$i['id']])->first(); if(!$overwrite&&$old&&!empty($old['alias'])){$used[$old['alias']]=true;continue;} $alias=$this->makeAlias(strtoupper($i['method']).':'.trim($i['path'],'/').':'.$p['id'],$rule,$used); $save=array_merge(['profile_id'=>(int)$p['id'],'interface_id'=>(int)$i['id'],'alias'=>$alias,'is_enable'=>1],$this->generateMapsForInterface($i->toArray(),(string)($d['map_rule']??'short'))); $old?$this->aliasDao->update($old['id'],$save):$this->aliasDao->save($save); $updated++; }
         $this->dao->update($p['id'],['alias_rule'=>$rule]); $this->refreshRouteAliases((int)$p['id']); return ['updated'=>$updated,'rule'=>$rule];
     }
@@ -84,7 +85,7 @@ class AppApiObfuscationService extends Service
         return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'gateway_prefix'=>$this->gatewayPrefixForProfile($p->toArray()),'gateway_prefixes'=>$this->gatewayPrefixes(),'items'=>array_map(fn($x)=>array_intersect_key($this->formatAliasRow($x),array_flip(['alias','path','method','request_key_map','response_key_map','response_data_key_map'])),$rows)];
     }
 
-    public function buildRouteAliasesByProfile(int $pid): array { $a=[]; foreach($this->aliasDao->search(['profile_id'=>$pid,'is_enable'=>1])->with('apiInterface')->get() as $r) if($r->apiInterface&&$r['alias']) $a[$r['alias']]=['path'=>ltrim((string)$r->apiInterface['path'],'/'),'method'=>strtoupper((string)$r->apiInterface['method'])]; return $a; }
+    public function buildRouteAliasesByProfile(int $pid): array { $a=[]; foreach($this->aliasDao->search(['profile_id'=>$pid,'is_enable'=>1])->with('apiInterface')->get() as $r) if($r->apiInterface&&intval($r->apiInterface['is_enable']??0)===1&&$r['alias']) $a[$r['alias']]=['path'=>ltrim((string)$r->apiInterface['path'],'/'),'method'=>strtoupper((string)$r->apiInterface['method'])]; return $a; }
     public function exportProfile(array $d): array
     {
         $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return[];

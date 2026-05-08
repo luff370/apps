@@ -61,6 +61,7 @@ class SystemApiInterfaceService extends Service
     {
         $routes = $this->parseApiRoutes(base_path('routes/api.php'));
         $count = 0;
+        $importedKeys = [];
         foreach ($routes as $route) {
             if ($route['path'] === 'v/{alias}') {
                 continue;
@@ -75,10 +76,24 @@ class SystemApiInterfaceService extends Service
                 'is_enable' => 1,
                 'remark' => '由 routes/api.php 导入',
             ]);
+            $importedKeys[] = strtoupper($route['method']) . ' ' . ltrim($route['path'], '/');
             $count++;
         }
 
+        $this->disableStaleImportedRoutes($importedKeys);
+
         return ['count' => $count];
+    }
+
+    private function disableStaleImportedRoutes(array $importedKeys): void
+    {
+        $valid = array_flip($importedKeys);
+        foreach ($this->dao->search(['is_enable' => 1])->where('remark', '由 routes/api.php 导入')->get() as $row) {
+            $key = strtoupper((string) $row['method']) . ' ' . ltrim((string) $row['path'], '/');
+            if (!isset($valid[$key])) {
+                $this->dao->update($row['id'], ['is_enable' => 0]);
+            }
+        }
     }
 
     private function decodeParams($params): array
@@ -131,7 +146,7 @@ class SystemApiInterfaceService extends Service
         $lines = preg_split('/\r\n|\r|\n/', $content) ?: [];
         $pendingComment = '';
         $pendingPrefix = null;
-        $pendingPrefixBraceDepth = null;
+        $pendingPrefixStack = [];
         $braceDepth = 0;
 
         foreach ($lines as $line) {
@@ -141,6 +156,10 @@ class SystemApiInterfaceService extends Service
             }
 
             if (preg_match('/Route::prefix\(\'([^\']+)\'\)/', $trim, $match)) {
+                $pendingPrefix = trim($match[1], '/');
+            }
+
+            if (preg_match('/Route::group\(\s*\[.*?[\'\"]prefix[\'\"]\s*=>\s*[\'\"]([^\'\"]+)[\'\"]/i', $trim, $match)) {
                 $pendingPrefix = trim($match[1], '/');
             }
 
@@ -163,15 +182,15 @@ class SystemApiInterfaceService extends Service
 
             if ($pendingPrefix !== null && $open > 0) {
                 $prefixStack[] = $pendingPrefix;
+                $pendingPrefixStack[] = $braceDepth + $open - $close;
                 $pendingPrefix = null;
-                $pendingPrefixBraceDepth = $braceDepth + $open - $close;
             }
 
             $braceDepth += $open - $close;
 
-            while ($pendingPrefixBraceDepth !== null && $braceDepth < $pendingPrefixBraceDepth && !empty($prefixStack)) {
+            while (!empty($pendingPrefixStack) && $braceDepth < end($pendingPrefixStack) && !empty($prefixStack)) {
                 array_pop($prefixStack);
-                $pendingPrefixBraceDepth = null;
+                array_pop($pendingPrefixStack);
             }
         }
 
