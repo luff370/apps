@@ -4,12 +4,22 @@ namespace App\Services\App;
 
 use App\Dao\App\AppApiObfuscationAliasDao;
 use App\Dao\App\AppApiObfuscationProfileDao;
+use App\Dao\App\AppsDao;
 use App\Dao\System\SystemApiInterfaceDao;
 use App\Services\Service;
 
 class AppApiObfuscationService extends Service
 {
-    public function __construct(AppApiObfuscationProfileDao $dao, private AppApiObfuscationAliasDao $aliasDao, private SystemApiInterfaceDao $interfaceDao) { $this->dao = $dao; }
+    public function __construct(AppApiObfuscationProfileDao $dao, private AppApiObfuscationAliasDao $aliasDao, private SystemApiInterfaceDao $interfaceDao, private AppsDao $appsDao) { $this->dao = $dao; }
+
+    public function listByApps(array $w): array
+    {
+        $page=(int)request()->get('page',1); $limit=(int)request()->get('limit',15); $appsQuery=$this->appsDao->search(['keyword'=>$w['keyword']??'']);
+        $count=$appsQuery->count(); $apps=$appsQuery->orderByDesc('id')->offset(($page-1)*$limit)->limit($limit)->get()->toArray(); $profiles=[];
+        foreach($this->dao->search()->whereIn('app_id',array_column($apps,'id'))->get()->toArray() as $profile){$profiles[(int)$profile['app_id']]=$profile;}
+        $list=array_map(function($app)use($profiles){$profile=$profiles[(int)$app['id']]??[];$image=$profile['image_url']??[];return ['app_id'=>(int)$app['id'],'app_name'=>(string)($app['name']??''),'package_name'=>(string)($profile['package_name']??$app['package_name']??''),'enabled'=>(int)($profile['enabled']??0),'alias_rule'=>(string)($profile['alias_rule']??'hash4'),'allow_plaintext_request'=>(int)($profile['allow_plaintext_request']??1),'image_url_enabled'=>(int)($profile['image_url_enabled']??($image['enabled']??0)),'image_domain'=>(string)($profile['image_domain']??($image['domain']??'')),'profile_id'=>(int)($profile['id']??0)];},$apps);
+        return ['list'=>$list,'count'=>$count];
+    }
 
     public function getProfile(int $appId = 0, string $packageName = ''): array
     {

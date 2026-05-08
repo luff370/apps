@@ -15,6 +15,12 @@ class ApiObfuscationController extends Controller
         return $this->success($this->obfuscationService->getProfile(intval($data['app_id']), (string) $data['package_name']));
     }
 
+    public function index()
+    {
+        $where = $this->getMore([['keyword', '']]);
+        return $this->success($this->obfuscationService->listByApps($where));
+    }
+
     public function saveProfile()
     {
         $data = $this->getMore([

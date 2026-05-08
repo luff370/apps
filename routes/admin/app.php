@@ -49,6 +49,7 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::put('merchant/set_field_value/{id}/{value}/{field}', 'MerchantController::class@setFieldValue');
 
     // API 混淆配置（应用侧只管理别名、映射、导出）
+    Route::get('obfuscation', 'ApiObfuscationController@index');
     Route::get('obfuscation/profile', 'ApiObfuscationController@profile');
     Route::post('obfuscation/profile', 'ApiObfuscationController@saveProfile');
     Route::post('obfuscation/profile/generate_defaults', 'ApiObfuscationController@generateDefaults');
