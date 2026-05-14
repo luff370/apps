@@ -277,7 +277,13 @@ class UserWhitelistService extends Service
             return false;
         }
 
-        if (UserWhitelist::query()->where('content', $device)->where('way', UserWhitelist::WAY_DEVICE)->exists()) {
+        if (UserWhitelist::query()
+            ->where('content', $device)
+            ->where('way', UserWhitelist::WAY_DEVICE)
+            ->where('app_id', $appId)
+            ->where('market_channel', $marketChannel)
+            ->where('version', $version)
+            ->exists()) {
             return false;
         }
 
@@ -313,7 +319,13 @@ class UserWhitelistService extends Service
             return false;
         }
 
-        if (UserWhitelist::query()->where('content', $ip)->where('way', UserWhitelist::WAY_IP)->exists()) {
+        if (UserWhitelist::query()
+            ->where('content', $ip)
+            ->where('way', UserWhitelist::WAY_IP)
+            ->where('app_id', $appId)
+            ->where('market_channel', $marketChannel)
+            ->where('version', $version)
+            ->exists()) {
             return false;
         }
 
@@ -348,25 +360,35 @@ class UserWhitelistService extends Service
         $cacheKey = "user_whitelist:ip";
         redis()->del($cacheKey);
 
-        $data = UserWhitelist::query()->where('status', 1)->where('way', 'ip')->pluck('type', 'content')->toArray();
-        if ($data) {
-            redis()->hMSet($cacheKey, $data);
+        $data = UserWhitelist::query()->select(['app_id', 'platform', 'market_channel', 'version', 'type', 'content'])
+            ->where('status', 1)
+            ->where('way', UserWhitelist::WAY_IP)
+            ->get()
+            ->groupBy('content');
+
+        if ($data->count() > 0) {
+            foreach ($data as $ip => $item) {
+                $data[$ip] = json_encode($item);
+            }
+
+            redis()->hMSet($cacheKey, $data->toArray());
         }
     }
 
-    public static function getByIp($ip): array
+    public static function getByIp($ip, $appId, $platform, $marketChannel, $version): array
     {
         $cacheKey = "user_whitelist:ip";
-        $type = (int) redis()->hGet($cacheKey, $ip);
+        $sourceIp = $ip;
+        $type = self::getMatchedType(redis()->hGet($cacheKey, $sourceIp), $appId, $platform, $marketChannel, $version);
         if ($type == 0) {
             $ipArr = explode('.', $ip);
             array_pop($ipArr);
             $ipArr[] = '*';
-            $ip = implode('.', $ipArr);
-            $type = (int) redis()->hGet($cacheKey, $ip);
+            $sourceIp = implode('.', $ipArr);
+            $type = self::getMatchedType(redis()->hGet($cacheKey, $sourceIp), $appId, $platform, $marketChannel, $version);
         }
 
-        return [$ip, $type];
+        return [$sourceIp, $type];
     }
 
     public static function cacheForDevice(): void
@@ -374,17 +396,26 @@ class UserWhitelistService extends Service
         $cacheKey = "user_whitelist:device";
         redis()->del($cacheKey);
 
-        $data = UserWhitelist::query()->where('status', 1)->where('way', 'device')->pluck('type', 'content')->toArray();
-        if ($data) {
-            redis()->hMSet($cacheKey, $data);
+        $data = UserWhitelist::query()->select(['app_id', 'platform', 'market_channel', 'version', 'type', 'content'])
+            ->where('status', 1)
+            ->where('way', UserWhitelist::WAY_DEVICE)
+            ->get()
+            ->groupBy('content');
+
+        if ($data->count() > 0) {
+            foreach ($data as $device => $item) {
+                $data[$device] = json_encode($item);
+            }
+
+            redis()->hMSet($cacheKey, $data->toArray());
         }
     }
 
-    public static function getByDevice($device): int
+    public static function getByDevice($device, $appId, $platform, $marketChannel, $version): int
     {
         $cacheKey = "user_whitelist:device";
 
-        return (int) redis()->hGet($cacheKey, $device);
+        return self::getMatchedType(redis()->hGet($cacheKey, $device), $appId, $platform, $marketChannel, $version);
     }
 
     public static function cacheForRegion(): void
@@ -413,6 +444,7 @@ class UserWhitelistService extends Service
         $data = redis()->hGet($cacheKey, $region);
 
         $type = 0;
+        $data = json_decode((string) $data, true);
         if (!empty($data) && is_array($data)) {
             foreach ($data as $item) {
                 if (!empty($item['app_id']) && $item['app_id'] != $appId) {
@@ -432,6 +464,34 @@ class UserWhitelistService extends Service
         return $type;
     }
 
+    private static function getMatchedType($data, $appId, $platform, $marketChannel, $version): int
+    {
+        $data = json_decode((string) $data, true);
+        if (empty($data) || !is_array($data)) {
+            return 0;
+        }
+
+        $type = 0;
+        foreach ($data as $item) {
+            if (!empty($item['app_id']) && $item['app_id'] != $appId) {
+                continue;
+            }
+            if (!empty($item['platform']) && $item['platform'] != 'all' && $item['platform'] != $platform) {
+                continue;
+            }
+            if (!empty($item['market_channel']) && $item['market_channel'] != 'all' && $item['market_channel'] != $marketChannel) {
+                continue;
+            }
+            if (!empty($item['version']) && $item['version'] != $version) {
+                continue;
+            }
+
+            $type |= (int) $item['type'];
+        }
+
+        return $type;
+    }
+
     public static function getUserWhiteInfo($appId, $platform, $marketChannel, $region, $ip, $device, $version, $uuid): int
     {
         $userWhitelistLog = [
@@ -445,7 +505,7 @@ class UserWhitelistService extends Service
             'version' => $version,
         ];
 
-        $type = self::getByDevice($device);
+        $type = self::getByDevice($device, $appId, $platform, $marketChannel, $version);
         if ($type > 0) {
             $userWhitelistLog['source'] = $device;
             $userWhitelistLog['source_type'] = "device";
@@ -454,7 +514,7 @@ class UserWhitelistService extends Service
             return $type;
         }
 
-        [$sourceIp, $type] = self::getByIp($ip);
+        [$sourceIp, $type] = self::getByIp($ip, $appId, $platform, $marketChannel, $version);
         if ($type > 0) {
             // ip白名单 访问设备同时也添加到白名单中
             self::createByDevice($device, $type, "", 2, $appId, $marketChannel, $ip, $version);
