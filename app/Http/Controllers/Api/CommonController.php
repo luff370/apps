@@ -69,7 +69,16 @@ class CommonController extends Controller
             // 添加IP白名单
             UserWhitelistService::createByIp($request->getClientIp(), $data['auto_add_white_list'], '', 3, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion(), $this->getDevice());
             // 添加设备白名单
-            UserWhitelistService::createByDevice($this->getDevice(), $data['auto_add_white_list'], '', 3, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion());
+            UserWhitelistService::createByDevice(
+                $this->getDevice(),
+                $data['auto_add_white_list'],
+                '',
+                3,
+                $this->getAppId(),
+                $this->getMarketChannel(),
+                $request->getClientIp(),
+                $this->getAppVersion()
+            );
             // 记录访问日志
             UserWhitelistService::recordWhitelistUserAccessLog($this->getAppId(), $this->getPlatform(), $this->getMarketChannel(), ip2region($this->getClientIp()), $this->getClientIp(), $this->getDevice(), $this->getAppVersion(), $this->getUuid());
         } else {

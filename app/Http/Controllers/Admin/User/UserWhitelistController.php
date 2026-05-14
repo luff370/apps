@@ -183,14 +183,41 @@ class UserWhitelistController extends Controller
 
         // 设备白名单保存
         if (!empty($data['device'])) {
-            UserWhitelistService::createByDevice($data['device'], $data['type'], $data['remark'], $data['app_id'], $data['market_channel'], $data['version']);
+            UserWhitelistService::createByDevice(
+                $data['device'],
+                $data['type'],
+                $data['remark'],
+                1,
+                $data['app_id'],
+                $data['market_channel'],
+                $data['reg_ip'] ?: $data['last_ip'],
+                $data['version']
+            );
         }
         // IP白名单保存
         if (!empty($data['reg_ip'])) {
-            UserWhitelistService::createByIp($data['reg_ip'], $data['type'], $data['remark'], $data['app_id'], $data['market_channel'], $data['version']);
+            UserWhitelistService::createByIp(
+                $data['reg_ip'],
+                $data['type'],
+                $data['remark'],
+                1,
+                $data['app_id'],
+                $data['market_channel'],
+                $data['version'],
+                $data['device']
+            );
         }
         if (!empty($data['last_ip']) && $data['last_ip'] != $data['reg_ip']) {
-            UserWhitelistService::createByIp($data['last_ip'], $data['type'], $data['remark'], $data['app_id'], $data['market_channel'], $data['version']);
+            UserWhitelistService::createByIp(
+                $data['last_ip'],
+                $data['type'],
+                $data['remark'],
+                1,
+                $data['app_id'],
+                $data['market_channel'],
+                $data['version'],
+                $data['device']
+            );
         }
 
         return $this->success(100021);
