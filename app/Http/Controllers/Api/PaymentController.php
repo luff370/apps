@@ -8,6 +8,11 @@ use Illuminate\Http\Request;
 use App\Exceptions\ApiException;
 use App\Support\Services\Payment;
 use App\Services\Order\PaymentService;
+use Illuminate\Support\Facades\Log;
+use Psr\Http\Message\ResponseInterface;
+use Yansongda\Artful\Exception\InvalidResponseException;
+use Yansongda\Pay\Provider\Wechat;
+use Yansongda\Supports\Collection;
 
 class PaymentController extends Controller
 {
@@ -82,14 +87,14 @@ class PaymentController extends Controller
                             'out_trade_no' => $orderNo,
                             'description' => '会员订购',
                             'amount' => [
-                                'total' => $order['member_price'] * 100,
+                                'total' => (int) round((float) $order['member_price'] * 100),
                                 'currency' => 'CNY',
                             ],
                         ];
                         $payClient = Payment::getWechatClientByType($order['app_id'], $payType, $orderNo);
                         switch ($payType) {
                             case Payment::PAY_TYPE_APP:
-                                return $payClient->app($payParams);
+                                return $this->callWechatPay($payClient, 'app', $payParams);
                             case Payment::PAY_TYPE_H5:
                                 $payParams['scene_info'] = [
                                     'payer_client_ip' => request()->ip(),
@@ -99,7 +104,8 @@ class PaymentController extends Controller
                                     ],
                                 ];
 
-                                $payUrl = $h5Url = $payClient->h5($payParams)->h5_url . "&redirect_url=https://testmall.appasd.com/api/payment/return?order_no={$orderNo}";
+                                $h5Result = $this->callWechatPay($payClient, 'h5', $payParams);
+                                $payUrl = $h5Url = $h5Result->h5_url . "&redirect_url=https://testmall.appasd.com/api/payment/return?order_no={$orderNo}";
                                 if ($this->getPlatform() != 'h5') {
                                     $payDomain = Payment::getPayUrl(Payment::PAY_CHANNEL_WX, $payType, $order['app_id']);
                                     if ($payDomain) {
@@ -117,7 +123,7 @@ class PaymentController extends Controller
                                     'openid' => '123fsdf234',
                                 ];
 
-                                return $payClient->mini($payParams);
+                                return $this->callWechatPay($payClient, 'mini', $payParams);
                         }
                         break;
 
@@ -171,6 +177,72 @@ class PaymentController extends Controller
         $body = $paymentService->orderPay($orderNo, $orderType, $payChannel, $payType);
 
         return view('payment.h5', compact('body'));
+    }
+
+    /**
+     * @throws ApiException
+     */
+    private function callWechatPay(Wechat $payClient, string $method, array $payParams): mixed
+    {
+        try {
+            return $payClient->{$method}($payParams);
+        } catch (InvalidResponseException $e) {
+            Log::error('微信支付下单失败', $this->buildWechatPayErrorContext($method, $payParams, $e));
+
+            throw new ApiException($this->formatWechatPayErrorMessage($e));
+        }
+    }
+
+    private function buildWechatPayErrorContext(string $method, array $payParams, InvalidResponseException $e): array
+    {
+        $context = [
+            'method' => $method,
+            'order_no' => $payParams['out_trade_no'] ?? null,
+            'amount_total' => $payParams['amount']['total'] ?? null,
+            'payer_client_ip' => $payParams['scene_info']['payer_client_ip'] ?? null,
+            'exception' => $e->getMessage(),
+        ];
+
+        $response = $e->response;
+        if ($response instanceof ResponseInterface) {
+            $context['http_status'] = $response->getStatusCode();
+            $context['wechat_body'] = (string) $response->getBody();
+        } elseif ($response instanceof Collection) {
+            $context['wechat_body'] = $response->all();
+        } elseif (null !== $response) {
+            $context['wechat_body'] = $response;
+        }
+
+        if (config('app.debug')) {
+            $context['pay_params'] = $payParams;
+        }
+
+        return $context;
+    }
+
+    private function formatWechatPayErrorMessage(InvalidResponseException $e): string
+    {
+        if (!config('app.debug')) {
+            return '微信支付失败，请稍后重试';
+        }
+
+        $response = $e->response;
+        if ($response instanceof ResponseInterface) {
+            $body = (string) $response->getBody();
+            if ($body !== '') {
+                $decoded = json_decode($body, true);
+                if (is_array($decoded)) {
+                    $code = $decoded['code'] ?? '';
+                    $detail = $decoded['message'] ?? $decoded['detail'] ?? $body;
+
+                    return "微信支付失败 [HTTP {$response->getStatusCode()}] {$code}: {$detail}";
+                }
+
+                return "微信支付失败 [HTTP {$response->getStatusCode()}]: {$body}";
+            }
+        }
+
+        return '微信支付失败: ' . $e->getMessage();
     }
 
 }
