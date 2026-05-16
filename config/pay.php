@@ -93,9 +93,9 @@ teUbLrwScsjVrcFAvSrfben3eQaEca3ESBegGh_wdGuLKw6QgwDxY3fC1_WeSVnkJXx72ddw3j2inoAD
 EOD,
     ],
     'logger' => [
-        'enable' => false,
+        'enable' => env('APP_DEBUG', false),
         'file' => storage_path() . '/logs/pay.log',
-        'level' => 'info', // 建议生产环境等级调整为 info，开发环境为 debug
+        'level' => env('APP_DEBUG', false) ? 'debug' : 'info',
         'type' => 'single', // optional, 可选 daily.
         'max_file' => 30, // optional, 当 type 为 daily 时有效，默认 30 天
     ],
