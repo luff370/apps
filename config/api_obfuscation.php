@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'enabled' => env('API_OBFUSCATION_ENABLED', false),
+    'enabled' => env('API_OBFUSCATION_ENABLED', true),
     'encryption_enabled' => env('API_OBFUSCATION_ENCRYPTION_ENABLED', false),
     'image_url_rewrite_enabled' => env('API_IMAGE_URL_REWRITE_ENABLED', true),
     'default_image_domain' => env('API_IMAGE_DOMAIN', ''),

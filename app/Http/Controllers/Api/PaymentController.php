@@ -96,27 +96,32 @@ class PaymentController extends Controller
                             case Payment::PAY_TYPE_APP:
                                 return $this->callWechatPay($payClient, 'app', $payParams);
                             case Payment::PAY_TYPE_H5:
+                                $payDomain = rtrim(
+                                    Payment::getPayUrl(Payment::PAY_CHANNEL_WX, $payType, $order['app_id'])
+                                        ?: config('app.url'),
+                                    '/'
+                                );
                                 $payParams['scene_info'] = [
                                     'payer_client_ip' => request()->ip(),
                                     'h5_info' => [
                                         'type' => 'Wap',
-                                        // 'app_url' => 'https://testmall.appasd.com',
+                                        'app_name' => config('app.name', '会员订购'),
+                                        'app_url' => $payDomain,
                                     ],
                                 ];
 
                                 $h5Result = $this->callWechatPay($payClient, 'h5', $payParams);
-                                $payUrl = $h5Url = $h5Result->h5_url . "&redirect_url=https://testmall.appasd.com/api/payment/return?order_no={$orderNo}";
+                                $redirectUrl = $payDomain . '/api/payment/return?order_no=' . $orderNo;
+                                $h5Url = $h5Result->h5_url . '&redirect_url=' . rawurlencode($redirectUrl);
+                                $payUrl = $h5Url;
                                 if ($this->getPlatform() != 'h5') {
-                                    $payDomain = Payment::getPayUrl(Payment::PAY_CHANNEL_WX, $payType, $order['app_id']);
-                                    if ($payDomain) {
-                                        $payUrl = $payDomain . "/pages/pay_detail/redirect.html?pay_url=" . base64_encode($payUrl);
-                                    }
+                                    $payUrl = $payDomain . '/pages/pay_detail/redirect.html?pay_url=' . rawurlencode(base64_encode($h5Url));
                                 }
 
                                 return $this->success([
                                     'pay_url' => $payUrl,
                                     'h5_url' => $h5Url,
-                                    'pay_domain' => 'https://testmall.appasd.com',
+                                    'pay_domain' => $payDomain,
                                 ]);
                             case Payment::PAY_TYPE_MINI:
                                 $payParams['payer'] = [
@@ -182,15 +187,70 @@ class PaymentController extends Controller
     /**
      * @throws ApiException
      */
-    private function callWechatPay(Wechat $payClient, string $method, array $payParams): mixed
+    private function callWechatPay(Wechat $payClient, string $method, array $payParams, bool $isRetry = false): mixed
     {
+        if (!$isRetry) {
+            $this->closeWechatOrder($payClient, (string) ($payParams['out_trade_no'] ?? ''), $method);
+        }
+
         try {
             return $payClient->{$method}($payParams);
         } catch (InvalidResponseException $e) {
+            if (!$isRetry && $this->isWechatReentryParameterMismatch($e)) {
+                $this->closeWechatOrder($payClient, (string) ($payParams['out_trade_no'] ?? ''), $method);
+
+                return $this->callWechatPay($payClient, $method, $payParams, true);
+            }
+
             Log::error('微信支付下单失败', $this->buildWechatPayErrorContext($method, $payParams, $e));
 
             throw new ApiException($this->formatWechatPayErrorMessage($e));
         }
+    }
+
+    private function closeWechatOrder(Wechat $payClient, string $outTradeNo, string $payType): void
+    {
+        if ($outTradeNo === '') {
+            return;
+        }
+
+        try {
+            $payClient->close([
+                'out_trade_no' => $outTradeNo,
+                '_action' => $payType,
+            ]);
+        } catch (\Throwable $e) {
+            Log::debug('关闭微信未支付订单（可忽略）', [
+                'out_trade_no' => $outTradeNo,
+                'pay_type' => $payType,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function isWechatReentryParameterMismatch(InvalidResponseException $e): bool
+    {
+        $body = $this->extractWechatErrorBody($e);
+
+        return ($body['code'] ?? '') === 'INVALID_REQUEST'
+            && str_contains((string) ($body['message'] ?? ''), '参数与首次请求时不一致');
+    }
+
+    private function extractWechatErrorBody(InvalidResponseException $e): array
+    {
+        $response = $e->response;
+
+        if ($response instanceof ResponseInterface) {
+            $decoded = json_decode((string) $response->getBody(), true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        if ($response instanceof Collection) {
+            return $response->all();
+        }
+
+        return is_array($response) ? $response : [];
     }
 
     private function buildWechatPayErrorContext(string $method, array $payParams, InvalidResponseException $e): array
