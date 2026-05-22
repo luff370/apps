@@ -108,7 +108,7 @@ class SystemApp extends Model
 
     public static function idToNameMap($filter = []): array
     {
-        return self::query()
+        return self::query()->where('is_del', 0)
             ->when($filter, function (Builder $query) use ($filter) {
                 $query->where($filter);
             })
