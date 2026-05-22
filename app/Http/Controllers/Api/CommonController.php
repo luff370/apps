@@ -63,7 +63,7 @@ class CommonController extends Controller
         $userWhiteList = UserWhitelistService::conversionTypeToArr(0);
 
         // 自动添加默认的ip白名单
-        if (!empty($data['auto_add_white_list']) && $this->getMarketChannel() != 'ios') {
+        if (!empty($data['auto_add_white_list']) && $this->getPlatform() != 'ios') {
             // 白名单默认状态
             $userWhiteList = UserWhitelistService::conversionTypeToArr($data['auto_add_white_list']);
             // 添加IP白名单
@@ -83,7 +83,7 @@ class CommonController extends Controller
             UserWhitelistService::recordWhitelistUserAccessLog($this->getAppId(), $this->getPlatform(), $this->getMarketChannel(), ip2region($this->getClientIp()), $this->getClientIp(), $this->getDevice(), $this->getAppVersion(), $this->getUuid());
         } else {
             // 判断白名单是否开启
-            if (!empty($data['user_white_list_filter']) && $this->getMarketChannel() != 'ios') {
+            if (!empty($data['user_white_list_filter']) && $this->getPlatform() != 'ios') {
                 $userWhiteList = $this->__getUserWhiteList();
             }
         }
