@@ -122,8 +122,7 @@ class PaymentController extends Controller
                                     'payer_client_ip' => request()->ip(),
                                     'h5_info' => [
                                         'type' => 'Wap',
-                                        'app_name' => config('app.name', '会员订购'),
-                                        'app_url' => $payDomain,
+                                        // 'app_url' => $payDomain,
                                     ],
                                 ];
 
