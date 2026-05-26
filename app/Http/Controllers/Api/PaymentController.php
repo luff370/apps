@@ -215,12 +215,6 @@ class PaymentController extends Controller
         try {
             return $payClient->{$method}($payParams);
         } catch (InvalidResponseException $e) {
-            if (!$isRetry && $this->isWechatReentryParameterMismatch($e)) {
-                $this->closeWechatOrder($payClient, (string) ($payParams['out_trade_no'] ?? ''), $method);
-
-                return $this->callWechatPay($payClient, $method, $payParams, true);
-            }
-
             Log::error('微信支付下单失败', $this->buildWechatPayErrorContext($method, $payParams, $e));
 
             throw new ApiException($this->formatWechatPayErrorMessage($e));
