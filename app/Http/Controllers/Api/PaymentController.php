@@ -205,12 +205,8 @@ class PaymentController extends Controller
     /**
      * @throws ApiException
      */
-    private function callWechatPay(Wechat $payClient, string $method, array $payParams, bool $isRetry = false): mixed
+    private function callWechatPay(Wechat $payClient, string $method, array $payParams): mixed
     {
-        if (!$isRetry) {
-            $this->closeWechatOrder($payClient, (string) ($payParams['out_trade_no'] ?? ''), $method);
-        }
-
         try {
             return $payClient->{$method}($payParams);
         } catch (InvalidResponseException $e) {
