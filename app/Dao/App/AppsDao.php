@@ -21,6 +21,7 @@ class AppsDao extends BaseDao
     public function search(array $where = []): Builder
     {
         $query = $this->newQuery();
+        $query->where("is_del", 0);
 
         if (!empty($where['mer_id'])) {
             $query->where('mer_id', $where['mer_id']);

@@ -77,6 +77,7 @@ class Payment
             ->where('pay_channel', 'wechat')
             ->where('pay_type', $payType)
             ->where('app_id', $appId)
+            ->where('status', true)
             ->first();
         if (empty($paymentInfo)) {
             throw new ApiException('微信配置信息获取失败');
@@ -126,6 +127,7 @@ class Payment
             ->where('pay_channel', 'alipay')
             ->where('pay_type', $type)
             ->where('app_id', $appId)
+            ->where('status', true)
             ->first();
 
         if (empty($paymentInfo)) {

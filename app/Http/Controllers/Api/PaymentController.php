@@ -38,6 +38,15 @@ class PaymentController extends Controller
         $orderType = $request->get('order_type');
         $payChannel = $request->get('pay_channel');
         $payType = $request->get('pay_type');
+        $supportedPayTypes = [
+            Payment::PAY_TYPE_APP,
+            Payment::PAY_TYPE_H5,
+            Payment::PAY_TYPE_MINI,
+        ];
+
+        if (!in_array($payType, $supportedPayTypes, true)) {
+            return $this->fail('未开通的支付类型：' . $payType);
+        }
 
         switch ($orderType) {
             case "member": // 会员订单
@@ -70,7 +79,13 @@ class PaymentController extends Controller
                         $payClient = Payment::getAlipayClientByType($order['app_id'], $payType, $orderNo);
                         switch ($payType) {
                             case Payment::PAY_TYPE_APP:
-                                return $payClient->app($payParams)->getBody()->getContents();
+                                $payString = $payClient->app($payParams)->getBody()->getContents();
+
+                                return $this->success([
+                                    'pay_string' => $payString,
+                                    'pay_channel' => Payment::PAY_CHANNEL_ALIPAY,
+                                    'pay_type' => Payment::PAY_TYPE_APP,
+                                ]);
                             case Payment::PAY_TYPE_H5:
                                 $body = $payClient->h5($payParams)->getBody()->getContents();
 
@@ -81,6 +96,8 @@ class PaymentController extends Controller
                             case Payment::PAY_TYPE_MINI:
                                 return $payClient->mini($payParams);
                         }
+
+                        return $this->fail('未开通的支付宝支付类型：' . $payType);
                         break;
                     case Payment::PAY_CHANNEL_WX:
                         $payParams = [
@@ -125,6 +142,8 @@ class PaymentController extends Controller
 
                                 return $this->callWechatPay($payClient, 'mini', $payParams);
                         }
+
+                        return $this->fail('未开通的微信支付类型：' . $payType);
                         break;
 
                     default:
