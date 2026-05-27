@@ -18,6 +18,11 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::put('ad/{id}/set_status/{status}', 'AdvertisementController@setStatus');
     Route::post('ad/{id}/copy', 'AdvertisementController@copy');
 
+    // 广告访问统计
+    Route::get('ad_access_stat', 'AdAccessLogController@stat');
+    // 广告请求明细
+    Route::get('ad_access_log', 'AdAccessLogController@index');
+
     // 产品管理
     Route::resource('product', 'ProductController');
     Route::put('product/{id}/set_sort/{sort}', 'ProductController@setSort');
