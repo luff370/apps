@@ -1,0 +1,299 @@
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "广告相关接口",
+        "version": "1.0.0",
+        "description": "广告配置获取与广告请求上报接口文档（不含公共Header参数）"
+    },
+    "servers": [
+        {
+            "url": "https://your-domain.com",
+            "description": "生产环境域名（请替换）"
+        }
+    ],
+    "paths": {
+        "/api/ad/list": {
+            "post": {
+                "tags": [
+                    "广告"
+                ],
+                "summary": "获取广告配置列表",
+                "description": "根据应用与市场渠道返回广告配置。应用与市场参数来自公共Header，此处不再定义。",
+                "operationId": "adList",
+                "requestBody": {
+                    "required": false,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": false
+                            },
+                            "example": {}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseAdList"
+                                },
+                                "example": {
+                                    "status": 200,
+                                    "msg": "success",
+                                    "data": {
+                                        "open_screen": {
+                                            "title": "开屏广告",
+                                            "market_channel": "all",
+                                            "position": "open_screen",
+                                            "type": 1,
+                                            "channels": [
+                                                {
+                                                    "channel": "gdt",
+                                                    "ad_id": "123456",
+                                                    "code_id": "abcd"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/ad/stat": {
+            "post": {
+                "tags": [
+                    "广告"
+                ],
+                "summary": "广告请求上报",
+                "description": "上报广告请求结果。支持未登录用户上报（未登录时后端写入 user_id=0）。",
+                "operationId": "adStat",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/AdStatRequest"
+                            },
+                            "examples": {
+                                "success_case": {
+                                    "summary": "成功上报示例",
+                                    "value": {
+                                        "ad_id": 1001,
+                                        "ad_code": "open_screen",
+                                        "ad_type": "开屏广告",
+                                        "ad_channel": "gdt",
+                                        "ad_index": "launch_1",
+                                        "status": 0,
+                                        "error_code": "",
+                                        "error_msg": ""
+                                    }
+                                },
+                                "fail_case_auto_status": {
+                                    "summary": "失败上报示例（不传status由后端自动判定为-1）",
+                                    "value": {
+                                        "ad_id": 1001,
+                                        "ad_code": "open_screen",
+                                        "ad_type": "开屏广告",
+                                        "ad_channel": "gdt",
+                                        "ad_index": "launch_1",
+                                        "error_code": "NO_FILL",
+                                        "error_msg": "广告无填充"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "请求成功",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseBase"
+                                },
+                                "examples": {
+                                    "success": {
+                                        "value": {
+                                            "status": 200,
+                                            "msg": "success",
+                                            "data": null
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "ApiResponseBase": {
+                "type": "object",
+                "required": [
+                    "status",
+                    "msg",
+                    "data"
+                ],
+                "properties": {
+                    "status": {
+                        "type": "integer",
+                        "example": 200
+                    },
+                    "msg": {
+                        "type": "string",
+                        "example": "success"
+                    },
+                    "data": {
+                        "nullable": true,
+                        "example": null
+                    }
+                }
+            },
+            "AdChannelConfig": {
+                "type": "object",
+                "properties": {
+                    "channel": {
+                        "type": "string",
+                        "description": "广告通道标识",
+                        "example": "gdt"
+                    },
+                    "ad_id": {
+                        "type": "string",
+                        "description": "广告平台应用ID",
+                        "example": "123456"
+                    },
+                    "code_id": {
+                        "type": "string",
+                        "description": "广告位代码ID",
+                        "example": "abcd"
+                    }
+                }
+            },
+            "AdListItem": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "example": "开屏广告"
+                    },
+                    "market_channel": {
+                        "type": "string",
+                        "example": "all"
+                    },
+                    "position": {
+                        "type": "string",
+                        "example": "open_screen"
+                    },
+                    "type": {
+                        "type": "integer",
+                        "example": 1
+                    },
+                    "channels": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/AdChannelConfig"
+                        }
+                    }
+                }
+            },
+            "ApiResponseAdList": {
+                "type": "object",
+                "required": [
+                    "status",
+                    "msg",
+                    "data"
+                ],
+                "properties": {
+                    "status": {
+                        "type": "integer",
+                        "example": 200
+                    },
+                    "msg": {
+                        "type": "string",
+                        "example": "success"
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "key为广告位置(position)，value为广告配置",
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/AdListItem"
+                        }
+                    }
+                }
+            },
+            "AdStatRequest": {
+                "type": "object",
+                "required": [
+                    "ad_id",
+                    "ad_code",
+                    "ad_type",
+                    "ad_channel",
+                    "ad_index"
+                ],
+                "properties": {
+                    "ad_id": {
+                        "type": "integer",
+                        "format": "int64",
+                        "description": "广告应用ID",
+                        "example": 1001
+                    },
+                    "ad_code": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "description": "广告位编码",
+                        "example": "open_screen"
+                    },
+                    "ad_type": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "description": "广告类别",
+                        "example": "开屏广告"
+                    },
+                    "ad_channel": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "description": "广告通道",
+                        "example": "gdt"
+                    },
+                    "ad_index": {
+                        "type": "string",
+                        "maxLength": 32,
+                        "description": "广告位置",
+                        "example": "launch_1"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "description": "请求状态：0成功，-1失败；不传时后端自动判断",
+                        "enum": [
+                            0,
+                            -1
+                        ],
+                        "example": 0
+                    },
+                    "error_code": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "description": "错误码（失败时建议传）",
+                        "example": "NO_FILL"
+                    },
+                    "error_msg": {
+                        "type": "string",
+                        "maxLength": 255,
+                        "description": "错误信息（失败时建议传）",
+                        "example": "广告无填充"
+                    }
+                },
+                "additionalProperties": false
+            }
+        }
+    }
+}

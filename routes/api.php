@@ -37,6 +37,8 @@ Route::prefix('payment')->group(function (\Illuminate\Routing\Router $route) {
     $route->post('/apple/notify', 'PayCallbackController@appleNotify');
     // 支付返回跳转
     $route->get('/return', 'PaymentController@payReturn');
+    // 获取当前应用下已开启的支付通道
+    $route->post('channels', 'PaymentController@availableChannels');
     // 支付测试
     $route->post('/test', 'PaymentController@test');
     // 支付状态

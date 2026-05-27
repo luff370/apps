@@ -30,6 +30,51 @@ class PaymentController extends Controller
     }
 
     /**
+     * 获取当前应用下已开启的支付通道列表
+     *
+     * 返回每个“通道 + 支付类型”组合的一条记录（避免重复）
+     */
+    public function availableChannels(): \Illuminate\Http\JsonResponse
+    {
+        $appId = $this->getAppId();
+
+        $payments = AppPayment::query()
+            ->where('app_id', $appId)
+            ->where('status', true)
+            ->get([
+                'id',
+                'pay_channel',
+                'pay_type',
+                'pay_app_id',
+                'mch_id',
+            ]);
+
+        $channelsMap = AppPayment::payChannelMap();
+        $typesMap = AppPayment::payTypeMap();
+
+        $seen = [];
+        $list = [];
+        foreach ($payments as $payment) {
+            $key = $payment->pay_channel . '_' . $payment->pay_type;
+            if (isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+
+            $list[] = [
+                'pay_channel' => $payment->pay_channel,
+                'pay_channel_name' => $channelsMap[$payment->pay_channel] ?? '',
+                'pay_type' => $payment->pay_type,
+                'pay_type_name' => $typesMap[$payment->pay_type] ?? '',
+                // 支付配置所需的关键字段（前端/下单接口可按需使用）
+                'pay_app_id' => $payment->pay_app_id,
+            ];
+        }
+
+        return $this->success($list);
+    }
+
+    /**
      * @throws ApiException
      */
     public function orderPay(Request $request)
