@@ -68,4 +68,26 @@ class AdAccessLogService extends Service
 
         return $list;
     }
+
+    /**
+     * 记录广告请求上报
+     */
+    public static function record(array $data): void
+    {
+        AdAccessLog::query()->create([
+            'app_id' => (int)($data['app_id'] ?? 0),
+            'market_channel' => (string)($data['market_channel'] ?? ''),
+            'version' => (string)($data['version'] ?? ''),
+            'user_id' => (int)($data['user_id'] ?? 0),
+            'uuid' => (string)($data['uuid'] ?? ''),
+            'ad_id' => (int)($data['ad_id'] ?? 0),
+            'ad_code' => (string)($data['ad_code'] ?? ''),
+            'ad_type' => (string)($data['ad_type'] ?? ''),
+            'ad_channel' => (string)($data['ad_channel'] ?? ''),
+            'ad_index' => (string)($data['ad_index'] ?? ''),
+            'status' => (int)($data['status'] ?? AdAccessLog::STATUS_SUCCESS),
+            'error_code' => (string)($data['error_code'] ?? ''),
+            'error_msg' => (string)($data['error_msg'] ?? ''),
+        ]);
+    }
 }

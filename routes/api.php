@@ -139,6 +139,8 @@ Route::prefix('ad')->group(
     function (\Illuminate\Routing\Router $route) {
         // 广告列表
         $route->post('list', 'AdvertisementController@list');
+        // 广告请求上报
+        $route->post('stat', 'AdvertisementController@stat');
     });
 
 Route::prefix('chatAI')->middleware(['token_auth'])->group(
