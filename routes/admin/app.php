@@ -42,6 +42,7 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     // 应用支付配置
     Route::resource('payment', 'PaymentController');
     Route::put('payment/{id}/set_status/{status}', 'PaymentController@setStatus');
+    Route::put('payment/{id}/set_sort/{sort}', 'PaymentController@setSort');
     Route::post('payment/{id}/copy', 'PaymentController@copy');
 
     // 应用配置

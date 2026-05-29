@@ -25,7 +25,7 @@ class PaymentController extends Controller
             ['app_id', ''],
             ['status', ''],
         ]);
-        $data = $this->service->getAllByPage($where, ['*'], ['id' => 'desc'], ['app', 'payment']);
+        $data = $this->service->getAllByPage($where, ['*'], ['sort' => 'desc', 'id' => 'desc'], ['app', 'payment']);
 
         return $this->success($data);
     }
@@ -46,6 +46,7 @@ class PaymentController extends Controller
             ['return_url', ''],
             ['remark', ''],
             ['status', 1],
+            ['sort', 0],
         ]);
         if ($data['pay_channel'] == AppPayment::PayChannelAlipay){
             $data['pay_app_id'] = $data['mch_id'];
@@ -86,6 +87,19 @@ class PaymentController extends Controller
         return $this->success(100014);
     }
 
+    /**
+     * 修改应用支付排序
+     */
+    public function setSort($id, $sort)
+    {
+        if ($sort == '' || $id == 0) {
+            return $this->fail(100100);
+        }
+        $this->service->update($id, ['sort' => $sort]);
+
+        return $this->success(100014);
+    }
+
     public function copy($id)
     {
         $info = $this->service->get($id);
@@ -103,6 +117,7 @@ class PaymentController extends Controller
                 'return_url' => $info['return_url'],
                 'notify_url' => $info['notify_url'],
                 'status' => 0,
+                'sort' => $info['sort'] ?? 0,
             ]
         );
 

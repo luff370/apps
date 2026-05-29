@@ -42,6 +42,7 @@ class AppPayment extends Model
         'return_url',
         'notify_url',
         'status',
+        'sort',
     ];
 
     const PayChannelWechat = 'wechat';

@@ -41,6 +41,8 @@ class PaymentController extends Controller
         $payments = AppPayment::query()
             ->where('app_id', $appId)
             ->where('status', true)
+            ->orderBy('sort', 'desc')
+            ->orderBy('id', 'desc')
             ->get([
                 'id',
                 'pay_channel',
