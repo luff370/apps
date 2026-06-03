@@ -67,7 +67,15 @@ class CommonController extends Controller
             // 白名单默认状态
             $userWhiteList = UserWhitelistService::conversionTypeToArr($data['auto_add_white_list']);
             // 添加IP白名单
-            UserWhitelistService::createByIp($request->getClientIp(), $data['auto_add_white_list'], '', 3, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion(), $this->getDevice());
+            UserWhitelistService::createByIp(
+                $request->getClientIp(),
+                $data['auto_add_white_list'],
+                '', 3,
+                $this->getAppId(),
+                $this->getMarketChannel(),
+                $this->getAppVersion(),
+                $this->getDevice()
+            );
             // 添加设备白名单
             UserWhitelistService::createByDevice(
                 $this->getDevice(),
@@ -79,8 +87,8 @@ class CommonController extends Controller
                 $request->getClientIp(),
                 $this->getAppVersion()
             );
-            // 记录访问日志
-            UserWhitelistService::recordWhitelistUserAccessLog($this->getAppId(), $this->getPlatform(), $this->getMarketChannel(), ip2region($this->getClientIp()), $this->getClientIp(), $this->getDevice(), $this->getAppVersion(), $this->getUuid());
+            // 记录访问日志 (自动添加，暂不记录)
+            // UserWhitelistService::recordWhitelistUserAccessLog($data['auto_add_white_list'],$this->getAppId(), $this->getPlatform(), $this->getMarketChannel(), ip2region($this->getClientIp()), $this->getClientIp(), $this->getDevice(), $this->getAppVersion(), $this->getUuid());
         } else {
             // 判断白名单是否开启
             if (!empty($data['user_white_list_filter']) && $this->getPlatform() != 'ios') {

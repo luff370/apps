@@ -47,6 +47,7 @@ class UserWhitelistLog extends BaseModel
         'device',
         'ip',
         'region',
+        'type',
         'source',
         'source_type'
     ];
