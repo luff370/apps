@@ -59,7 +59,7 @@ class AppVersionServices extends Service
         $field[] = Form::select('platform', '上架渠道', $info['platform'] ?? 0)->options(FormOptions::marketChannel())->required();
         $field[] = Form::input('version', '版本号', $info['version'] ?? '')->col(24)->required();
         $field[] = Form::input('info', '版本介绍', $info['info'] ?? '')->type('textarea');
-        $field[] = Form::uploadFile('url', '下载包', '/admin/file/upload',$info['url'] ?? '')
+        $field[] = Form::uploadFile('url', '下载包', config('admin.url') . '/admin/file/upload',$info['url'] ?? '')
             ->headers(['Authori-Zation' => request()->header(config('cookie.token_name', 'Authori-zation'))]);
         $field[] = Form::radio('is_force', '强制', $info['is_force'] ?? 1)->options([['label' => '开启', 'value' => 1], ['label' => '关闭', 'value' => 0]]);
         $field[] = Form::radio('is_new', '是否最新', $info['is_new'] ?? 1)->options([['label' => '是', 'value' => 1], ['label' => '否', 'value' => 0]]);
