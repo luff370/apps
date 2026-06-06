@@ -114,6 +114,7 @@ class CommonController extends Controller
         $returnData = [
             'last_version'=>$appVersion,
             'is_new'=>0,
+            'info'=>'',
             'force_Update'=>0,
             'downloadUrl'=>''
         ];
@@ -128,6 +129,7 @@ class CommonController extends Controller
             $returnData = [
                 'last_version'=>$lastVersion['version'],
                 'is_new'=>1,
+                'info'=>$lastVersion['info'],
                 'force_Update'=>$lastVersion['is_force'],
                 'downloadUrl'=>$lastVersion['url']
             ];
