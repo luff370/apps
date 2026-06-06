@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Models\AppVersion;
 use App\Services\App\AppsService;
 use Ramsey\Uuid\Uuid;
 use App\Models\DeviceToken;
@@ -95,6 +96,36 @@ class CommonController extends Controller
         // logger()->info('返回信息：', $data);
 
         return $this->success($data);
+    }
+
+    public function appUpdate(Request $request){
+        $appId = $this->getAppId();
+        $appVersion = $this->getAppVersion();
+        $appChannel = $this->getMarketChannel();
+
+        $returnData = [
+            'last_version'=>$appVersion,
+            'is_new'=>0,
+            'force_Update'=>0,
+            'downloadUrl'=>''
+        ];
+
+        $lastVersion = AppVersion::query()
+            ->where('app_id', $appId)
+            ->where('platform', $appChannel)
+            ->where('audit_status', 1)
+            ->orderBy('version','desc')
+            ->first();
+        if (!empty($lastVersion) && $appVersion != $lastVersion['version']){
+            $returnData = [
+                'last_version'=>$lastVersion['version'],
+                'is_new'=>1,
+                'force_Update'=>$lastVersion['is_force'],
+                'downloadUrl'=>$lastVersion['url']
+            ];
+        }
+
+        return $this->success($returnData);
     }
 
     private function __getUserWhiteList(): array

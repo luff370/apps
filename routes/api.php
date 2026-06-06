@@ -20,6 +20,8 @@ foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPref
 
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');
+// 应用版本更新
+Route::get('app/update', 'CommonController@appUpdate');
 // 获取配置数据
 Route::post('common/get_group_data/{name}', 'CommonController@getGroupData');
 // 提现成功用户展示
