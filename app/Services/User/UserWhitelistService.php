@@ -507,6 +507,7 @@ class UserWhitelistService extends Service
 
         $type = self::getByDevice($device, $appId, $platform, $marketChannel, $version);
         if ($type > 0) {
+            $userWhitelistLog['type'] = $type;
             $userWhitelistLog['source'] = $device;
             $userWhitelistLog['source_type'] = "device";
             self::whitelistUserAccessLog($userWhitelistLog);
@@ -516,9 +517,7 @@ class UserWhitelistService extends Service
 
         [$sourceIp, $type] = self::getByIp($ip, $appId, $platform, $marketChannel, $version);
         if ($type > 0) {
-            // ip白名单 访问设备同时也添加到白名单中
-            self::createByDevice($device, $type, "", 2, $appId, $marketChannel, $ip, $version);
-
+            $userWhitelistLog['type'] = $type;
             $userWhitelistLog['source'] = $sourceIp;
             $userWhitelistLog['source_type'] = "ip";
             self::whitelistUserAccessLog($userWhitelistLog);
@@ -528,6 +527,7 @@ class UserWhitelistService extends Service
 
         $type = self::getByRegion($region, $appId, $platform, $marketChannel);
         if ($type > 0) {
+            $userWhitelistLog['type'] = $type;
             $userWhitelistLog['source'] = $region;
             $userWhitelistLog['source_type'] = "region";
             self::whitelistUserAccessLog($userWhitelistLog);
@@ -538,9 +538,10 @@ class UserWhitelistService extends Service
         return 0;
     }
 
-    public static function recordWhitelistUserAccessLog($appId, $platform, $marketChannel, $region, $ip, $device, $version, $uuid)
+    public static function recordWhitelistUserAccessLog($type,$appId, $platform, $marketChannel, $region, $ip, $device, $version, $uuid)
     {
         $userWhitelistLog = [
+            'type' => $type,
             'app_id' => $appId,
             'platform' => $platform,
             'market_channel' => $marketChannel,
