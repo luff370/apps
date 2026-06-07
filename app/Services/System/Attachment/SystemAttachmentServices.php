@@ -149,9 +149,7 @@ class SystemAttachmentServices extends Service
         try {
             $storage = Storage::disk('public');
             $uploadPath = DS . 'attach' . DS . date('Y') . DS . date('m');
-            $extension = $file->getClientOriginalExtension();
-            $fileName = uniqid('', true) . '.' . $extension;
-            $path = $storage->putFileAs($uploadPath, $file, $fileName);
+            $path = $storage->putFileAs($uploadPath, $file, $file->getClientOriginalName());
             $url = $storage->url($path);
 
             $fileType = $file->getClientOriginalExtension();
