@@ -16,6 +16,11 @@ use App\Support\Services\SystemConfigService;
 
 class CommonController extends Controller
 {
+    public function phpinfo()
+    {
+        phpinfo();
+    }
+
     public function appInfo(AppsService $appsService, Request $request)
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);
