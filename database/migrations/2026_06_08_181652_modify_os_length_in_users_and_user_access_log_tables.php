@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::table('users', function (Blueprint $table) {
+            $table->string('os_version', 256)->default('')->comment('系统版本')->change();
+        });
+
         Schema::table('user_access_log', function (Blueprint $table) {
             $table->string('os', 256)->default('')->comment('系统')->change();
         });
@@ -21,6 +25,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        Schema::table('users', function (Blueprint $table) {
+            $table->string('os_version', 32)->default('')->comment('系统版本')->change();
+        });
+
         Schema::table('user_access_log', function (Blueprint $table) {
             $table->string('os', 32)->default('')->comment('系统')->change();
         });
