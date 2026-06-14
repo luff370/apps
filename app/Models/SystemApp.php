@@ -103,6 +103,7 @@ class SystemApp extends Model
             'baidu' => '百度',
             'pp' => 'pp助手',
             'uc' => 'UC助手',
+            '360' => '360',
         ];
     }
 
