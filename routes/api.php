@@ -18,6 +18,7 @@ foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPref
     Route::any(trim($gatewayPrefix, '/') . '/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')->where('params', '.*');
 }
 
+// Route::get('phpinfo', 'CommonController@phpinfo');
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');
 // 应用版本更新

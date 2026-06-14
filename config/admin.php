@@ -10,7 +10,7 @@ return [
     /*
     * Admin 域名
     */
-    'url' => env('ADMIN_URL','http://lc.app.com'),
+    'url' => env('ADMIN_URL','http://lc.apps.com'),
 
     /*
      * 路由配置

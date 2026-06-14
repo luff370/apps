@@ -149,7 +149,14 @@ class SystemAttachmentServices extends Service
         try {
             $storage = Storage::disk('public');
             $uploadPath = DS . 'attach' . DS . date('Y') . DS . date('m');
+            if (!$file->isValid()) {
+                throw new UploadException($file->getErrorMessage());
+            }
+
             $path = $storage->putFileAs($uploadPath, $file, $file->getClientOriginalName());
+            if ($path === false) {
+                throw new UploadException('文件保存失败，请检查上传大小限制、磁盘权限或临时目录配置');
+            }
             $url = $storage->url($path);
 
             $fileType = $file->getClientOriginalExtension();
