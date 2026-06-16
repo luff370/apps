@@ -12,6 +12,7 @@ use App\Support\Services\AppConfigService;
 use App\Services\User\UserWhitelistService;
 use App\Services\System\AppVersionServices;
 use App\Services\User\UserAccessLogService;
+use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\SystemConfigService;
 
 class CommonController extends Controller
@@ -21,7 +22,7 @@ class CommonController extends Controller
         phpinfo();
     }
 
-    public function appInfo(AppsService $appsService, Request $request)
+    public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService)
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);
 
@@ -64,6 +65,11 @@ class CommonController extends Controller
 
         // 当前版本是否为审核状态
         $data['is_audit'] = AppVersionServices::getAuditStatusByVersion($this->getAppId(), $this->getMarketChannel(), $this->getAppVersion());
+
+        // 风控探针策略只在最终响应阶段覆盖广告/合规字段：
+        // - 正常用户沿用后台应用配置、渠道配置和白名单结果；
+        // - 高风险环境强制 compliance_mode=1、ad_switch=0，和客户端本地门禁对齐。
+        $data = $riskService->applyAppInfoPolicy($data, $request->attributes->get('device_env_risk'));
 
         // 白名单默认状态
         $userWhiteList = UserWhitelistService::conversionTypeToArr(0);

@@ -45,6 +45,11 @@ class ObfuscatedGatewayController extends Controller
         );
         $forwardRequest->headers->replace($request->headers->all());
         $forwardRequest->headers->set('X-Obfuscated-Gateway', '1');
+        // 外层 /api/{prefix}/{alias} 已经消费过 Device-Env nonce。
+        // 内部转发到真实接口时复用同一个风控上下文，避免同一次请求被判定为重放。
+        if ($request->attributes->has('device_env_risk')) {
+            $forwardRequest->attributes->set('device_env_risk', $request->attributes->get('device_env_risk'));
+        }
 
         return $this->kernel->handle($forwardRequest);
     }
