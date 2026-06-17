@@ -71,6 +71,8 @@ Route::prefix('user')->middleware(['token_auth'])->group(
         $route->post('info', 'UserController@info');
         // 意见反馈
         $route->post('feedback', 'UserController@feedback');
+        // 意见反馈记录
+        $route->post('feedback/list', 'UserController@feedbackList');
         // 退出账号
         $route->post('logout', 'UserController@logout');
         // 注销账号

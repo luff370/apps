@@ -97,6 +97,53 @@ class UserController extends Controller
     }
 
     /**
+     * 意见反馈记录
+     */
+    public function feedbackList()
+    {
+        $list = UserFeedback::query()
+            ->where('user_id', authUserId())
+            ->where('app_id', $this->getAppId())
+            ->select([
+                'id',
+                'type',
+                'content',
+                'images',
+                'email',
+                'phone',
+                'status',
+                'recover_content',
+                'admin_name',
+                'create_time',
+                'update_time',
+            ])
+            ->orderBy('id')
+            ->get()
+            ->map(function (UserFeedback $feedback) {
+                $createTime = (int) $feedback->getRawOriginal('create_time');
+                $updateTime = (int) $feedback->getRawOriginal('update_time');
+
+                return [
+                    'id' => $feedback->id,
+                    'type' => $feedback->type,
+                    'content' => $feedback->content,
+                    'images' => $feedback->images ?: [],
+                    'email' => $feedback->email,
+                    'phone' => $feedback->phone,
+                    'status' => $feedback->status,
+                    'recover_content' => $feedback->recover_content,
+                    'admin_name' => $feedback->admin_name,
+                    'create_time' => $createTime,
+                    'create_time_text' => $createTime ? Carbon::createFromTimestamp($createTime)->toDateTimeString() : '',
+                    'update_time' => $updateTime,
+                    'update_time_text' => $updateTime ? Carbon::createFromTimestamp($updateTime)->toDateTimeString() : '',
+                ];
+            });
+
+        return $this->success($list);
+    }
+
+    /**
      * 用户退出登录
      *
      * @throws \Psr\SimpleCache\InvalidArgumentException
