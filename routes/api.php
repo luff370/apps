@@ -13,11 +13,6 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// 混淆网关入口（按应用配置路由别名转发到真实接口）
-foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
-    Route::any(trim($gatewayPrefix, '/') . '/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')->where('params', '.*');
-}
-
 // Route::get('phpinfo', 'CommonController@phpinfo');
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');
@@ -206,3 +201,9 @@ Route::prefix('xiongfeng')->group(
         $route->get('completed', 'XiongfengAdController@completedCallback');
     });
 
+// 应用级动态混淆前缀入口，例如 open48/client7。
+// 放在文件末尾作为兜底入口，避免抢占 app/info、auth/login 等真实 API 路由。
+// 实际前缀由后台按 app_id + package_name 稳定生成，真实接口映射仍来自后台别名配置。
+Route::any('{gatewayPrefix}/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')
+    ->where('gatewayPrefix', '[A-Za-z][A-Za-z0-9]{2,31}')
+    ->where('params', '.*');

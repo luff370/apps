@@ -40,6 +40,8 @@ class ApiObfuscationProfileResolver
 
         return [
             'enabled' => (bool) (config('api_obfuscation.enabled', false) && ($merged['enabled'] ?? false)),
+            'app_id' => $merged['app_id'] ?? null,
+            'package_name' => $merged['package_name'] ?? null,
             'route_aliases' => $merged['route_aliases'] ?? [],
             'request_key_map' => $merged['request_key_map'] ?? [],
             'response_key_map' => $merged['response_key_map'] ?? [],

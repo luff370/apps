@@ -22,6 +22,10 @@ class ObfuscatedGatewayController extends Controller
             return $this->fail('invalid request', null, 404);
         }
 
+        if (!$this->isAllowedGatewayPrefix($request, $profile)) {
+            return $this->fail('invalid gateway prefix', null, 404);
+        }
+
         $aliasRoute = $profile['route_aliases'][$alias] ?? null;
         if (!$aliasRoute || empty($aliasRoute['path'])) {
             return $this->fail('invalid route alias', null, 404);
@@ -66,5 +70,43 @@ class ObfuscatedGatewayController extends Controller
         return preg_replace_callback('/\{[^}]+\}/', function () use (&$segments, &$index) {
             return $segments[$index++] ?? '';
         }, $targetPath) ?? $targetPath;
+    }
+
+    private function isAllowedGatewayPrefix(Request $request, array $profile): bool
+    {
+        $prefix = trim((string) $request->segment(2), '/');
+        if ($prefix === '') {
+            return false;
+        }
+
+        return $prefix === $this->gatewayPrefixSegmentForProfile($profile);
+    }
+
+    private function gatewayPrefixSegmentForProfile(array $profile): string
+    {
+        $prefixes = array_values(array_filter(config('api_obfuscation.gateway_prefixes', ['gateway'])));
+        if (empty($prefixes)) {
+            $prefixes = ['gateway'];
+        }
+
+        $identity = (string) ($profile['app_id'] ?? '') . '|' . (string) ($profile['package_name'] ?? '');
+        $base = (string) $prefixes[abs(crc32($identity)) % count($prefixes)];
+        $base = preg_replace('/[^a-zA-Z0-9]/', '', trim($base));
+        $base = $base !== '' ? strtolower($base) : 'gateway';
+
+        return $base . $this->gatewaySuffix($profile);
+    }
+
+    private function gatewaySuffix(array $profile): string
+    {
+        $identity = (string) ($profile['app_id'] ?? '') . '|' . (string) ($profile['package_name'] ?? '');
+        $appId = (int) ($profile['app_id'] ?? 0);
+        $hash = abs(crc32($identity));
+        if ($appId > 0) {
+            $tail = $appId % 100;
+            return (string) ($tail > 0 ? $tail : ($hash % 90 + 10));
+        }
+
+        return (string) ($hash % 90 + 10);
     }
 }
