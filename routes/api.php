@@ -13,6 +13,12 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// 旧版混淆网关入口，兼容已经下发的 /api/open/{alias} 等固定前缀。
+// 新版导出会使用应用级动态前缀，但旧客户端在未重新生成/下发配置前仍需保持可用。
+foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
+    Route::any(trim($gatewayPrefix, '/') . '/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')->where('params', '.*');
+}
+
 // Route::get('phpinfo', 'CommonController@phpinfo');
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');

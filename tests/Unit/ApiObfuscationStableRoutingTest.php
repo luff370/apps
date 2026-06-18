@@ -64,8 +64,8 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $isAllowed = $this->method(ObfuscatedGatewayController::class, 'isAllowedGatewayPrefix');
 
         $this->assertTrue($isAllowed->invoke($controller, $request, $profile));
+        $this->assertTrue($isAllowed->invoke($controller, Request::create('/api/open/abc', 'POST'), $profile));
         $this->assertFalse($isAllowed->invoke($controller, Request::create('/api/open99/abc', 'POST'), $profile));
-        $this->assertFalse($isAllowed->invoke($controller, Request::create('/api/open/abc', 'POST'), $profile));
     }
 
     private function newService(): AppApiObfuscationService

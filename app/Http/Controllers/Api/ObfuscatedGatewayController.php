@@ -79,6 +79,16 @@ class ObfuscatedGatewayController extends Controller
             return false;
         }
 
+        // 兼容旧版已下发的固定网关前缀，例如 /api/open/{alias}。
+        // 新版导出使用应用级动态前缀，但旧配置未更新前不能影响线上访问。
+        $fixedPrefixes = array_map(
+            fn($item) => trim((string) $item, '/'),
+            config('api_obfuscation.gateway_prefixes', ['gateway'])
+        );
+        if (in_array($prefix, $fixedPrefixes, true)) {
+            return true;
+        }
+
         return $prefix === $this->gatewayPrefixSegmentForProfile($profile);
     }
 
