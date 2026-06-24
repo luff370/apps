@@ -27,6 +27,7 @@ class Advertisement
         if ($configs === null) {
             $configs = AppAdvertisement::query()->where('app_id', $appId)
                 ->where('status', 1)
+                ->orderBy('id', 'desc')
                 ->get(['title', 'market_channel', 'position', 'type', 'channels'])
                 ->toArray();
             cache()->put($cacheKey, $configs, now()->addMonth());
@@ -43,19 +44,19 @@ class Advertisement
         }
 
         $data = [];
-        $configs = collect($configs)->groupBy('position')->all();
+        $configs = collect($configs)->groupBy('type')->all();
         foreach ($configs as $key => $items) {
             foreach ($items as $item) {
                 if ($item['market_channel'] == $channel) {
                     $data[$key] = $item;
                 }
-                if ($item['market_channel'] == 'all' && !isset($data[$key])) {
+                if ($item['market_channel'] == 'all' && empty($data[$key])) {
                     $data[$key] = $item;
                 }
             }
         }
 
-        return $data;
+        return array_values($data);
     }
 
 }
