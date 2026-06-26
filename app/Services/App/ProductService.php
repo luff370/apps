@@ -19,6 +19,10 @@ class ProductService extends Service
 
     public function save($data)
     {
+        if (isset($data['platform'])) {
+            $data['platform'] = strtolower((string)$data['platform']);
+        }
+
         if (!empty($data['id'])) {
             return $this->update($data['id'], $data);
         }
@@ -30,6 +34,7 @@ class ProductService extends Service
     {
         foreach ($list as &$item) {
             $item['lang'] = MemberProduct::$languages[$item['lang']] ?? '';
+            $item['platform_name'] = MemberProduct::platformName((string)$item['platform']);
         }
 
         return $list;

@@ -45,6 +45,7 @@ class FormOptions
             'system_apps' => FormOptions::systemApps($firstOption),
             'platforms' => self::platforms($firstOption),
             'market_channel' => self::marketChannel($firstOption),
+            'member_product_platforms' => self::memberProductPlatforms($firstOption),
             'merchants' => self::merchants($firstOption),
             'member_validity_type' => self::memberValidityType($firstOption),
             'agreement_type' => self::agreementType($firstOption),
@@ -89,6 +90,13 @@ class FormOptions
     public static function marketChannel($firstOption = []): array
     {
         $arr = SystemApp::marketChannelsMap();
+
+        return self::toFormOptions($arr, $firstOption);
+    }
+
+    public static function memberProductPlatforms($firstOption = []): array
+    {
+        $arr = MemberProduct::platformsMap();
 
         return self::toFormOptions($arr, $firstOption);
     }

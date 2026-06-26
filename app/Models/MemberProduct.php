@@ -6,6 +6,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+
 /**
  * Class MemberProduct
  *
@@ -111,6 +114,87 @@ class MemberProduct extends Model
             self::TimeTypeWeek => '周',
             self::TimeTypeYear => '年',
         ];
+    }
+
+    public static function platformsMap(): array
+    {
+        $marketChannels = SystemApp::marketChannelsMap();
+
+        return [
+            'android' => '安卓默认',
+        ] + array_diff_key($marketChannels, ['ios' => true]);
+    }
+
+    public static function platformName(string $platform): string
+    {
+        if ($platform === 'all') {
+            return '全部';
+        }
+
+        return self::platformsMap()[$platform] ?? $platform;
+    }
+
+    public static function pricePlatforms(?string $platform, ?string $marketChannel): array
+    {
+        $platform = strtolower((string)$platform);
+        $marketChannel = strtolower((string)$marketChannel);
+
+        $platforms = ['all'];
+
+        if ($platform === 'ios') {
+            $platforms[] = 'ios';
+        } elseif ($platform === 'android') {
+            $platforms[] = 'android';
+            if ($marketChannel !== '' && $marketChannel !== 'android') {
+                $platforms[] = $marketChannel;
+            }
+        }
+        // elseif ($platform !== '') {
+        //     $platforms[] = $platform;
+        //     if ($marketChannel !== '' && $marketChannel !== $platform) {
+        //         $platforms[] = $marketChannel;
+        //     }
+        // } elseif ($marketChannel !== '') {
+        //     $platforms[] = $marketChannel === 'ios' ? 'ios' : 'android';
+        //     $platforms[] = $marketChannel;
+        // }
+
+        return array_values(array_unique($platforms));
+    }
+
+    public static function pricePlatformPriority(?string $platform, ?string $marketChannel): array
+    {
+        return array_flip(self::pricePlatforms($platform, $marketChannel));
+    }
+
+    public static function priceIdentity($product): string
+    {
+        foreach (['filter_code', 'pay_product_id', 'serial_number', 'name'] as $field) {
+            $value = trim((string)($product[$field] ?? ''));
+            if ($value !== '') {
+                return $field . ':' . $value;
+            }
+        }
+
+        return 'id:' . (string)($product['id'] ?? '');
+    }
+
+    public static function queryAvailablePrices($appId, ?string $platform, ?string $marketChannel): Builder
+    {
+        return self::query()
+            ->where('app_id', $appId)
+            ->whereIn('platform', self::pricePlatforms($platform, $marketChannel));
+    }
+
+    public static function filterPreferredPrices(Collection $products, ?string $platform, ?string $marketChannel): Collection
+    {
+        $priority = self::pricePlatformPriority($platform, $marketChannel);
+
+        return $products
+            ->sortByDesc(fn ($product) => $priority[$product['platform']] ?? -1)
+            ->unique(fn ($product) => self::priceIdentity($product))
+            ->sortByDesc('sort')
+            ->values();
     }
 
     public function app()

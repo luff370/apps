@@ -25,9 +25,10 @@ class MemberOrderService extends Service
         $productInfo = MemberProduct::query()
             ->where('id', $productId)
             ->where('app_id', $this->getAppId())
-            ->where('platform', $this->getPlatform())
+            ->whereIn('platform', MemberProduct::pricePlatforms($this->getPlatform(), $this->getMarketChannel()))
+            ->where('is_enable', 1)
             ->first();
-        if (empty($productInfo)) {
+        if (empty($productInfo) || !$this->isCurrentChannelProduct((int)$productId)) {
             throw new RequestException('产品不存在或已下架');
         }
 
@@ -59,6 +60,25 @@ class MemberOrderService extends Service
         MemberOrder::query()->create($order);
 
         return $orderNo;
+    }
+
+    private function isCurrentChannelProduct(int $productId): bool
+    {
+        $products = MemberProduct::queryAvailablePrices(
+            $this->getAppId(),
+            $this->getPlatform(),
+            $this->getMarketChannel()
+        )
+            ->where('is_enable', 1);
+
+        if ($this->getAppId() == 10008 && $this->getLanguage()) {
+            $products->where('lang', $this->getLanguage());
+        }
+
+        $products = $products->orderBy('sort', 'desc')->get();
+
+        return MemberProduct::filterPreferredPrices($products, $this->getPlatform(), $this->getMarketChannel())
+            ->contains('id', $productId);
     }
 
     public function tidyListData($list)

@@ -31,6 +31,9 @@ class ProductDao extends BaseDao
             $query->where('lang', $where['lang']);
         }
 
+        if (!empty($where['platform'])) {
+            $query->where('platform', $where['platform']);
+        }
 
         return $query;
     }

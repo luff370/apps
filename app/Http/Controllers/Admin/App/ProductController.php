@@ -26,6 +26,7 @@ class ProductController extends Controller
         $where = $this->getMore([
             ['app_id', ''],
             ['lang', ''],
+            ['platform', ''],
             ['status', ''],
             ['keyword', ''],
         ]);
