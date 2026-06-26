@@ -10,6 +10,8 @@ Route::name('common.')->group(function () {
     Route::get('home/order', 'CommonController@orderChart');
     // 首页用户图表
     Route::get('home/user', 'CommonController@userChart');
+    // 首页运营看板
+    Route::get('home/operation_dashboard', 'CommonController@operationDashboard');
     // 消息提醒
     Route::get('notice', 'CommonController@notice');
     // 获取左侧菜单
@@ -21,4 +23,3 @@ Route::name('common.')->group(function () {
     // select表单数据列表
     Route::get('form/select_list', 'CommonController@formSelectList');
 });
-

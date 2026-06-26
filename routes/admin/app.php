@@ -23,6 +23,10 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     // 广告请求明细
     Route::get('ad_access_log', 'AdAccessLogController@index');
 
+    // 应用充值统计
+    Route::get('recharge_statistics/summary', 'RechargeStatisticsController@summary');
+    Route::get('recharge_statistics/trend', 'RechargeStatisticsController@trend');
+
     // 产品管理
     Route::resource('product', 'ProductController');
     Route::put('product/{id}/set_sort/{sort}', 'ProductController@setSort');

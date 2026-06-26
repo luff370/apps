@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Support\Traits\ServicesTrait;
 use App\Support\Services\FormOptions;
 use App\Services\System\SystemMenuServices;
+use App\Services\Statistics\OperationStatisticsService;
 
 /**
  * 公共接口
@@ -327,6 +328,14 @@ class CommonController extends Controller
         ];
 
         return $this->success($data);
+    }
+
+    /**
+     * 首页运营数据看板
+     */
+    public function operationDashboard(Request $request, OperationStatisticsService $service): \Illuminate\Http\JsonResponse
+    {
+        return $this->success($service->dashboard($request->only(['app_id', 'trend_range'])));
     }
 
     /**
