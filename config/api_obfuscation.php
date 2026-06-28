@@ -9,7 +9,7 @@ return [
     'nonce_ttl_seconds' => (int) env('API_OBFUSCATION_NONCE_TTL', 300),
     'timestamp_window_seconds' => (int) env('API_OBFUSCATION_TS_WINDOW', 300),
     'packet_version' => env('API_OBFUSCATION_PACKET_VERSION', '1'),
-    'gateway_prefixes' => array_values(array_filter(array_map('trim', explode(',', env('API_OBFUSCATION_GATEWAY_PREFIXES', 'v,gateway,client,service,open'))))),
+    'gateway_prefixes' => array_values(array_filter(array_map('trim', explode(',', env('API_OBFUSCATION_GATEWAY_PREFIXES', 'v55,v,gateway,client,service,open'))))),
     'default_gateway_prefix' => env('API_OBFUSCATION_DEFAULT_GATEWAY_PREFIX', 'gateway'),
     // Device-Env 是客户端环境探针头的独立配置，不负责生成或兜底接口 alias；
     // /api/{prefix}/{alias} -> 真实接口的映射仍完全来自后台混淆管理配置。
