@@ -31,7 +31,7 @@ class MemberController extends Controller
     {
         $query = MemberProduct::query()
             ->where('app_id', $this->getAppId())
-            ->whereIn('platform', ['all', strtolower($this->getPlatform())])
+            ->whereIn('platform', ['all', $this->getPlatform(), $this->getMarketChannel()])
             ->where('is_enable', 1)
             ->orderBy('sort', 'desc');
         if ($this->getAppId() == 10008 && $this->getLanguage()) {
@@ -53,6 +53,7 @@ class MemberController extends Controller
                 if (in_array($item->id, $productIdsForWithdraw)) {
                     $item->withdrawal_count = 1;
                 }
+
                 return $item;
             });
         }
