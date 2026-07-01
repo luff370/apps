@@ -22,6 +22,7 @@ class MemberOrderService extends Service
      */
     public function createOrder($userId, $productId): string
     {
+        logger()->info("创建订单",['user_id'=>$userId,'product_id'=>$productId]);
         $productInfo = MemberProduct::query()
             ->where('id', $productId)
             ->where('app_id', $this->getAppId())
