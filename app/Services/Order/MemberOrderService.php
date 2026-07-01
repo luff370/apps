@@ -25,10 +25,9 @@ class MemberOrderService extends Service
         $productInfo = MemberProduct::query()
             ->where('id', $productId)
             ->where('app_id', $this->getAppId())
-            ->whereIn('platform', MemberProduct::pricePlatforms($this->getPlatform(), $this->getMarketChannel()))
             ->where('is_enable', 1)
             ->first();
-        if (empty($productInfo) || !$this->isCurrentChannelProduct((int)$productId)) {
+        if (empty($productInfo)) {
             throw new RequestException('产品不存在或已下架');
         }
 
