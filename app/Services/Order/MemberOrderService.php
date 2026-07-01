@@ -33,9 +33,9 @@ class MemberOrderService extends Service
         }
 
         $orderNo = generateOrderNo($userId);
-        // if (MemberOrder::query()->where('order_no', $orderNo)->exists()) {
-        //     return $orderNo;
-        // }
+        if (MemberOrder::query()->where('order_no', $orderNo)->exists()) {
+            return $orderNo;
+        }
 
         $order = [
             'app_id' => $this->getAppId(),
