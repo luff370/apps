@@ -33,7 +33,7 @@ function redis()
 
 function generateOrderNo($userId = 0): string
 {
-    $time = date('YmdHi');
+    $time = date('YmdHis');
     $suffix = empty($userId) ? rand(100000, 999999) : str_pad($userId, 6, "0", STR_PAD_LEFT);
 
     return $time . $suffix;
