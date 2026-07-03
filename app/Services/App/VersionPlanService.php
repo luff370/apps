@@ -11,7 +11,11 @@ use Illuminate\Support\Facades\DB;
 class VersionPlanService extends Service
 {
     /**
-     * 版本规划列表直接返回前端页面需要的嵌套结构，避免页面继续依赖本地假数据。
+     * 版本规划列表直接返回前端页面需要的嵌套结构。
+     *
+     * 前端版本规划页最初是按本地演示数据设计的，表格、强更记录、在架渠道等模块都直接依赖
+     * `plan -> tasks` 的嵌套结构。这里不再让前端额外做字段拼装，而是在后端统一整理成页面能
+     * 直接消费的形状，这样真实应用和本地测试应用才能共用同一套页面逻辑。
      */
     public function listByApp(int $appId): array
     {
@@ -31,7 +35,11 @@ class VersionPlanService extends Service
     }
 
     /**
-     * 保存计划时整体替换渠道任务，保证前端一次编辑提交后的任务顺序和强更配置一致。
+     * 保存版本计划时整体替换渠道任务。
+     *
+     * 版本计划本质上不是一条孤立记录，而是“计划头 + 多个渠道任务”的组合。前端一次提交会
+     * 同时改标题、版本号、负责人、渠道状态和强更配置，因此这里选择整单重建，而不是只 diff
+     * 某个任务字段。这样可以避免旧任务残留、顺序错乱、删掉的渠道还留在数据库里的问题。
      *
      * @throws AdminException
      */
@@ -79,7 +87,10 @@ class VersionPlanService extends Service
     }
 
     /**
-     * 复制计划会新建主计划和任务，复制后的记录默认回到草稿态，便于运营二次调整。
+     * 复制计划会新建主计划和任务，复制后的记录默认回到草稿态。
+     *
+     * 运营上经常会用上一版计划作为下一版模板，所以复制时保留任务、渠道、强更内容，
+     * 但主计划状态回到草稿，避免把“模板副本”误当成已经进入发布流程的计划。
      *
      * @throws AdminException
      */
@@ -107,7 +118,10 @@ class VersionPlanService extends Service
     }
 
     /**
-     * 删除时校验 app_id，防止跨应用删除其它应用的版本计划。
+     * 删除版本计划前先校验 app_id。
+     *
+     * 这是一个典型的跨应用边界问题：如果只按 id 删除，很容易把别的应用的计划删掉。
+     * 所以必须先限定在当前 app_id 范围内，再级联清理任务表。
      *
      * @throws AdminException
      */
@@ -147,6 +161,7 @@ class VersionPlanService extends Service
 
     private function formatPlan(AppVersionPlan $plan): array
     {
+        // 保持和前端旧 localStorage 结构尽量一致，减少页面改造面。
         return [
             'id' => (int)$plan->id,
             'local_id' => 'plan_' . $plan->id,
@@ -164,6 +179,7 @@ class VersionPlanService extends Service
 
     private function formatTask(AppVersionPlanTask $task): array
     {
+        // 这份任务结构会被版本表格、强更记录和在架渠道共用，所以字段保持稳定很重要。
         return [
             'id' => (int)$task->id,
             'local_id' => 'task_' . $task->id,
@@ -182,6 +198,7 @@ class VersionPlanService extends Service
 
     private function normalizeForce($force): array
     {
+        // 强更配置可能只填了部分字段，这里统一成固定键，避免前端判断一堆空值。
         $force = is_array($force) ? $force : [];
 
         return [
@@ -196,6 +213,7 @@ class VersionPlanService extends Service
 
     private function parseLocalId(string $value, string $prefix): int
     {
+        // 兼容前端本地演示数据里的 local_id，真实记录则直接用数据库 id。
         if (str_starts_with($value, $prefix)) {
             return (int)substr($value, strlen($prefix));
         }
@@ -205,6 +223,7 @@ class VersionPlanService extends Service
 
     private function dateOrNull($value): ?string
     {
+        // 前端可能传空字符串或完整时间，这里统一压成日期字段可接受的格式。
         return empty($value) ? null : substr((string)$value, 0, 10);
     }
 

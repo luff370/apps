@@ -7,6 +7,7 @@ class SeedDataStatisticMenus extends Migration
 {
     public function up(): void
     {
+        // 数据统计父菜单如果已经存在，就直接复用；不存在则补一个父节点。
         $parentId = DB::table('system_menus')->where('unique_auth', 'data_statistic')->value('id');
 
         if (!$parentId) {
@@ -34,6 +35,7 @@ class SeedDataStatisticMenus extends Migration
             ]);
         }
 
+        // 营收报表：展示广告收益、充值收益、总营收等报表能力。
         $this->upsertMenu('data-statistic-revenue-report', [
             'pid' => $parentId,
             'icon' => '',
@@ -43,6 +45,7 @@ class SeedDataStatisticMenus extends Migration
             'sort' => 2,
         ]);
 
+        // 充值统计：展示充值漏斗和趋势分析能力。
         $this->upsertMenu('data-statistic-recharge-statistics', [
             'pid' => $parentId,
             'icon' => '',
@@ -65,6 +68,7 @@ class SeedDataStatisticMenus extends Migration
 
     private function upsertMenu(string $uniqueAuth, array $data): void
     {
+        // 幂等写法：已经有这条菜单就更新，没有就新增，避免迁移重复执行时报错或产生重复数据。
         $base = [
             'module' => 'admin',
             'controller' => '',
