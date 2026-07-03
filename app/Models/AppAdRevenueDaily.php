@@ -29,6 +29,7 @@ use DateTimeInterface;
  */
 class AppAdRevenueDaily extends BaseModel
 {
+    // 广告收益日报采集状态，用于报表筛选、异常提示和重新采集流程。
     public const STATUS_COMPLETED = 'completed';
     public const STATUS_COLLECTING = 'collecting';
     public const STATUS_PARTIAL = 'partial';
@@ -70,6 +71,9 @@ class AppAdRevenueDaily extends BaseModel
         'collected_at',
     ];
 
+    /**
+     * 广告平台枚举。报表筛选、平台汇总和展示名称都复用这份映射。
+     */
     public static function platformMap(): array
     {
         return [
@@ -82,6 +86,9 @@ class AppAdRevenueDaily extends BaseModel
         ];
     }
 
+    /**
+     * 采集状态展示文案。
+     */
     public static function statusMap(): array
     {
         return [

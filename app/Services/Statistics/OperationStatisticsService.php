@@ -282,11 +282,17 @@ class OperationStatisticsService
         return ['date' => $date->format('Y-m-d'), 'app_id' => $appId, 'status' => AppAdRevenueDaily::STATUS_COLLECTING];
     }
 
+    /**
+     * 广告平台筛选项，和广告收益日报里的平台枚举保持一致。
+     */
     public function revenuePlatformOptions(): array
     {
         return array_map(fn ($value, $label) => ['value' => $value, 'label' => $label], array_keys(AppAdRevenueDaily::platformMap()), AppAdRevenueDaily::platformMap());
     }
 
+    /**
+     * 生成首页一个周期的核心指标，并附带同进度对比值。
+     */
     private function summaryPeriod(Carbon $start, Carbon $end, Carbon $compareStart, Carbon $compareEnd, int $appId): array
     {
         $current = $this->periodMetrics($start, $end, $appId);
@@ -300,6 +306,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 读取一个周期内首页需要的基础指标。
+     */
     private function periodMetrics(Carbon $start, Carbon $end, int $appId): array
     {
         return [
@@ -310,6 +319,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 把当前值和对比值格式化成前端指标卡需要的结构。
+     */
     private function metric(float|int $value, float|int $compareValue): array
     {
         $growthValue = $this->number($value - $compareValue);
@@ -322,6 +334,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 生成应用收入排行榜，支持充值收入和广告收入两种口径。
+     */
     private function rank(string $type, Carbon $start, Carbon $end, Carbon $compareStart, Carbon $compareEnd, int $appId): array
     {
         $apps = $this->apps($appId > 0 ? [$appId] : []);
@@ -360,6 +375,9 @@ class OperationStatisticsService
         }, array_slice($list, 0, 10), array_keys(array_slice($list, 0, 10)));
     }
 
+    /**
+     * 首页趋势入口：7天、本月、30天按日聚合，12个月按月聚合。
+     */
     private function dashboardTrend(string $metric, string $range, int $appId): array
     {
         if ($range === '12month') {
@@ -395,6 +413,9 @@ class OperationStatisticsService
         return $items;
     }
 
+    /**
+     * 近 12 个月趋势，只展示当前值，不做环比对比。
+     */
     private function monthlyTrend(string $metric, int $appId): array
     {
         $start = Carbon::today()->startOfMonth()->subMonths(11);
@@ -417,6 +438,12 @@ class OperationStatisticsService
         return $items;
     }
 
+    /**
+     * 按天聚合首页趋势数据。
+     *
+     * 三类指标来自不同数据源：新增用户来自 user_statistics，广告收益来自广告日报，
+     * 充值收益来自支付成功的会员订单。
+     */
     private function dailyMetricRows(string $metric, Carbon $start, Carbon $end, int $appId): array
     {
         if ($metric === 'new_users') {
@@ -447,6 +474,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 按月聚合首页趋势数据，数据源和 dailyMetricRows 保持一致。
+     */
     private function monthlyMetricRows(string $metric, Carbon $start, Carbon $end, int $appId): array
     {
         if ($metric === 'new_users') {
@@ -477,6 +507,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 营收报表的用户维度行数据。
+     */
     private function userStatsRows(Carbon $start, Carbon $end, array $appIds): array
     {
         return UserStatistic::query()
@@ -492,6 +525,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 营收报表的充值收入行数据。
+     */
     private function rechargeRows(Carbon $start, Carbon $end, array $appIds): array
     {
         return $this->paidMemberOrders($start, $end, 0)
@@ -506,6 +542,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 营收报表的广告收益日报行数据。
+     */
     private function adRows(Carbon $start, Carbon $end, array $appIds): array
     {
         $rows = AppAdRevenueDaily::query()
@@ -516,6 +555,9 @@ class OperationStatisticsService
         return $rows->groupBy(fn ($row) => $row->date->format('Y-m-d') . '_' . $row->app_id)->toArray();
     }
 
+    /**
+     * 广告访问日志按日、应用、平台、广告位聚合，用于广告日报缺数时补充请求和成功数。
+     */
     private function adAccessRows(Carbon $start, Carbon $end, array $appIds): array
     {
         $rows = AdAccessLog::query()
@@ -530,6 +572,9 @@ class OperationStatisticsService
         return $rows->groupBy(fn ($row) => $row->date_value . '_' . $row->app_id)->toArray();
     }
 
+    /**
+     * 合并广告收益日报和访问日志，得到平台维度广告指标。
+     */
     private function buildPlatforms(array $adRows, array $accessRows): array
     {
         $platforms = [];
@@ -558,6 +603,9 @@ class OperationStatisticsService
         return array_values(array_map(fn ($row) => $this->completeAdMetrics($row), $platforms));
     }
 
+    /**
+     * 合并广告收益日报和访问日志，得到广告位维度广告指标。
+     */
     private function buildAdSlots(array $adRows, array $accessRows, array $app, string $date): array
     {
         $slots = [];
@@ -586,6 +634,9 @@ class OperationStatisticsService
         return array_values(array_map(fn ($row) => $this->completeAdMetrics($row), $slots));
     }
 
+    /**
+     * 构造平台维度的空指标行，后续累加数据时可以直接写字段。
+     */
     private function emptyPlatform(string $platform, string $platformName = ''): array
     {
         return [
@@ -604,6 +655,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 构造广告位维度的空指标行。
+     */
     private function emptySlot(array $app, string $date, string $platform, string $slotId, string $adType): array
     {
         return [
@@ -627,6 +681,11 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 补齐广告派生指标。
+     *
+     * eCPM、请求成功率、展示率、点击率都在这里统一计算，避免平台汇总和广告位明细口径不一致。
+     */
     private function completeAdMetrics(array $row): array
     {
         $row['ad_revenue'] = $this->money($row['ad_revenue']);
@@ -638,6 +697,11 @@ class OperationStatisticsService
         return $row;
     }
 
+    /**
+     * 生成采集日志展示数据。
+     *
+     * 当前没有单独采集日志表时，先用平台数据状态合成一份日志，保证前端“查看采集过程”有信息可看。
+     */
     private function collectLogs(array $platforms, string $date): array
     {
         return array_map(function ($platform) use ($date) {
@@ -652,6 +716,9 @@ class OperationStatisticsService
         }, $platforms);
     }
 
+    /**
+     * 汇总营收报表顶部总览。
+     */
     private function revenueSummary(array $rows): array
     {
         $summary = $this->emptyRevenueSummary();
@@ -669,6 +736,9 @@ class OperationStatisticsService
         return $summary;
     }
 
+    /**
+     * 营收报表空汇总结构。
+     */
     private function emptyRevenueSummary(): array
     {
         return [
@@ -681,6 +751,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 汇总营收报表的平台总览。
+     */
     private function platformSummary(array $rows): array
     {
         $summary = [];
@@ -700,6 +773,11 @@ class OperationStatisticsService
         return array_values(array_map(fn ($row) => $this->completeAdMetrics($row), $summary));
     }
 
+    /**
+     * 营收报表列表排序。
+     *
+     * 只允许白名单字段排序，避免前端传入未知字段导致比较异常。
+     */
     private function sortRevenueRows(array $rows, array $filter): array
     {
         $field = $filter['sort_field'] ?? 'date';
@@ -720,6 +798,9 @@ class OperationStatisticsService
         return $rows;
     }
 
+    /**
+     * 按广告平台筛选平台汇总数据。
+     */
     private function filterPlatforms(array $platforms, array $platformFilter): array
     {
         if (!$platformFilter) {
@@ -729,6 +810,9 @@ class OperationStatisticsService
         return array_values(array_filter($platforms, fn ($platform) => in_array((string)$platform['platform'], $platformFilter, true)));
     }
 
+    /**
+     * 按广告平台筛选广告位明细。
+     */
     private function filterSlots(array $slots, array $platformFilter): array
     {
         if (!$platformFilter) {
@@ -738,6 +822,9 @@ class OperationStatisticsService
         return array_values(array_filter($slots, fn ($slot) => in_array((string)$slot['platform'], $platformFilter, true)));
     }
 
+    /**
+     * 兼容前端传数组或逗号分隔字符串两种筛选格式。
+     */
     private function csvFilter($value): array
     {
         if (is_array($value)) {
@@ -747,6 +834,11 @@ class OperationStatisticsService
         return array_values(array_filter(array_map('trim', explode(',', (string)$value)), fn ($item) => $item !== ''));
     }
 
+    /**
+     * 新增用户数。
+     *
+     * 优先读取 user_statistics 日表，日表无数据时回退到用户注册时间实时统计。
+     */
     private function newUsers(Carbon $start, Carbon $end, int $appId): int
     {
         $stat = UserStatistic::query()
@@ -764,6 +856,11 @@ class OperationStatisticsService
             ->count();
     }
 
+    /**
+     * 活跃用户数。
+     *
+     * 优先读取 user_statistics 日表，日表无数据时回退到 user_access_log 去重统计。
+     */
     private function activeUsers(Carbon $start, Carbon $end, int $appId): int
     {
         $stat = UserStatistic::query()
@@ -782,6 +879,11 @@ class OperationStatisticsService
             ->count('user_id');
     }
 
+    /**
+     * 试用用户数。
+     *
+     * 同时统计会员订单和订阅订单里的试用记录，覆盖一次性会员和订阅两类业务。
+     */
     private function trialUsers(Carbon $start, Carbon $end, int $appId): int
     {
         $member = MemberOrder::query()
@@ -801,6 +903,9 @@ class OperationStatisticsService
         return $member + $subscription;
     }
 
+    /**
+     * 续费用户和续费金额。
+     */
     private function renewStats(Carbon $start, Carbon $end, int $appId): array
     {
         $query = SubscriptionOrder::query()
@@ -815,6 +920,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 取消订阅用户和关联金额。
+     */
     private function cancelStats(Carbon $start, Carbon $end, int $appId): array
     {
         $query = SubscriptionOrder::query()
@@ -828,6 +936,11 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 支付成功的会员订单查询。
+     *
+     * paid 和 pay_status 两套字段都兼容，避免历史数据字段口径不同导致漏算。
+     */
     private function paidMemberOrders(Carbon $start, Carbon $end, int $appId): Builder
     {
         return MemberOrder::query()
@@ -838,6 +951,9 @@ class OperationStatisticsService
             });
     }
 
+    /**
+     * 会员订单创建查询，用于下单人数、下单笔数、下单金额等漏斗前置指标。
+     */
     private function memberOrders(Carbon $start, Carbon $end, int $appId): Builder
     {
         return MemberOrder::query()
@@ -845,6 +961,9 @@ class OperationStatisticsService
             ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
     }
 
+    /**
+     * 广告收益日报基础查询。
+     */
     private function adRevenueQuery(Carbon $start, Carbon $end, int $appId): Builder
     {
         return AppAdRevenueDaily::query()
@@ -852,6 +971,9 @@ class OperationStatisticsService
             ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId));
     }
 
+    /**
+     * 按应用汇总充值收入，用于首页排行榜。
+     */
     private function rechargeByApp(Carbon $start, Carbon $end, int $appId): array
     {
         return $this->paidMemberOrders($start, $end, $appId)
@@ -862,6 +984,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 按应用汇总广告收入，用于首页排行榜。
+     */
     private function adRevenueByApp(Carbon $start, Carbon $end, int $appId): array
     {
         return $this->adRevenueQuery($start, $end, $appId)
@@ -872,6 +997,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 获取应用基础信息并按 app_id 建索引。
+     */
     private function apps(array $appIds = []): array
     {
         return SystemApp::query()
@@ -889,6 +1017,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 根据应用名称、包名或数字 ID 过滤应用。
+     */
     private function filteredAppIds(string $keyword): array
     {
         if ($keyword === '') {
@@ -909,6 +1040,9 @@ class OperationStatisticsService
             ->toArray();
     }
 
+    /**
+     * 取一组广告日报里最新的采集时间。
+     */
     private function latestCollectedAt(array $rows): string
     {
         $latest = collect($rows)->pluck('collected_at')->filter()->sortDesc()->first();
@@ -916,11 +1050,17 @@ class OperationStatisticsService
         return $latest ? Carbon::parse($latest)->format('Y-m-d H:i:s') : '';
     }
 
+    /**
+     * 合并平台状态，返回最差状态作为整行数据状态。
+     */
     private function mergeStatus(array $platforms): string
     {
         return collect($platforms)->reduce(fn ($status, $platform) => $this->worseStatus($status, $platform['data_status'] ?? ''), AppAdRevenueDaily::STATUS_COMPLETED);
     }
 
+    /**
+     * 两个数据状态里取更严重的一个。
+     */
     private function worseStatus(string $current, ?string $next): string
     {
         $weight = [
@@ -933,6 +1073,9 @@ class OperationStatisticsService
         return ($weight[$next] ?? 0) > ($weight[$current] ?? 0) ? $next : $current;
     }
 
+    /**
+     * 趋势图指标值格式化。
+     */
     private function metricValue($row, string $metric): int|float
     {
         if (!$row) {
@@ -942,6 +1085,11 @@ class OperationStatisticsService
         return $metric === 'paid_amount' ? $this->money($row->{$metric} ?? 0) : (int)($row->{$metric} ?? 0);
     }
 
+    /**
+     * 解析筛选日期范围。
+     *
+     * 营收报表默认不允许查询今天，因为广告平台收益通常次日才稳定；充值统计允许查今天。
+     */
     private function dateRange(array $filter, bool $allowToday = false): array
     {
         $default = $allowToday ? Carbon::today() : Carbon::yesterday();
@@ -959,6 +1107,9 @@ class OperationStatisticsService
         return [$start->startOfDay(), $end->startOfDay()];
     }
 
+    /**
+     * 容错解析日期，非法日期使用默认值。
+     */
     private function parseDate(?string $value, Carbon $default): Carbon
     {
         try {
@@ -968,6 +1119,9 @@ class OperationStatisticsService
         }
     }
 
+    /**
+     * 计算比例，默认返回百分比数值。
+     */
     private function rate(float|int $numerator, float|int $denominator, bool $percent = true): float|string
     {
         if (!$denominator) {
@@ -982,11 +1136,17 @@ class OperationStatisticsService
         return $this->number($value);
     }
 
+    /**
+     * 金额统一保留两位小数。
+     */
     private function money(float|int|string $value): float
     {
         return round((float)$value, self::MONEY_SCALE);
     }
 
+    /**
+     * 普通数值统一保留两位小数。
+     */
     private function number(float|int|string $value): float
     {
         return round((float)$value, 2);
