@@ -89,6 +89,9 @@ class MerchantService extends Service
         return $f;
     }
 
+    /**
+     * 商户新增/编辑统一入口，兼容新页面直接 POST id 的保存方式。
+     */
     public function saveMerchant(array $data)
     {
         $saveData = $this->normalizeSaveData($data);
@@ -99,6 +102,9 @@ class MerchantService extends Service
         return $this->dao->newQuery()->create($saveData);
     }
 
+    /**
+     * 将前端新增字段映射到旧表字段，并把协议母版规范成可直接落库的 JSON。
+     */
     public function normalizeSaveData(array $data): array
     {
         $templates = $this->normalizeAgreementTemplates($data['agreement_templates'] ?? []);
@@ -121,6 +127,9 @@ class MerchantService extends Service
         ];
     }
 
+    /**
+     * 协议母版只保留完整可用的模板，避免创建应用时生成空协议。
+     */
     public function normalizeAgreementTemplates($templates): array
     {
         if (is_string($templates)) {

@@ -27,6 +27,12 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::get('recharge_statistics/summary', 'RechargeStatisticsController@summary');
     Route::get('recharge_statistics/trend', 'RechargeStatisticsController@trend');
 
+    // 版本规划：保存版本计划与渠道任务，供版本规划页替换本地假数据
+    Route::get('apps/{appId}/version_plans', 'VersionPlanController@index');
+    Route::post('apps/{appId}/version_plans', 'VersionPlanController@save');
+    Route::post('apps/{appId}/version_plans/{id}/copy', 'VersionPlanController@copy');
+    Route::delete('apps/{appId}/version_plans/{id}', 'VersionPlanController@delete');
+
     // 产品管理
     Route::resource('product', 'ProductController');
     Route::put('product/{id}/set_sort/{sort}', 'ProductController@setSort');

@@ -20973,6 +20973,30 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-ad-access-log',
                 'is_del' => 0,
             ),
+            373 => 
+            array (
+                'id' => 1143,
+                'pid' => 0,
+                'icon' => 'ios-stats',
+                'menu_name' => '报表管理',
+                'module' => 'admin',
+                'controller' => '',
+                'action' => '',
+                'api_url' => '',
+                'methods' => '',
+                'params' => '',
+                'sort' => 0,
+                'is_show' => 1,
+                'is_show_path' => 0,
+                'access' => 1,
+                'menu_path' => '/admin/report',
+                'path' => '',
+                'auth_type' => 1,
+                'header' => '',
+                'is_header' => 0,
+                'unique_auth' => 'admin-report',
+                'is_del' => 0,
+            ),
         ));
         
         

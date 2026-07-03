@@ -74,6 +74,9 @@ class AppsService extends Service
         });
     }
 
+    /**
+     * 新建应用后按主体协议母版生成应用协议，并替换协议内容里的应用名称占位符。
+     */
     private function createAgreementsFromMerchantTemplates($app): void
     {
         if (empty($app['mer_id'])) {

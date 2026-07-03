@@ -12,13 +12,15 @@ use App\Models\UserStatistic;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class OperationStatisticsService
 {
     private const MONEY_SCALE = 2;
 
+    /**
+     * 运营首页聚合指标：日/周/月使用同进度周期对比，避免月中和完整上月比较导致波动失真。
+     */
     public function dashboard(array $filter): array
     {
         $trendRange = $filter['trend_range'] ?? '30day';
@@ -46,6 +48,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 充值统计汇总：按应用和时间范围计算新增、活跃、下单、支付、试用、续费、取消等转化指标。
+     */
     public function rechargeSummary(array $filter): array
     {
         [$start, $end] = $this->dateRange($filter, true);
@@ -96,6 +101,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 充值趋势：单日按小时聚合，多日按自然日补齐，保证前端折线图没有断点。
+     */
     public function rechargeTrend(array $filter): array
     {
         [$start, $end] = $this->dateRange($filter, true);
@@ -147,6 +155,9 @@ class OperationStatisticsService
         return ['granularity' => 'day', 'items' => $items];
     }
 
+    /**
+     * 营收报表：把用户统计、充值订单、广告收益日报和广告访问日志合并成应用维度日报。
+     */
     public function revenueReport(array $filter): array
     {
         [$start, $end] = $this->dateRange($filter);
@@ -237,6 +248,9 @@ class OperationStatisticsService
         ];
     }
 
+    /**
+     * 报表明细复用同一套统计口径，仅缩小到单日单应用。
+     */
     public function revenueDetail(string $date, int $appId): array
     {
         return $this->revenueReport([
@@ -248,6 +262,9 @@ class OperationStatisticsService
         ])['list'][0] ?? [];
     }
 
+    /**
+     * 重新采集先把目标广告收益日报标为采集中，后续采集任务可按该状态补数。
+     */
     public function markRecollect(array $data): array
     {
         $date = $this->parseDate($data['date'] ?? null, Carbon::yesterday());
