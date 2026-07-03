@@ -29,15 +29,12 @@ class MemberController extends Controller
 
     public function list(Request $request): \Illuminate\Http\JsonResponse
     {
-        $query = MemberProduct::query()
-            ->where('app_id', $this->getAppId())
-            ->whereIn('platform', ['all', $this->getPlatform(), $this->getMarketChannel()])
-            ->where('is_enable', 1)
-            ->orderBy('sort', 'desc');
-        if ($this->getAppId() == 10008 && $this->getLanguage()) {
-            $query->where('lang', $this->getLanguage());
-        }
-        $list = $query->get();
+        $list = MemberProduct::visibleProducts(
+            $this->getAppId(),
+            $this->getPlatform(),
+            $this->getMarketChannel(),
+            $this->getLanguage()
+        );
 
         if ($this->getAppId() == 10038) {
             $productIds = $list->pluck('id')->toArray();

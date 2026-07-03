@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 
 class MemberProductPlatformTest extends TestCase
 {
-    public function test_android_market_uses_channel_before_android_default(): void
+    public function test_products_are_grouped_by_pay_product_id_and_market_price_wins(): void
     {
         $products = new Collection([
             $this->product(1, 'android', 'vip_year', 168, 10),
@@ -16,13 +16,13 @@ class MemberProductPlatformTest extends TestCase
             $this->product(3, 'android', 'vip_month', 18, 20),
         ]);
 
-        $list = MemberProduct::filterPreferredPrices($products, 'android', 'huawei');
+        $list = MemberProduct::filterVisibleProducts($products, 'android', 'huawei');
 
         $this->assertSame([3, 2], $list->pluck('id')->all());
-        $this->assertSame(128, $list->firstWhere('id', 2)['price']);
+        $this->assertSame(128, $list->firstWhere('pay_product_id', 'vip_year')['price']);
     }
 
-    public function test_android_market_falls_back_to_android_when_channel_price_missing(): void
+    public function test_android_default_is_kept_when_market_price_missing(): void
     {
         $products = new Collection([
             $this->product(1, 'android', 'vip_year', 168, 10),
@@ -30,26 +30,23 @@ class MemberProductPlatformTest extends TestCase
         ]);
 
         $candidates = $products->whereIn('platform', MemberProduct::pricePlatforms('android', 'huawei'));
-        $list = MemberProduct::filterPreferredPrices($candidates, 'android', 'huawei');
+        $list = MemberProduct::filterVisibleProducts($candidates, 'android', 'huawei');
 
         $this->assertSame([1], $list->pluck('id')->all());
     }
 
-    public function test_market_channel_without_platform_still_includes_android_default(): void
+    public function test_price_platforms_prefers_current_market_then_android_default(): void
     {
-        $this->assertSame(['all', 'android', 'huawei'], MemberProduct::pricePlatforms('', 'huawei'));
-        $this->assertSame(['all', 'ios'], MemberProduct::pricePlatforms('', 'ios'));
+        $this->assertSame(['huawei', 'android', 'all'], MemberProduct::pricePlatforms('android', 'huawei'));
+        $this->assertSame(['ios', 'all'], MemberProduct::pricePlatforms('ios', 'ios'));
     }
 
-    private function product(int $id, string $platform, string $filterCode, int $price, int $sort): array
+    private function product(int $id, string $platform, string $payProductId, int $price, int $sort): array
     {
         return [
             'id' => $id,
             'platform' => $platform,
-            'filter_code' => $filterCode,
-            'pay_product_id' => '',
-            'serial_number' => '',
-            'name' => 'product-' . $filterCode,
+            'pay_product_id' => $payProductId,
             'price' => $price,
             'sort' => $sort,
         ];

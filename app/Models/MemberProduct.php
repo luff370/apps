@@ -6,7 +6,6 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
 /**
@@ -121,6 +120,7 @@ class MemberProduct extends Model
         $marketChannels = SystemApp::marketChannelsMap();
 
         return [
+            'ios' => $marketChannels['ios'] ?? '苹果',
             'android' => '安卓默认',
         ] + array_diff_key($marketChannels, ['ios' => true]);
     }
@@ -139,25 +139,14 @@ class MemberProduct extends Model
         $platform = strtolower((string)$platform);
         $marketChannel = strtolower((string)$marketChannel);
 
-        $platforms = ['all'];
-
         if ($platform === 'ios') {
-            $platforms[] = 'ios';
-        } elseif ($platform === 'android') {
-            $platforms[] = 'android';
-            if ($marketChannel !== '' && $marketChannel !== 'android') {
-                $platforms[] = $marketChannel;
-            }
+            return ['ios', 'all'];
         }
-        // elseif ($platform !== '') {
-        //     $platforms[] = $platform;
-        //     if ($marketChannel !== '' && $marketChannel !== $platform) {
-        //         $platforms[] = $marketChannel;
-        //     }
-        // } elseif ($marketChannel !== '') {
-        //     $platforms[] = $marketChannel === 'ios' ? 'ios' : 'android';
-        //     $platforms[] = $marketChannel;
-        // }
+
+        $platforms = ['android', 'all'];
+        if ($marketChannel !== '' && $marketChannel !== 'android') {
+            array_unshift($platforms, $marketChannel);
+        }
 
         return array_values(array_unique($platforms));
     }
@@ -167,34 +156,40 @@ class MemberProduct extends Model
         return array_flip(self::pricePlatforms($platform, $marketChannel));
     }
 
-    public static function priceIdentity($product): string
+    public static function visibleProducts($appId, ?string $platform, ?string $marketChannel, ?string $language = null): Collection
     {
-        foreach (['filter_code', 'pay_product_id', 'serial_number', 'name'] as $field) {
-            $value = trim((string)($product[$field] ?? ''));
-            if ($value !== '') {
-                return $field . ':' . $value;
-            }
+        $query = self::query()
+            ->where('app_id', $appId)
+            ->where('is_enable', 1)
+            ->whereIn('platform', self::pricePlatforms($platform, $marketChannel))
+            ->orderBy('sort', 'desc');
+
+        if ((string)$appId === '10008' && !empty($language)) {
+            $query->where('lang', $language);
         }
 
-        return 'id:' . (string)($product['id'] ?? '');
+        return self::filterVisibleProducts($query->get(), $platform, $marketChannel);
     }
 
-    public static function queryAvailablePrices($appId, ?string $platform, ?string $marketChannel): Builder
-    {
-        return self::query()
-            ->where('app_id', $appId)
-            ->whereIn('platform', self::pricePlatforms($platform, $marketChannel));
-    }
-
-    public static function filterPreferredPrices(Collection $products, ?string $platform, ?string $marketChannel): Collection
+    public static function filterVisibleProducts(Collection $products, ?string $platform, ?string $marketChannel): Collection
     {
         $priority = self::pricePlatformPriority($platform, $marketChannel);
 
         return $products
-            ->sortByDesc(fn ($product) => $priority[$product['platform']] ?? -1)
-            ->unique(fn ($product) => self::priceIdentity($product))
+            ->groupBy(fn ($product) => self::priceGroupKey($product))
+            ->map(fn (Collection $group) => $group->sortBy(fn ($product) => $priority[$product['platform']] ?? PHP_INT_MAX)->first())
             ->sortByDesc('sort')
             ->values();
+    }
+
+    public static function priceGroupKey($product): string
+    {
+        $payProductId = trim((string)($product['pay_product_id'] ?? ''));
+        if ($payProductId !== '') {
+            return $payProductId;
+        }
+
+        return 'id:' . (string)($product['id'] ?? '');
     }
 
     public function app()
