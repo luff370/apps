@@ -41,6 +41,7 @@ class AppPayment extends Model
         'pay_channel',
         'return_url',
         'notify_url',
+        'remark',
         'status',
         'sort',
     ];

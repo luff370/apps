@@ -30,7 +30,7 @@ class ProductController extends Controller
             ['status', ''],
             ['keyword', ''],
         ]);
-        $data = $this->service->getAllByPage($where, ['*'], ['sort' => 'desc'], ['app']);
+        $data = $this->service->getAllByPage($where, ['*'], ['sort' => 'desc', 'id' => 'desc'], ['app']);
 
         return $this->success($data);
     }

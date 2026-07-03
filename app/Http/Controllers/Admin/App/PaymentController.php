@@ -48,6 +48,15 @@ class PaymentController extends Controller
             ['status', 1],
             ['sort', 0],
         ]);
+        if (!empty($data['id'])) {
+            $info = $this->service->get($data['id']);
+            if (!$info) {
+                return $this->fail(100100);
+            }
+            // 编辑页历史上没有提交 sort/status，避免保存其他字段时把排序重置为 0、状态重置为启用。
+            $data['sort'] = request()->has('sort') ? $data['sort'] : ($info['sort'] ?? 0);
+            $data['status'] = request()->has('status') ? $data['status'] : ($info['status'] ?? 1);
+        }
         if ($data['pay_channel'] == AppPayment::PayChannelAlipay){
             $data['pay_app_id'] = $data['mch_id'];
         }
