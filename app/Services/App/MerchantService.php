@@ -30,6 +30,8 @@ class MerchantService extends Service
         $typeNameMap = Merchant::typeNameMap();
         foreach ($list as &$item) {
             $item['type_name'] = $typeNameMap[$item['type']] ?? '';
+            $item['domain_expire_at'] = $item['domain_expired_date'] ?? '';
+            $item['agreement_templates'] = $item['agreement_templates'] ?: [];
         }
 
         return $list;
@@ -43,7 +45,10 @@ class MerchantService extends Service
      */
     public function createForm(): array
     {
-        return create_form('添加', $this->createUpdateForm(), url('/admin/app/merchant'));
+        return [
+            'agreement_templates' => [],
+            'is_enable' => 1,
+        ];
     }
 
 
@@ -62,7 +67,11 @@ class MerchantService extends Service
             throw new AdminException(400594);
         }
 
-        return create_form('修改', $this->createUpdateForm($info->toArray()), url('/admin/app/merchant/' . $id), 'PUT');
+        $data = $info->toArray();
+        $data['domain_expire_at'] = $data['domain_expired_date'] ?? '';
+        $data['agreement_templates'] = $data['agreement_templates'] ?: [];
+
+        return $data;
     }
 
     /**
@@ -78,6 +87,72 @@ class MerchantService extends Service
         $f[] = Form::textarea('registered_address', '注册地址', $info['registered_address'] ?? '');
 
         return $f;
+    }
+
+    public function saveMerchant(array $data)
+    {
+        $saveData = $this->normalizeSaveData($data);
+        if (!empty($data['id'])) {
+            return $this->update((int)$data['id'], $saveData);
+        }
+
+        return $this->dao->newQuery()->create($saveData);
+    }
+
+    public function normalizeSaveData(array $data): array
+    {
+        $templates = $this->normalizeAgreementTemplates($data['agreement_templates'] ?? []);
+
+        return [
+            'name' => (string)($data['name'] ?? ''),
+            'domain' => (string)($data['domain'] ?? ''),
+            'domain_expired_date' => (string)($data['domain_expire_at'] ?? $data['domain_expired_date'] ?? ''),
+            'device_code' => (string)($data['device_code'] ?? ''),
+            'corporate_phone' => (string)($data['corporate_phone'] ?? ''),
+            'contact_email' => (string)($data['contact_email'] ?? ''),
+            'qq' => (string)($data['qq'] ?? ''),
+            'wechat' => (string)($data['wechat'] ?? ''),
+            'is_enable' => (int)($data['is_enable'] ?? 1),
+            'remark' => (string)($data['remark'] ?? ''),
+            'agreement_templates' => $templates,
+            'type' => (int)($data['type'] ?? 1),
+            'corporate' => (string)($data['corporate'] ?? ''),
+            'registered_address' => (string)($data['registered_address'] ?? ''),
+        ];
+    }
+
+    public function normalizeAgreementTemplates($templates): array
+    {
+        if (is_string($templates)) {
+            $templates = json_decode($templates, true) ?: [];
+        }
+
+        if (!is_array($templates)) {
+            return [];
+        }
+
+        $result = [];
+        foreach ($templates as $template) {
+            if (!is_array($template)) {
+                continue;
+            }
+            $title = trim((string)($template['title'] ?? ''));
+            $type = (string)($template['type'] ?? '');
+            $content = (string)($template['content'] ?? '');
+            if ($title === '' || $type === '' || $content === '') {
+                continue;
+            }
+            $result[] = [
+                'title' => $title,
+                'type' => $type,
+                'platform' => (string)($template['platform'] ?? 'all'),
+                'content' => $content,
+                'status' => (int)($template['status'] ?? 1),
+                'remark' => (string)($template['remark'] ?? ''),
+            ];
+        }
+
+        return $result;
     }
 
 }

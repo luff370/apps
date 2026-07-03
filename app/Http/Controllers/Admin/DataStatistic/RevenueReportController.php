@@ -15,6 +15,8 @@ class RevenueReportController extends Controller
             'app_keyword',
             'start_date',
             'end_date',
+            'ad_platform',
+            'data_status',
             'sort_field',
             'sort_order',
             'page',
@@ -38,6 +40,8 @@ class RevenueReportController extends Controller
             'app_keyword',
             'start_date',
             'end_date',
+            'ad_platform',
+            'data_status',
             'sort_field',
             'sort_order',
         ]), [

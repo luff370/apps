@@ -15,9 +15,9 @@ namespace App\Models;
  * @property string $name
  * @property int $type
  * @property string $corporate
- * @property string $registered_address
- * @property int $create_time
- * @property int $update_time
+	 * @property string $registered_address
+	 * @property int $create_time
+	 * @property int $update_time
  *
  * @package App\Models
  */
@@ -28,12 +28,23 @@ class Merchant extends Model
 
 	protected $casts = [
 		'type' => 'int',
+        'is_enable' => 'int',
+        'agreement_templates' => 'array',
 	];
 
 	protected $fillable = [
 		'name',
 		'type',
 		'domain',
+        'domain_expired_date',
+        'device_code',
+        'corporate_phone',
+        'contact_email',
+        'qq',
+        'wechat',
+        'is_enable',
+        'remark',
+        'agreement_templates',
 		'corporate',
 		'registered_address',
 	];

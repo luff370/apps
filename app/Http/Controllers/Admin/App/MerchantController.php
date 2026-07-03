@@ -22,6 +22,7 @@ class MerchantController extends Controller
     {
         $filter = $this->getMore([
             ['type', ''],
+            ['is_enable', ''],
             ['keyword', ''],
             ['time', ''],
         ]);
@@ -46,15 +47,25 @@ class MerchantController extends Controller
     public function store()
     {
         $data = $this->getMore([
+            ['id', 0],
             ['name', ''],
             ['domain', ''],
+            ['domain_expire_at', ''],
             ['domain_expired_date', ''],
+            ['device_code', ''],
+            ['corporate_phone', ''],
+            ['contact_email', ''],
+            ['qq', ''],
+            ['wechat', ''],
+            ['is_enable', 1],
+            ['remark', ''],
+            ['agreement_templates', []],
             ['type', '1'],
             ['corporate', ''],
             ['registered_address', ''],
         ]);
 
-        $this->service->save($data);
+        $this->service->saveMerchant($data);
 
         return $this->success(100021);
     }
@@ -80,12 +91,22 @@ class MerchantController extends Controller
         $data = $this->getMore([
             ['name', ''],
             ['domain', ''],
+            ['domain_expire_at', ''],
             ['domain_expired_date', ''],
+            ['device_code', ''],
+            ['corporate_phone', ''],
+            ['contact_email', ''],
+            ['qq', ''],
+            ['wechat', ''],
+            ['is_enable', 1],
+            ['remark', ''],
+            ['agreement_templates', []],
             ['type', '1'],
             ['corporate', ''],
             ['registered_address', ''],
         ]);
-        $this->service->update($id, $data);
+        $data['id'] = $id;
+        $this->service->saveMerchant($data);
 
         return $this->success(100001);
     }

@@ -29,8 +29,8 @@ class OperationStatisticsService
             'updated_at' => now()->format('Y-m-d H:i'),
             'summary' => [
                 'today' => $this->summaryPeriod($today->copy(), $today->copy(), $today->copy()->subDay(), $today->copy()->subDay(), $appId),
-                'week' => $this->summaryPeriod($today->copy()->startOfWeek(), $today->copy()->endOfWeek(), $today->copy()->subWeek()->startOfWeek(), $today->copy()->subWeek()->endOfWeek(), $appId),
-                'month' => $this->summaryPeriod($today->copy()->startOfMonth(), $today->copy()->endOfMonth(), $today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow()->endOfMonth(), $appId),
+                'week' => $this->summaryPeriod($today->copy()->startOfWeek(), $today->copy(), $today->copy()->subWeek()->startOfWeek(), $today->copy()->subWeek(), $appId),
+                'month' => $this->summaryPeriod($today->copy()->startOfMonth(), $today->copy(), $today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow(), $appId),
             ],
             'rankings' => [
                 'today_recharge' => $this->rank('recharge', $today->copy(), $today->copy(), $today->copy()->subDay(), $today->copy()->subDay(), $appId),
@@ -152,6 +152,8 @@ class OperationStatisticsService
         [$start, $end] = $this->dateRange($filter);
         $appKeyword = trim((string)($filter['app_keyword'] ?? ''));
         $appIds = $this->filteredAppIds($appKeyword);
+        $platformFilter = $this->csvFilter($filter['ad_platform'] ?? '');
+        $statusFilter = $this->csvFilter($filter['data_status'] ?? '');
 
         if ($appKeyword !== '' && empty($appIds)) {
             return [
@@ -175,8 +177,8 @@ class OperationStatisticsService
                 $key = $dateText . '_' . $app['id'];
                 $user = $userStats[$key] ?? ['new_users' => 0, 'active_users' => 0];
                 $rechargeRevenue = $this->money($rechargeStats[$key]['recharge_revenue'] ?? 0);
-                $platforms = $this->buildPlatforms($adStats[$key] ?? [], $accessStats[$key] ?? []);
-                $adSlots = $this->buildAdSlots($adStats[$key] ?? [], $accessStats[$key] ?? [], $app, $dateText);
+                $platforms = $this->filterPlatforms($this->buildPlatforms($adStats[$key] ?? [], $accessStats[$key] ?? []), $platformFilter);
+                $adSlots = $this->filterSlots($this->buildAdSlots($adStats[$key] ?? [], $accessStats[$key] ?? [], $app, $dateText), $platformFilter);
                 $adRevenue = $this->money(array_sum(array_column($platforms, 'ad_revenue')));
                 $requestCount = (int)array_sum(array_column($platforms, 'request_count'));
                 $successCount = (int)array_sum(array_column($platforms, 'success_count'));
@@ -185,7 +187,7 @@ class OperationStatisticsService
                 $activeUsers = (int)$user['active_users'];
                 $totalRevenue = $this->money($adRevenue + $rechargeRevenue);
 
-                $rows[] = [
+                $row = [
                     'date' => $dateText,
                     'app_id' => (int)$app['id'],
                     'app_name' => $app['name'],
@@ -213,6 +215,12 @@ class OperationStatisticsService
                     'ad_slots' => $adSlots,
                     'collect_logs' => $this->collectLogs($platforms, $dateText),
                 ];
+
+                if ($statusFilter && !in_array($row['data_status'], $statusFilter, true)) {
+                    continue;
+                }
+
+                $rows[] = $row;
             }
         }
 
@@ -255,6 +263,11 @@ class OperationStatisticsService
             ]);
 
         return ['date' => $date->format('Y-m-d'), 'app_id' => $appId, 'status' => AppAdRevenueDaily::STATUS_COLLECTING];
+    }
+
+    public function revenuePlatformOptions(): array
+    {
+        return array_map(fn ($value, $label) => ['value' => $value, 'label' => $label], array_keys(AppAdRevenueDaily::platformMap()), AppAdRevenueDaily::platformMap());
     }
 
     private function summaryPeriod(Carbon $start, Carbon $end, Carbon $compareStart, Carbon $compareEnd, int $appId): array
@@ -688,6 +701,33 @@ class OperationStatisticsService
         });
 
         return $rows;
+    }
+
+    private function filterPlatforms(array $platforms, array $platformFilter): array
+    {
+        if (!$platformFilter) {
+            return $platforms;
+        }
+
+        return array_values(array_filter($platforms, fn ($platform) => in_array((string)$platform['platform'], $platformFilter, true)));
+    }
+
+    private function filterSlots(array $slots, array $platformFilter): array
+    {
+        if (!$platformFilter) {
+            return $slots;
+        }
+
+        return array_values(array_filter($slots, fn ($slot) => in_array((string)$slot['platform'], $platformFilter, true)));
+    }
+
+    private function csvFilter($value): array
+    {
+        if (is_array($value)) {
+            return array_values(array_filter(array_map('strval', $value), fn ($item) => $item !== ''));
+        }
+
+        return array_values(array_filter(array_map('trim', explode(',', (string)$value)), fn ($item) => $item !== ''));
     }
 
     private function newUsers(Carbon $start, Carbon $end, int $appId): int

@@ -5,8 +5,11 @@ namespace App\Services\App;
 use App\Dao\App\AppsDao;
 use App\Services\Service;
 use App\Exceptions\AdminException;
+use App\Models\AppAgreement;
+use App\Models\Merchant;
 use App\Support\Services\FormBuilder;
 use App\Support\Services\FormOptions;
+use Illuminate\Support\Facades\DB;
 
 /**
  * 应用service
@@ -63,7 +66,45 @@ class AppsService extends Service
         // 复制应用配置信息
         // $this->systemConfigTabServices()->syncFromOtherAppConfig(10001, intval($info['id']));
 
-        return $this->dao->newQuery()->create($data);
+        return DB::transaction(function () use ($data) {
+            $app = $this->dao->newQuery()->create($data);
+            $this->createAgreementsFromMerchantTemplates($app);
+
+            return $app;
+        });
+    }
+
+    private function createAgreementsFromMerchantTemplates($app): void
+    {
+        if (empty($app['mer_id'])) {
+            return;
+        }
+
+        $merchant = Merchant::query()->find((int)$app['mer_id']);
+        if (!$merchant || empty($merchant['agreement_templates'])) {
+            return;
+        }
+
+        foreach ($merchant['agreement_templates'] as $template) {
+            if (!is_array($template) || (int)($template['status'] ?? 1) !== 1) {
+                continue;
+            }
+            if (empty($template['title']) || empty($template['type']) || empty($template['content'])) {
+                continue;
+            }
+
+            AppAgreement::query()->create([
+                'app_id' => (int)$app['id'],
+                'type' => (string)$template['type'],
+                'platform' => (string)($template['platform'] ?? 'all'),
+                'version' => 'all',
+                'title' => (string)$template['title'],
+                'content' => str_replace('{APP名称}', (string)$app['name'], (string)$template['content']),
+                'remark' => (string)($template['remark'] ?? '由主体协议母版自动生成'),
+                'sort' => 0,
+                'status' => 1,
+            ]);
+        }
     }
 
     /**
