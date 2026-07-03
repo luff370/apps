@@ -56,16 +56,33 @@ class ApiObfuscationStableRoutingTest extends TestCase
 
         $this->assertSame($first, $same);
         $this->assertNotSame($first, $otherApp);
-        $this->assertMatchesRegularExpression('#^/api/[a-z]+[0-9]{1,2}/$#', $first);
+        $this->assertMatchesRegularExpression('#^/api/[a-z]+/[a-z]{8,32}/$#', $first);
 
-        $prefixSegment = trim(str_replace('/api/', '', $first), '/');
-        $request = Request::create('/api/' . $prefixSegment . '/abc', 'POST');
+        $prefixPath = trim(str_replace('/api/', '', $first), '/');
+        $request = Request::create('/api/' . $prefixPath . '/abc', 'POST');
         $controller = (new ReflectionClass(ObfuscatedGatewayController::class))->newInstanceWithoutConstructor();
         $isAllowed = $this->method(ObfuscatedGatewayController::class, 'isAllowedGatewayPrefix');
 
         $this->assertTrue($isAllowed->invoke($controller, $request, $profile));
         $this->assertTrue($isAllowed->invoke($controller, Request::create('/api/open/abc', 'POST'), $profile));
-        $this->assertFalse($isAllowed->invoke($controller, Request::create('/api/open99/abc', 'POST'), $profile));
+        $this->assertFalse($isAllowed->invoke($controller, Request::create('/api/open/wrongsuffix/abc', 'POST'), $profile));
+        $this->assertFalse($isAllowed->invoke($controller, Request::create('/api/unknownprefix/abc', 'POST'), $profile));
+    }
+
+    public function test_dynamic_route_entry_keeps_alias_parameter_in_the_right_position(): void
+    {
+        $controller = $this->getMockBuilder(ObfuscatedGatewayController::class)
+            ->disableOriginalConstructor()
+            ->onlyMethods(['dispatch'])
+            ->getMock();
+
+        $request = Request::create('/api/open/atlasriver/alias123', 'POST');
+        $controller->expects($this->once())
+            ->method('dispatch')
+            ->with($request, 'alias123', 'tail/value')
+            ->willReturn('ok');
+
+        $this->assertSame('ok', $controller->dispatchDynamic($request, 'open', 'atlasriver', 'alias123', 'tail/value'));
     }
 
     private function newService(): AppApiObfuscationService

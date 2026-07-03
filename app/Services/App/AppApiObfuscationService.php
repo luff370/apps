@@ -10,6 +10,12 @@ use App\Services\Service;
 
 class AppApiObfuscationService extends Service
 {
+    private const GATEWAY_SUFFIX_WORDS = [
+        'atlas', 'bridge', 'center', 'cloud', 'field', 'flow', 'garden', 'harbor',
+        'hub', 'lane', 'light', 'matrix', 'orbit', 'portal', 'river', 'stone',
+        'stream', 'summit', 'tower', 'valley', 'wave', 'zone',
+    ];
+
     public function __construct(AppApiObfuscationProfileDao $dao, private AppApiObfuscationAliasDao $aliasDao, private SystemApiInterfaceDao $interfaceDao, private AppsDao $appsDao) { $this->dao = $dao; }
 
     public function listByApps(array $w): array
@@ -116,11 +122,11 @@ class AppApiObfuscationService extends Service
     private function decodeJson(string $j):array{$d=json_decode(trim($j),true);return is_array($d)?$d:[];}
     private function gatewayPrefixes(array $profile):array{$prefixes=config('api_obfuscation.gateway_prefixes',['gateway']);return array_map(fn($v)=>$this->formatGatewayPrefix((string)$v,$profile),array_values(array_filter($prefixes)));}
     private function gatewayPrefixForProfile(array $profile):string{$prefixes=array_values(array_filter(config('api_obfuscation.gateway_prefixes',['gateway'])));if(empty($prefixes))$prefixes=['gateway'];$identity=$this->gatewayIdentity($profile);$index=abs(crc32($identity))%count($prefixes);return $this->formatGatewayPrefix((string)$prefixes[$index],$profile);}
-    // gateway_prefix 也按应用身份稳定生成，形如 /api/open48/、/api/client7/。
-    // 基础词来自配置，后缀来自 app_id + package_name；同应用重导出不变，不同应用尽量分散。
+    // gateway_prefix 也按应用身份稳定生成，形如 /api/open/atlasriver/、/api/client/orbitstone/。
+    // 基础词来自配置，语义后缀来自 app_id + package_name；同应用重导出不变，不同应用尽量分散。
     private function gatewayIdentity(array $profile):string{return (string)($profile['app_id']??'').'|'.(string)($profile['package_name']??'');}
-    private function formatGatewayPrefix(string $base,array $profile):string{$base=preg_replace('/[^a-zA-Z0-9]/','',trim($base));$base=$base!==''?strtolower($base):'gateway';$suffix=$this->gatewaySuffix($profile);return'/api/'.$base.$suffix.'/';}
-    private function gatewaySuffix(array $profile):string{$identity=$this->gatewayIdentity($profile);$appId=(int)($profile['app_id']??0);$hash=abs(crc32($identity));if($appId>0){$tail=$appId%100;return(string)($tail>0?$tail:($hash%90+10));}return(string)($hash%90+10);}
+    private function formatGatewayPrefix(string $base,array $profile):string{$base=preg_replace('/[^a-zA-Z0-9]/','',trim($base));$base=$base!==''?strtolower($base):'gateway';$suffix=$this->gatewaySuffix($profile);return'/api/'.$base.'/'.$suffix.'/';}
+    private function gatewaySuffix(array $profile):string{$identity=$this->gatewayIdentity($profile);$first=abs(crc32($identity.'|gateway_suffix:first'))%count(self::GATEWAY_SUFFIX_WORDS);$second=abs(crc32($identity.'|gateway_suffix:second'))%count(self::GATEWAY_SUFFIX_WORDS);if($second===$first)$second=($second+1)%count(self::GATEWAY_SUFFIX_WORDS);return self::GATEWAY_SUFFIX_WORDS[$first].self::GATEWAY_SUFFIX_WORDS[$second];}
     private function decodeMap($v):array{return is_array($v)?$v:$this->decodeJson((string)$v);}
     private function lines(string $t):array{$p=preg_split('/\r\n|\r|\n/',$t);return array_values(array_filter(array_map('trim',$p?:[]),fn($v)=>$v!==''));}
     private function makeAlias(array $profile,string $method,string $path,array &$used):string{$identity=$this->aliasIdentity($profile,$method,$path);$try=0;do{$a=$this->stableUrlAlias($identity,$try);$try++;}while(isset($used[$a])&&$used[$a]!==$identity&&$try<50);$used[$a]=$identity;return$a;}

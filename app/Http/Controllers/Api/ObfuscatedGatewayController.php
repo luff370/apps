@@ -9,10 +9,21 @@ use App\Support\Services\ApiObfuscationProfileResolver;
 
 class ObfuscatedGatewayController extends Controller
 {
+    private const GATEWAY_SUFFIX_WORDS = [
+        'atlas', 'bridge', 'center', 'cloud', 'field', 'flow', 'garden', 'harbor',
+        'hub', 'lane', 'light', 'matrix', 'orbit', 'portal', 'river', 'stone',
+        'stream', 'summit', 'tower', 'valley', 'wave', 'zone',
+    ];
+
     public function __construct(
         private ApiObfuscationProfileResolver $resolver,
         private Kernel $kernel
     ) {
+    }
+
+    public function dispatchDynamic(Request $request, string $gatewayPrefix, string $gatewaySuffix, string $alias, string $params = '')
+    {
+        return $this->dispatch($request, $alias, $params);
     }
 
     public function dispatch(Request $request, string $alias, string $params = '')
@@ -74,7 +85,7 @@ class ObfuscatedGatewayController extends Controller
 
     private function isAllowedGatewayPrefix(Request $request, array $profile): bool
     {
-        $prefix = trim((string) $request->segment(2), '/');
+        $prefix = $this->requestGatewayPrefix($request, $profile);
         if ($prefix === '') {
             return false;
         }
@@ -104,19 +115,49 @@ class ObfuscatedGatewayController extends Controller
         $base = preg_replace('/[^a-zA-Z0-9]/', '', trim($base));
         $base = $base !== '' ? strtolower($base) : 'gateway';
 
-        return $base . $this->gatewaySuffix($profile);
+        return $base . '/' . $this->gatewaySuffix($profile);
     }
 
     private function gatewaySuffix(array $profile): string
     {
         $identity = (string) ($profile['app_id'] ?? '') . '|' . (string) ($profile['package_name'] ?? '');
-        $appId = (int) ($profile['app_id'] ?? 0);
-        $hash = abs(crc32($identity));
-        if ($appId > 0) {
-            $tail = $appId % 100;
-            return (string) ($tail > 0 ? $tail : ($hash % 90 + 10));
+        $first = abs(crc32($identity . '|gateway_suffix:first')) % count(self::GATEWAY_SUFFIX_WORDS);
+        $second = abs(crc32($identity . '|gateway_suffix:second')) % count(self::GATEWAY_SUFFIX_WORDS);
+        if ($second === $first) {
+            $second = ($second + 1) % count(self::GATEWAY_SUFFIX_WORDS);
         }
 
-        return (string) ($hash % 90 + 10);
+        return self::GATEWAY_SUFFIX_WORDS[$first] . self::GATEWAY_SUFFIX_WORDS[$second];
+    }
+
+    private function requestGatewayPrefix(Request $request, array $profile): string
+    {
+        $first = trim((string) $request->segment(2), '/');
+        $second = trim((string) $request->segment(3), '/');
+        if ($first === '') {
+            return '';
+        }
+
+        $fixedPrefixes = array_map(
+            fn($item) => trim((string) $item, '/'),
+            config('api_obfuscation.gateway_prefixes', ['gateway'])
+        );
+        if ($second !== '' && $this->isDynamicGatewayRequest($request, $fixedPrefixes)) {
+            return $first . '/' . $second;
+        }
+
+        return $first;
+    }
+
+    private function isDynamicGatewayRequest(Request $request, array $fixedPrefixes): bool
+    {
+        $first = trim((string) $request->segment(2), '/');
+        $second = trim((string) $request->segment(3), '/');
+        $third = trim((string) $request->segment(4), '/');
+        if ($first === '' || $second === '' || $third === '') {
+            return false;
+        }
+
+        return in_array($first, $fixedPrefixes, true);
     }
 }

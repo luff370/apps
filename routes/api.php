@@ -209,9 +209,10 @@ Route::prefix('xiongfeng')->group(
         $route->get('completed', 'XiongfengAdController@completedCallback');
     });
 
-// 应用级动态混淆前缀入口，例如 open48/client7。
+// 应用级动态混淆前缀入口，例如 open/atlasriver、client/orbitstone。
 // 放在文件末尾作为兜底入口，避免抢占 app/info、auth/login 等真实 API 路由。
 // 实际前缀由后台按 app_id + package_name 稳定生成，真实接口映射仍来自后台别名配置。
-Route::any('{gatewayPrefix}/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')
+Route::any('{gatewayPrefix}/{gatewaySuffix}/{alias}/{params?}', 'ObfuscatedGatewayController@dispatchDynamic')
     ->where('gatewayPrefix', '[A-Za-z][A-Za-z0-9]{2,31}')
+    ->where('gatewaySuffix', '[A-Za-z][A-Za-z0-9]{2,63}')
     ->where('params', '.*');
