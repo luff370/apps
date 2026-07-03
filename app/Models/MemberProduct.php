@@ -120,48 +120,25 @@ class MemberProduct extends Model
         $marketChannels = SystemApp::marketChannelsMap();
 
         return [
-            'ios' => $marketChannels['ios'] ?? '苹果',
-            'android' => '安卓默认',
-        ] + array_diff_key($marketChannels, ['ios' => true]);
+                'all'=>'全部',
+                'android' => '安卓默认',
+            ] + $marketChannels;
     }
 
     public static function platformName(string $platform): string
     {
-        if ($platform === 'all') {
-            return '全部';
-        }
-
         return self::platformsMap()[$platform] ?? $platform;
-    }
-
-    public static function pricePlatforms(?string $platform, ?string $marketChannel): array
-    {
-        $platform = strtolower((string)$platform);
-        $marketChannel = strtolower((string)$marketChannel);
-
-        if ($platform === 'ios') {
-            return ['ios', 'all'];
-        }
-
-        $platforms = ['android', 'all'];
-        if ($marketChannel !== '' && $marketChannel !== 'android') {
-            array_unshift($platforms, $marketChannel);
-        }
-
-        return array_values(array_unique($platforms));
-    }
-
-    public static function pricePlatformPriority(?string $platform, ?string $marketChannel): array
-    {
-        return array_flip(self::pricePlatforms($platform, $marketChannel));
     }
 
     public static function visibleProducts($appId, ?string $platform, ?string $marketChannel, ?string $language = null): Collection
     {
+        // 先取出当前应用下所有可用于定价的平台配置。
+        // 不在查询阶段只限制当前渠道，是因为后面还要按 pay_product_id
+        // 在“市场专属价 / 系统平台默认价 / all 兜底价”之间做优先级选择。
         $query = self::query()
             ->where('app_id', $appId)
             ->where('is_enable', 1)
-            ->whereIn('platform', self::pricePlatforms($platform, $marketChannel))
+            ->whereIn('platform', array_keys(self::platformsMap()))
             ->orderBy('sort', 'desc');
 
         if ((string)$appId === '10008' && !empty($language)) {
@@ -173,17 +150,28 @@ class MemberProduct extends Model
 
     public static function filterVisibleProducts(Collection $products, ?string $platform, ?string $marketChannel): Collection
     {
-        $priority = self::pricePlatformPriority($platform, $marketChannel);
+        // 同一个 pay_product_id 表示同一个前端商品，只是不同平台/市场有不同价格。
+        // 优先级从低到高是：all 兜底价 -> 系统平台默认价(android/ios) -> 当前应用市场价。
+        // array_reverse 后再 array_flip，得到的数字越小优先级越高，方便 sortBy 取第一条。
+        $platforms = array_values(array_unique(array_filter([
+            'all',
+            strtolower((string)$platform),
+            strtolower((string)$marketChannel),
+        ])));
+        $priority = array_flip(array_reverse($platforms));
 
         return $products
-            ->groupBy(fn ($product) => self::priceGroupKey($product))
-            ->map(fn (Collection $group) => $group->sortBy(fn ($product) => $priority[$product['platform']] ?? PHP_INT_MAX)->first())
+            // 按支付产品 ID 分组，同组只返回一个最终展示/下单的价格配置。
+            ->groupBy(fn($product) => self::priceGroupKey($product))
+            ->map(fn(Collection $group) => $group->sortBy(fn($product) => $priority[$product['platform']] ?? PHP_INT_MAX)->first())
             ->sortByDesc('sort')
             ->values();
     }
 
     public static function priceGroupKey($product): string
     {
+        // pay_product_id 是应用内产品的唯一标识。
+        // 兜底使用 id 只是为了兼容历史脏数据，避免空 pay_product_id 被全部归到一组。
         $payProductId = trim((string)($product['pay_product_id'] ?? ''));
         if ($payProductId !== '') {
             return $payProductId;

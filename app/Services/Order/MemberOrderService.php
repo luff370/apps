@@ -22,20 +22,18 @@ class MemberOrderService extends Service
      */
     public function createOrder($userId, $productId): string
     {
-        logger()->info("创建订单",['user_id'=>$userId,'product_id'=>$productId]);
-        $productInfo = MemberProduct::visibleProducts(
-            $this->getAppId(),
-            $this->getPlatform(),
-            $this->getMarketChannel(),
-            $this->getLanguage()
-        )->firstWhere('id', (int)$productId);
-
+        $productInfo = MemberProduct::query()
+            ->where('id', $productId)
+            ->where('app_id', $this->getAppId())
+            ->where('is_enable', 1)
+            ->first();
         if (empty($productInfo)) {
             throw new RequestException('产品不存在或已下架');
         }
 
         $orderNo = generateOrderNo($userId);
         if (MemberOrder::query()->where('order_no', $orderNo)->exists()) {
+            logger()->error("重复下单-订单号已存在", ['user_id' => $userId, 'product_id' => $productId]);
             return $orderNo;
         }
 
@@ -60,6 +58,7 @@ class MemberOrderService extends Service
         }
 
         MemberOrder::query()->create($order);
+        logger()->info("会员订单创建成功", $order);
 
         return $orderNo;
     }

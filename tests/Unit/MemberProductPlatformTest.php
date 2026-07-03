@@ -26,19 +26,12 @@ class MemberProductPlatformTest extends TestCase
     {
         $products = new Collection([
             $this->product(1, 'android', 'vip_year', 168, 10),
-            $this->product(2, 'xiaomi', 'vip_month', 16, 20),
+            $this->product(2, 'xiaomi', 'vip_year', 158, 20),
         ]);
 
-        $candidates = $products->whereIn('platform', MemberProduct::pricePlatforms('android', 'huawei'));
-        $list = MemberProduct::filterVisibleProducts($candidates, 'android', 'huawei');
+        $list = MemberProduct::filterVisibleProducts($products, 'android', 'huawei');
 
         $this->assertSame([1], $list->pluck('id')->all());
-    }
-
-    public function test_price_platforms_prefers_current_market_then_android_default(): void
-    {
-        $this->assertSame(['huawei', 'android', 'all'], MemberProduct::pricePlatforms('android', 'huawei'));
-        $this->assertSame(['ios', 'all'], MemberProduct::pricePlatforms('ios', 'ios'));
     }
 
     private function product(int $id, string $platform, string $payProductId, int $price, int $sort): array
