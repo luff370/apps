@@ -214,7 +214,7 @@ foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPref
         ->where('gatewaySuffix', '[a-z]{6,63}')
         ->where('alias', '[a-z0-9]{8}');
 
-    // 旧版兼容：/api/open/{alias}（固定 2 段）
+    // 旧版兼容：/api/open/{alias}（固定 2 段，alias 最短 4 位以兼容 hash4 等历史规则）
     Route::any("{$p}/{alias}", 'ObfuscatedGatewayController@dispatch')
-        ->where('alias', '[a-z0-9]{8}');
+        ->where('alias', '[a-z0-9]{4,32}');
 }

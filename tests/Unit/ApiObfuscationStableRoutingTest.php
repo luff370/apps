@@ -110,6 +110,18 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $this->assertSame('abc12345', $route->parameter('alias'));
     }
 
+    public function test_legacy_hash4_alias_matches_dispatch_route(): void
+    {
+        $request = Request::create('/api/client/73be', 'POST');
+        $route = app('router')->getRoutes()->match($request);
+
+        $this->assertSame(
+            'App\Http\Controllers\Api\ObfuscatedGatewayController@dispatch',
+            $route->getAction('controller')
+        );
+        $this->assertSame('73be', $route->parameter('alias'));
+    }
+
     private function newService(): AppApiObfuscationService
     {
         return (new ReflectionClass(AppApiObfuscationService::class))->newInstanceWithoutConstructor();
