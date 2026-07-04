@@ -13,12 +13,6 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// 旧版混淆网关入口，兼容已经下发的 /api/open/{alias} 等固定前缀。
-// 新版导出会使用应用级动态前缀，但旧客户端在未重新生成/下发配置前仍需保持可用。
-foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
-    Route::any(trim($gatewayPrefix, '/') . '/{alias}/{params?}', 'ObfuscatedGatewayController@dispatch')->where('params', '.*');
-}
-
 // Route::get('phpinfo', 'CommonController@phpinfo');
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');
@@ -209,10 +203,18 @@ Route::prefix('xiongfeng')->group(
         $route->get('completed', 'XiongfengAdController@completedCallback');
     });
 
-// 应用级动态混淆前缀入口，例如 open/atlasriver、client/orbitstone。
-// 放在文件末尾作为兜底入口，避免抢占 app/info、auth/login 等真实 API 路由。
-// 实际前缀由后台按 app_id + package_name 稳定生成，真实接口映射仍来自后台别名配置。
-Route::any('{gatewayPrefix}/{gatewaySuffix}/{alias}/{params?}', 'ObfuscatedGatewayController@dispatchDynamic')
-    ->where('gatewayPrefix', '[A-Za-z][A-Za-z0-9]{2,31}')
-    ->where('gatewaySuffix', '[A-Za-z][A-Za-z0-9]{2,63}')
-    ->where('params', '.*');
+
+// 混淆网关入口。旧版 /api/open/{alias} 与新版 /api/open/atlasriver/{alias} 靠路径段数区分，
+// 不使用 {params?}，避免旧路由把 gatewaySuffix 误当成 alias。
+foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
+    $p = trim($gatewayPrefix, '/');
+
+    // 新版：/api/open/atlasriver/{alias}（固定 3 段）
+    Route::any("{$p}/{gatewaySuffix}/{alias}", 'ObfuscatedGatewayController@dispatchDynamic')
+        ->where('gatewaySuffix', '[a-z]{6,63}')
+        ->where('alias', '[a-z0-9]{8}');
+
+    // 旧版兼容：/api/open/{alias}（固定 2 段）
+    Route::any("{$p}/{alias}", 'ObfuscatedGatewayController@dispatch')
+        ->where('alias', '[a-z0-9]{8}');
+}

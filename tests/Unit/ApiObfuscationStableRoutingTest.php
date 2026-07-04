@@ -79,10 +79,35 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $request = Request::create('/api/open/atlasriver/alias123', 'POST');
         $controller->expects($this->once())
             ->method('dispatch')
-            ->with($request, 'alias123', 'tail/value')
+            ->with($request, 'alias123')
             ->willReturn('ok');
 
-        $this->assertSame('ok', $controller->dispatchDynamic($request, 'open', 'atlasriver', 'alias123', 'tail/value'));
+        $this->assertSame('ok', $controller->dispatchDynamic($request, 'atlasriver', 'alias123'));
+    }
+
+    public function test_new_three_segment_url_matches_dynamic_route_not_legacy(): void
+    {
+        $request = Request::create('/api/open/atlasriver/abc12345', 'POST');
+        $route = app('router')->getRoutes()->match($request);
+
+        $this->assertSame(
+            'App\Http\Controllers\Api\ObfuscatedGatewayController@dispatchDynamic',
+            $route->getAction('controller')
+        );
+        $this->assertSame('abc12345', $route->parameter('alias'));
+        $this->assertSame('atlasriver', $route->parameter('gatewaySuffix'));
+    }
+
+    public function test_legacy_two_segment_url_matches_dispatch_route(): void
+    {
+        $request = Request::create('/api/open/abc12345', 'POST');
+        $route = app('router')->getRoutes()->match($request);
+
+        $this->assertSame(
+            'App\Http\Controllers\Api\ObfuscatedGatewayController@dispatch',
+            $route->getAction('controller')
+        );
+        $this->assertSame('abc12345', $route->parameter('alias'));
     }
 
     private function newService(): AppApiObfuscationService
