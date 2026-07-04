@@ -138,7 +138,7 @@ class MemberProduct extends Model
         $query = self::query()
             ->where('app_id', $appId)
             ->where('is_enable', 1)
-            ->whereIn('platform', array_keys(self::platformsMap()))
+            ->whereIn('platform', ['all', $platform, $marketChannel])
             ->orderBy('sort', 'desc');
 
         if ((string)$appId === '10008' && !empty($language)) {
@@ -153,12 +153,7 @@ class MemberProduct extends Model
         // 同一个 pay_product_id 表示同一个前端商品，只是不同平台/市场有不同价格。
         // 优先级从低到高是：all 兜底价 -> 系统平台默认价(android/ios) -> 当前应用市场价。
         // array_reverse 后再 array_flip，得到的数字越小优先级越高，方便 sortBy 取第一条。
-        $platforms = array_values(array_unique(array_filter([
-            'all',
-            strtolower((string)$platform),
-            strtolower((string)$marketChannel),
-        ])));
-        $priority = array_flip(array_reverse($platforms));
+        $priority = array_flip(array_reverse(['all', $platform, $marketChannel,]));
 
         return $products
             // 按支付产品 ID 分组，同组只返回一个最终展示/下单的价格配置。
