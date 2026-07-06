@@ -213,9 +213,11 @@ class VersionPlanService extends Service
 
     private function parseLocalId(string $value, string $prefix): int
     {
-        // 兼容前端本地演示数据里的 local_id，真实记录则直接用数据库 id。
-        if (str_starts_with($value, $prefix)) {
-            return (int)substr($value, strlen($prefix));
+        // 只有后端返回的 local_id 才能反解析为数据库 id，例如 plan_12、task_34。
+        // 前端新建计划会临时生成 plan_时间戳_随机数，这类临时值不能当成编辑 id。
+        $pattern = '/^' . preg_quote($prefix, '/') . '(\d+)$/';
+        if (preg_match($pattern, $value, $matches)) {
+            return (int)$matches[1];
         }
 
         return 0;
