@@ -13,7 +13,6 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// Route::get('phpinfo', 'CommonController@phpinfo');
 // 应用基础信息
 Route::post('app/info', 'CommonController@appInfo');
 // 应用版本更新
