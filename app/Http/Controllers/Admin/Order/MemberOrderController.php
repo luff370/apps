@@ -16,7 +16,7 @@ class MemberOrderController extends Controller
     public function index(Request $request)
     {
         $args = $request->all();
-        $data = $this->service->getAllByPage($args, ['*'], ['id' => 'desc'], ['app', 'user', 'product']);
+        $data = $this->service->getAllByPage($args, ['*'], ['id' => 'desc'], ['app', 'user']);
 
         return $this->success($data);
     }

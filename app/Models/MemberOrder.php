@@ -15,6 +15,8 @@ use Carbon\Carbon;
  * @property int $app_id
  * @property string $mch_id
  * @property int $product_id
+ * @property string $product_name
+ * @property float $product_price
  * @property int $user_id
  * @property int $type
  * @property string $order_no
@@ -63,6 +65,7 @@ class MemberOrder extends BaseModel
     protected $casts = [
         'app_id' => 'int',
         'product_id' => 'int',
+        'product_price' => 'float',
         'user_id' => 'int',
         'type' => 'int',
         'paid' => 'bool',
@@ -82,6 +85,8 @@ class MemberOrder extends BaseModel
         'app_id',
         'mch_id',
         'product_id',
+        'product_name',
+        'product_price',
         'user_id',
         'type',
         'order_no',

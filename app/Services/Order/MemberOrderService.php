@@ -45,6 +45,8 @@ class MemberOrderService extends Service
             'member_type' => $productInfo['validity_type'],
             'quantity' => $productInfo['validity'],
             'product_id' => $productId,
+            'product_name' => $productInfo['name'],
+            'product_price' => $productInfo['price'],
             'member_price' => $productInfo['price'],
             'market_channel' => $this->getMarketChannel(),
             'version' => $this->getAppVersion(),
@@ -81,6 +83,11 @@ class MemberOrderService extends Service
             $item['pay_status_color'] = $payStatusColorMap[$item['pay_status']] ?? '';
             $item['pay_type_name'] = $payTypeMap[$item['pay_type']] ?? '';
             $item['pay_time'] = empty($item['pay_time']) ? '' : date('Y-m-d H:i', $item['pay_time']);
+            $item['product'] = [
+                'id' => $item['product_id'],
+                'name' => $item['product_name'],
+                'price' => $item['product_price'],
+            ];
         }
 
         return $list;

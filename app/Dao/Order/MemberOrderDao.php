@@ -58,7 +58,7 @@ class MemberOrderDao extends BaseDao
                     ->orWhere('order_no', 'like', "{$where['keyword']}%")
                     ->orWhere('trade_no', 'like', "{$where['keyword']}%")
                     ->orWhere('subscribe_product_id', 'like', "{$where['keyword']}%")
-                    ->orWhereRaw('product_id in (select id from member_products where name = ?)', [$where['keyword']]);
+                    ->orWhere('product_name', 'like', "{$where['keyword']}%");
             });
         }
 
