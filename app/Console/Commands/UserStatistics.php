@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Models\SystemApp;
 use App\Models\User;
+use App\Models\SystemApp;
 use App\Models\UserStatistic;
-use App\Support\Traits\ServicesTrait;
 use Illuminate\Console\Command;
+use App\Support\Traits\ServicesTrait;
 
 class UserStatistics extends Command
 {
@@ -43,20 +43,22 @@ class UserStatistics extends Command
         $newUsers = User::query()->selectRaw("count(id) as count, app_id")
             ->whereBetween('reg_time', [$startTime, $endTime])
             ->groupBy('app_id')
-            ->get();
+            ->get()
+            ->pluck('count', 'app_id');
 
-        foreach ($newUsers as $item) {
-            $appId = $item->app_id;
-            $newUsersCount = $item->count;
+        $apps = SystemApp::query()->where('is_del', 0)->pluck('id')->toArray();
+
+        foreach ($apps as $appId) {
+            $newUsersCount = $newUsers[$appId] ?? 00;
             $activeUsersCount = $service->getActiveUserCount($appId);
+            if ($newUsersCount == 0 && $activeUsersCount == 0) {
+                continue;
+            }
 
+            UserStatistic::query()->updateOrCreate(['app_id' => $appId, 'date' => $date], ['new_users_count' => $newUsersCount, 'active_users_count' => $activeUsersCount]);
             if ($currentMinute > now()) {
                 // 每天00点 新增当天统计数据，并删除昨天的缓存数据
                 $service->delUserActiveStatKey($appId, today()->subDay()->toDateString());
-                UserStatistic::query()->updateOrCreate(['app_id' => $appId, 'date' => $date], ['new_users_count' => $newUsersCount, 'active_users_count' => $activeUsersCount]);
-            } else {
-                // 更新数据
-                UserStatistic::query()->where('app_id', $appId)->where('date', $date)->update(['active_users_count' => $activeUsersCount, 'new_users_count' => $newUsersCount]);
             }
         }
     }
