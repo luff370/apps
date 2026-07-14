@@ -5,7 +5,9 @@ namespace App\Services\App;
 use App\Exceptions\AdminException;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
+use App\Models\SystemApp;
 use App\Services\Service;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
@@ -81,6 +83,7 @@ class VersionPlanService extends Service
             foreach ($data['tasks'] as $task) {
                 $this->createTask($plan, $task);
             }
+            $this->syncAppMarketsFromListedTasks($appId);
 
             return $this->formatPlan($plan->load('tasks'));
         });
@@ -133,9 +136,108 @@ class VersionPlanService extends Service
         }
 
         DB::transaction(function () use ($plan) {
+            $appId = (int)$plan->app_id;
             AppVersionPlanTask::query()->where('plan_id', $plan->id)->delete();
             $plan->delete();
+            $this->syncAppMarketsFromListedTasks($appId);
         });
+    }
+
+    /**
+     * 将版本规划里“已上架”的渠道任务同步到应用 markets 快照。
+     *
+     * 应用管理外层列表、应用详情、发布页读取的都是 system_apps.markets；版本规划保存时如果
+     * 只写 app_version_plan_tasks，外层就仍然显示旧版本。这里把每个市场最新的一条已上架任务
+     * 回写成应用当前线上渠道版本，保证前后端各入口看到的是同一份版本数据。
+     */
+    private function syncAppMarketsFromListedTasks(int $appId): void
+    {
+        $app = SystemApp::query()->where('is_del', 0)->find($appId);
+        if (!$app) {
+            return;
+        }
+
+        $markets = $this->marketsByChannel($app['markets'] ?? []);
+        $markets = array_filter(
+            $markets,
+            fn($market) => (string)($market['source_type'] ?? '') !== 'version_plan'
+        );
+        $tasks = AppVersionPlanTask::query()
+            ->select('app_version_plan_tasks.*')
+            ->join('app_version_plans', 'app_version_plans.id', '=', 'app_version_plan_tasks.plan_id')
+            ->where('app_version_plans.app_id', $appId)
+            ->where('app_version_plan_tasks.status', '已上架')
+            ->orderByRaw('COALESCE(app_version_plan_tasks.listed_at, app_version_plan_tasks.updated_at) DESC')
+            ->orderByDesc('app_version_plan_tasks.id')
+            ->get();
+
+        $syncedChannels = [];
+        foreach ($tasks as $task) {
+            $channel = (string)$task['market_channel'];
+            if ($channel === '' || isset($syncedChannels[$channel])) {
+                continue;
+            }
+
+            $versionUpdatedAt = $this->versionUpdatedAt($task['listed_at'] ?? null, $task['updated_at'] ?? null);
+            $markets[$channel] = array_merge($markets[$channel] ?? [], [
+                'market_channel' => $channel,
+                'name' => (string)($task['name'] ?? ($markets[$channel]['name'] ?? '')),
+                'status' => 1,
+                'version' => (string)$task['version'],
+                'date' => $versionUpdatedAt ? $versionUpdatedAt->format('Y-m-d') : '',
+                'remark' => (string)($task['remark'] ?? ''),
+                'source_type' => 'version_plan',
+                'source_task_id' => (int)$task['id'],
+            ]);
+            $syncedChannels[$channel] = true;
+        }
+
+        // 这里只同步应用的渠道版本快照，不改变应用资料本身的更新时间。
+        $app->timestamps = false;
+        $app->markets = array_values($markets);
+        $app->save();
+        cache()->forget('system_apps:' . $appId);
+    }
+
+    /**
+     * 按市场渠道整理应用 markets，便于把版本规划任务覆盖到对应渠道。
+     */
+    private function marketsByChannel($markets): array
+    {
+        $result = [];
+        foreach (is_array($markets) ? $markets : [] as $market) {
+            if (!is_array($market)) {
+                continue;
+            }
+            $channel = (string)($market['market_channel'] ?? '');
+            if ($channel === '') {
+                continue;
+            }
+            $result[$channel] = $market;
+        }
+
+        return $result;
+    }
+
+    /**
+     * APP 版本更新时间优先取上架日期；没填上架日期时用任务更新时间兜底。
+     */
+    private function versionUpdatedAt($listedAt, $updatedAt): ?Carbon
+    {
+        return $this->parseDateTime($listedAt) ?: $this->parseDateTime($updatedAt);
+    }
+
+    private function parseDateTime($value): ?Carbon
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value)->startOfDay();
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     private function createTask(AppVersionPlan $plan, array $task): void
