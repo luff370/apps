@@ -49,7 +49,7 @@ class UserStatistics extends Command
         $apps = SystemApp::query()->where('is_del', 0)->pluck('id')->toArray();
 
         foreach ($apps as $appId) {
-            $newUsersCount = $newUsers[$appId] ?? 00;
+            $newUsersCount = $newUsers[$appId] ?? 0;
             $activeUsersCount = $service->getActiveUserCount($appId);
             if ($newUsersCount == 0 && $activeUsersCount == 0) {
                 continue;
