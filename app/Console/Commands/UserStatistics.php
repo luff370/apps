@@ -48,6 +48,7 @@ class UserStatistics extends Command
 
         $apps = SystemApp::query()->where('is_del', 0)->pluck('id')->toArray();
 
+        $data = [];
         foreach ($apps as $appId) {
             $newUsersCount = $newUsers[$appId] ?? 0;
             $activeUsersCount = $service->getActiveUserCount($appId);
@@ -55,11 +56,21 @@ class UserStatistics extends Command
                 continue;
             }
 
-            UserStatistic::query()->updateOrCreate(['app_id' => $appId, 'date' => $date], ['new_users_count' => $newUsersCount, 'active_users_count' => $activeUsersCount]);
+            $data[] = [
+                'app_id'=>$appId,
+                'date'=>$date,
+                'new_users_count'=>$newUsersCount,
+                'active_users_count'=>$activeUsersCount
+            ];
+
+
             if ($currentMinute > now()) {
                 // 每天00点 新增当天统计数据，并删除昨天的缓存数据
                 $service->delUserActiveStatKey($appId, today()->subDay()->toDateString());
             }
+        }
+        if (!empty($data)) {
+            UserStatistic::query()->upsert($data, ['app_id', 'date'], ['new_users_count', 'active_users_count']);
         }
     }
 }
