@@ -260,14 +260,27 @@ class AppsService extends Service
                 continue;
             }
 
+            $type = (string)$template['type'];
+            $platform = (string)($template['platform'] ?? 'all');
+            $version = 'all';
+            $exists = AppAgreement::query()
+                ->where('app_id', (int)$app['id'])
+                ->where('type', $type)
+                ->where('platform', $platform)
+                ->where('version', $version)
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+
             AppAgreement::query()->create([
                 'app_id' => (int)$app['id'],
-                'type' => (string)$template['type'],
-                'platform' => (string)($template['platform'] ?? 'all'),
-                'version' => 'all',
-                'title' => (string)$template['title'],
+                'type' => $type,
+                'platform' => $platform,
+                'version' => $version,
+                'title' => str_replace('{APP名称}', (string)$app['name'], (string)$template['title']),
                 'content' => str_replace('{APP名称}', (string)$app['name'], (string)$template['content']),
-                'remark' => (string)($template['remark'] ?? '由主体协议母版自动生成'),
+                'remark' => (string)($template['remark'] ?? '由主体协议母版自动生成，创建应用时同步。'),
                 'sort' => 0,
                 'status' => 1,
             ]);

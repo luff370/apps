@@ -21,17 +21,19 @@ class AppApiObfuscationService extends Service
     public function listByApps(array $w): array
     {
         $page=(int)request()->get('page',1); $limit=(int)request()->get('limit',15); $appsQuery=$this->appsDao->search(['keyword'=>$w['keyword']??'']);
-        $count=$appsQuery->count(); $apps=$appsQuery->orderByDesc('id')->offset(($page-1)*$limit)->limit($limit)->get()->toArray(); $profiles=[];
+        $count=$appsQuery->count(); $apps=$appsQuery->with('merchant')->orderByDesc('id')->offset(($page-1)*$limit)->limit($limit)->get()->toArray(); $profiles=[];
         foreach($this->dao->search()->whereIn('app_id',array_column($apps,'id'))->get()->toArray() as $profile){$profiles[(int)$profile['app_id']]=$profile;}
-        $list=array_map(function($app)use($profiles){$profile=$profiles[(int)$app['id']]??[];$image=$profile['image_url']??[];return ['app_id'=>(int)$app['id'],'app_name'=>(string)($app['name']??''),'package_name'=>(string)($profile['package_name']??$app['package_name']??''),'enabled'=>(int)($profile['enabled']??0),'alias_rule'=>(string)($profile['alias_rule']??'stable_url'),'allow_plaintext_request'=>(int)($profile['allow_plaintext_request']??1),'image_url_enabled'=>(int)($profile['image_url_enabled']??($image['enabled']??0)),'image_domain'=>(string)($profile['image_domain']??($image['domain']??'')),'profile_id'=>(int)($profile['id']??0)];},$apps);
+        $list=array_map(function($app)use($profiles){$profile=$profiles[(int)$app['id']]??[];$image=$profile['image_url']??[];$merchant=$app['merchant']??[];return ['app_id'=>(int)$app['id'],'app_name'=>(string)($app['name']??''),'package_name'=>(string)($profile['package_name']??$app['package_name']??''),'enabled'=>(int)($profile['enabled']??0),'alias_rule'=>(string)($profile['alias_rule']??'stable_url'),'allow_plaintext_request'=>(int)($profile['allow_plaintext_request']??1),'image_url_enabled'=>(int)($profile['image_url_enabled']??($image['enabled']??0)),'image_domain'=>$this->profileImageDomain($profile,$merchant),'merchant_image_domain'=>(string)($merchant['image_domain']??''),'profile_id'=>(int)($profile['id']??0)];},$apps);
         return ['list'=>$list,'count'=>$count];
     }
 
     public function getProfile(int $appId = 0, string $packageName = ''): array
     {
+        $app = $this->appWithMerchant($appId);
+        $merchant = $app ? (array)($app['merchant'] ?? []) : [];
         $p = $this->findProfile($appId, $packageName);
-        if (!$p) return array_merge(['id' => 0, 'app_id' => $appId, 'package_name' => $packageName, 'alias_rule' => 'stable_url'], config('api_obfuscation.profiles.default', []));
-        $r = $p->toArray(); $r['route_aliases'] = $this->buildRouteAliasesByProfile((int) $r['id']); return $r;
+        if (!$p) { $r = array_merge(['id' => 0, 'app_id' => $appId, 'package_name' => $packageName, 'alias_rule' => 'stable_url'], config('api_obfuscation.profiles.default', [])); $r['image_domain']=$this->profileImageDomain($r,$merchant); $r['merchant_image_domain']=(string)($merchant['image_domain']??''); return $r; }
+        $r = $p->toArray(); $r['route_aliases'] = $this->buildRouteAliasesByProfile((int) $r['id']); $r['image_domain']=$this->profileImageDomain($r,$merchant); $r['merchant_image_domain']=(string)($merchant['image_domain']??''); return $r;
     }
 
     public function saveProfile(array $d): array
@@ -101,7 +103,8 @@ class AppApiObfuscationService extends Service
     public function exportAliases(array $d): array
     {
         $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return[]; $rows=$this->aliasDao->search(['profile_id'=>$p['id'],'is_enable'=>1])->with('apiInterface')->get()->toArray();
-        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'gateway_prefix'=>$this->gatewayPrefixForProfile($p->toArray()),'gateway_prefixes'=>$this->gatewayPrefixes($p->toArray()),'items'=>array_map(fn($x)=>array_intersect_key($this->formatAliasRow($x),array_flip(['alias','path','method','request_key_map','response_key_map','response_data_key_map'])),$rows)];
+        $merchant=$this->merchantForProfile($p->toArray());
+        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'api_domain'=>(string)($merchant['api_domain']??''),'gateway_prefix'=>$this->gatewayPrefixForProfile($p->toArray()),'gateway_prefixes'=>$this->gatewayPrefixes($p->toArray()),'items'=>array_map(fn($x)=>array_intersect_key($this->formatAliasRow($x),array_flip(['alias','path','method','request_key_map','response_key_map','response_data_key_map'])),$rows)];
     }
 
     public function buildRouteAliasesByProfile(int $pid): array { $a=[]; foreach($this->aliasDao->search(['profile_id'=>$pid,'is_enable'=>1])->with('apiInterface')->get() as $r) if($r->apiInterface&&intval($r->apiInterface['is_enable']??0)===1&&$r['alias']) $a[$r['alias']]=['path'=>ltrim((string)$r->apiInterface['path'],'/'),'method'=>strtoupper((string)$r->apiInterface['method'])]; return $a; }
@@ -109,9 +112,13 @@ class AppApiObfuscationService extends Service
     {
         $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return[];
         $profile=$p->toArray(); $profile['route_aliases']=$this->buildRouteAliasesByProfile((int)$profile['id']);
-        return ['app_id'=>(int)$profile['app_id'],'package_name'=>(string)$profile['package_name'],'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'enabled'=>(bool)($profile['enabled']??0),'route_aliases'=>$profile['route_aliases']??[],'request_key_map'=>$profile['request_key_map']??[],'response_key_map'=>$profile['response_key_map']??[],'response_data_key_map'=>$profile['response_data_key_map']??[],'protocol'=>$profile['protocol']??[],'security'=>$profile['security']??[],'crypto'=>$profile['crypto']??[],'image_url'=>$profile['image_url']??[]];
+        $merchant=$this->merchantForProfile($profile); $profile['image_domain']=$this->profileImageDomain($profile,$merchant);
+        return ['app_id'=>(int)$profile['app_id'],'package_name'=>(string)$profile['package_name'],'api_domain'=>(string)($merchant['api_domain']??''),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'enabled'=>(bool)($profile['enabled']??0),'route_aliases'=>$profile['route_aliases']??[],'request_key_map'=>$profile['request_key_map']??[],'response_key_map'=>$profile['response_key_map']??[],'response_data_key_map'=>$profile['response_data_key_map']??[],'protocol'=>$profile['protocol']??[],'security'=>$profile['security']??[],'crypto'=>$profile['crypto']??[],'image_url'=>array_merge((array)($profile['image_url']??[]),['domain'=>$profile['image_domain']])];
     }
     private function findProfile(int $appId,string $pkg){return $this->dao->search(['app_id'=>$appId,'package_name'=>$pkg])->first();}
+    private function appWithMerchant(int $appId):array{return $appId>0?($this->appsDao->newQuery()->with('merchant')->find($appId)?->toArray()??[]):[];}
+    private function merchantForProfile(array $profile):array{$app=$this->appWithMerchant((int)($profile['app_id']??0));return (array)($app['merchant']??[]);}
+    private function profileImageDomain(array $profile,array $merchant=[]):string{$image=(array)($profile['image_url']??[]);$domain=(string)($profile['image_domain']??($image['domain']??''));return $domain!==''?$domain:(string)($merchant['image_domain']??'');}
     private function ensureProfile(int $appId,string $pkg){return $this->findProfile($appId,$pkg)?:$this->dao->save(['app_id'=>$appId,'package_name'=>$pkg,'enabled'=>0,'alias_rule'=>'stable_url','protocol'=>config('api_obfuscation.profiles.default.protocol',[]),'security'=>config('api_obfuscation.profiles.default.security',[]),'crypto'=>config('api_obfuscation.profiles.default.crypto',[]),'image_url'=>config('api_obfuscation.profiles.default.image_url',[]),'route_aliases'=>[]]);}
     private function refreshRouteAliases(int $pid):void{$this->dao->update($pid,['route_aliases'=>$this->buildRouteAliasesByProfile($pid)]);}
     private function formatAliasRow(array $r):array{$i=$r['api_interface']??[];return array_merge($r,['interface_name'=>$i['name']??'','module'=>$i['module']??'','path'=>$i['path']??'','method'=>$i['method']??'','request_params'=>$i['request_params']??[],'response_params'=>$i['response_params']??[]]);}
