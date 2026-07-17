@@ -8,6 +8,7 @@ use App\Dao\App\AppConfigDao;
 use App\Exceptions\AdminException;
 use App\Support\Services\FormOptions;
 use App\Support\Services\FormBuilder as Form;
+use Illuminate\Database\Eloquent\Model;
 
 /**
  * Class AppConfigService
@@ -83,5 +84,86 @@ class AppConfigService extends Service
         $f[] = Form::radio('is_enable', '是否启用', $info['is_enable'] ?? 1)->options(FormOptions::isEnable());
 
         return $f;
+    }
+
+    /**
+     * 保存应用参数配置
+     */
+    public function save(array $data): Model
+    {
+        $data = $this->normalizeUniqueFields($data);
+        $this->ensureKeyUnique($data);
+
+        return $this->dao->save($data);
+    }
+
+    /**
+     * 更新应用参数配置
+     */
+    public function update($id, array $data, string $key = ''): int
+    {
+        $info = $this->dao->get($id);
+        if (!$info) {
+            throw new AdminException(400594);
+        }
+
+        $data = $this->normalizeUniqueFields($data, $info->toArray());
+        $this->ensureKeyUnique($data, (int)$info->id);
+
+        return $this->dao->update($id, $data, $key);
+    }
+
+    /**
+     * 复制应用参数配置表单
+     */
+    public function copyForm(int $id): array
+    {
+        $info = $this->dao->get($id);
+        if (!$info) {
+            throw new AdminException(400594);
+        }
+
+        $data = $info->only([
+            'app_id',
+            'channel',
+            'version',
+            'name',
+            'key',
+            'value',
+            'remark',
+        ]);
+        $data['is_enable'] = 0;
+
+        return $this->createForm($data);
+    }
+
+    private function normalizeUniqueFields(array $data, array $origin = []): array
+    {
+        foreach (['app_id', 'channel', 'version', 'key'] as $field) {
+            if (array_key_exists($field, $data) && is_string($data[$field])) {
+                $data[$field] = trim($data[$field]);
+            }
+
+            if ((!array_key_exists($field, $data) || $data[$field] === '') && array_key_exists($field, $origin)) {
+                $data[$field] = $origin[$field];
+            }
+        }
+
+        if (!array_key_exists('channel', $data) || $data['channel'] === '') {
+            $data['channel'] = 'all';
+        }
+
+        if (!array_key_exists('version', $data) || $data['version'] === '') {
+            $data['version'] = 'all';
+        }
+
+        return $data;
+    }
+
+    private function ensureKeyUnique(array $data, int $ignoreId = 0): void
+    {
+        if ($this->dao->existsByUniqueKey($data, $ignoreId)) {
+            throw new AdminException('同一应用、同一版本、同一渠道下参数key不能重复');
+        }
     }
 }
