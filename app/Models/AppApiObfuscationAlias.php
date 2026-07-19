@@ -12,6 +12,8 @@ class AppApiObfuscationAlias extends Model
     protected $casts = [
         'profile_id' => 'int',
         'interface_id' => 'int',
+        'request_origin_params' => 'array',
+        'response_origin_params' => 'array',
         'request_key_map' => 'array',
         'response_key_map' => 'array',
         'response_data_key_map' => 'array',
@@ -22,6 +24,8 @@ class AppApiObfuscationAlias extends Model
         'profile_id',
         'interface_id',
         'alias',
+        'request_origin_params',
+        'response_origin_params',
         'request_key_map',
         'response_key_map',
         'response_data_key_map',

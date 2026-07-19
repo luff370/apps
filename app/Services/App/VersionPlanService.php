@@ -3,15 +3,21 @@
 namespace App\Services\App;
 
 use App\Exceptions\AdminException;
+use App\Models\AppConfig;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
 use App\Models\SystemApp;
 use App\Services\Service;
+use App\Support\Services\AppConfigService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
 {
+    private const REVIEW_PASSED_STATUS = '已过审';
+
+    private const AUTO_ADD_WHITE_LIST_KEY = 'auto_add_white_list';
+
     /**
      * 版本规划列表直接返回前端页面需要的嵌套结构。
      *
@@ -80,8 +86,19 @@ class VersionPlanService extends Service
 
             // 计划任务属于一个小集合，整体重建比逐条 diff 更稳定，也避免遗留已删除渠道。
             AppVersionPlanTask::query()->where('plan_id', $plan->id)->delete();
+            $reviewPassedChannels = [];
             foreach ($data['tasks'] as $task) {
                 $this->createTask($plan, $task);
+                if ((string)($task['status'] ?? '') === self::REVIEW_PASSED_STATUS) {
+                    $channel = (string)($task['market_channel'] ?? '');
+                    if ($channel !== '') {
+                        $reviewPassedChannels[$channel] = true;
+                    }
+                }
+            }
+            $closedAutoAddWhiteList = $this->closeAutoAddWhiteListForChannels($appId, array_keys($reviewPassedChannels));
+            if ($closedAutoAddWhiteList) {
+                DB::afterCommit(fn() => AppConfigService::cacheByAppId($appId));
             }
             $this->syncAppMarketsFromListedTasks($appId);
 
@@ -259,6 +276,21 @@ class VersionPlanService extends Service
             'is_force' => (int)($task['is_force'] ?? 0),
             'force' => $this->normalizeForce($task['force'] ?? []),
         ]);
+    }
+
+    private function closeAutoAddWhiteListForChannels(int $appId, array $channels): bool
+    {
+        $channels = array_values(array_unique(array_filter($channels, fn($channel) => $channel !== '')));
+        if ($appId <= 0 || empty($channels)) {
+            return false;
+        }
+
+        return AppConfig::query()
+            ->where('app_id', $appId)
+            ->whereIn('channel', $channels)
+            ->where('key', self::AUTO_ADD_WHITE_LIST_KEY)
+            ->where('value', '<>', '0')
+            ->update(['value' => '0']) > 0;
     }
 
     private function formatPlan(AppVersionPlan $plan): array

@@ -54,11 +54,13 @@ class OperationStatisticsService
     public function rechargeSummary(array $filter): array
     {
         [$start, $end] = $this->dateRange($filter, true);
-        $appId = (int)($filter['app_id'] ?? 0);
-        $orderQuery = $this->memberOrders($start, $end, $appId);
-        $paidOrderQuery = $this->paidMemberOrders($start, $end, $appId);
-        $activeUsers = $this->activeUsers($start, $end, $appId);
-        $newUsers = $this->newUsers($start, $end, $appId);
+        $rechargeFilter = $this->rechargeFilter($filter);
+        $appId = $rechargeFilter['app_id'];
+        $hasOrderDimensionFilter = $this->hasOrderDimensionFilter($rechargeFilter);
+        $orderQuery = $this->memberOrders($start, $end, $rechargeFilter);
+        $paidOrderQuery = $this->paidMemberOrders($start, $end, $rechargeFilter);
+        $activeUsers = $hasOrderDimensionFilter ? null : $this->activeUsers($start, $end, $appId);
+        $newUsers = $hasOrderDimensionFilter ? null : $this->newUsers($start, $end, $appId);
 
         $orderUsers = (clone $orderQuery)->distinct('user_id')->count('user_id');
         $orderCount = (clone $orderQuery)->count();
@@ -71,26 +73,26 @@ class OperationStatisticsService
         $paidCount = (clone $paidOrderQuery)->count();
         $paidAmount = $this->paidMemberOrderAmount(clone $paidOrderQuery);
 
-        $trialUsers = $this->trialUsers($start, $end, $appId);
-        $renew = $this->renewStats($start, $end, $appId);
-        $cancel = $this->cancelStats($start, $end, $appId);
+        $trialUsers = $this->trialUsers($start, $end, $rechargeFilter);
+        $renew = $this->renewStats($start, $end, $rechargeFilter);
+        $cancel = $this->cancelStats($start, $end, $rechargeFilter);
 
         return [
-            'new_users' => $newUsers,
-            'active_users' => $activeUsers,
-            'active_index' => $this->rate($activeUsers, max($newUsers, 1), false),
+            'new_users' => $hasOrderDimensionFilter ? '--' : $newUsers,
+            'active_users' => $hasOrderDimensionFilter ? '--' : $activeUsers,
+            'active_index' => $hasOrderDimensionFilter ? '--' : $this->rate($activeUsers, max($newUsers, 1), false),
             'order_users' => $orderUsers,
             'order_count' => $orderCount,
             'order_amount' => $orderAmount,
-            'order_rate' => $this->rate($orderUsers, $activeUsers),
-            'order_conversion_rate' => $this->rate($orderUsers, $activeUsers),
+            'order_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
+            'order_conversion_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
             'paid_users' => $paidUsers,
             'paid_count' => $paidCount,
             'paid_amount' => $paidAmount,
-            'pay_rate' => $this->rate($paidUsers, $activeUsers),
+            'pay_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($paidUsers, $activeUsers),
             'pay_conversion_rate' => $this->rate($paidUsers, $orderUsers),
             'trial_users' => $trialUsers,
-            'trial_rate' => $this->rate($trialUsers, $activeUsers),
+            'trial_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($trialUsers, $activeUsers),
             'renew_users' => $renew['users'],
             'renew_amount' => $renew['amount'],
             'renew_rate' => $this->rate($renew['users'], $trialUsers),
@@ -108,11 +110,11 @@ class OperationStatisticsService
     {
         [$start, $end] = $this->dateRange($filter, true);
         $metric = $filter['metric'] ?? 'paid_amount';
-        $appId = (int)($filter['app_id'] ?? 0);
+        $rechargeFilter = $this->rechargeFilter($filter);
 
         if ($start->isSameDay($end)) {
             $items = [];
-            $rows = $this->paidMemberOrders($start, $end, $appId)
+            $rows = $this->paidMemberOrders($start, $end, $rechargeFilter)
                 ->selectRaw('HOUR(FROM_UNIXTIME(pay_time)) as hour_value')
                 ->selectRaw('COUNT(*) as paid_count')
                 ->selectRaw('COUNT(DISTINCT user_id) as paid_users')
@@ -133,7 +135,7 @@ class OperationStatisticsService
             return ['granularity' => 'hour', 'items' => $items];
         }
 
-        $rows = $this->paidMemberOrders($start, $end, $appId)
+        $rows = $this->paidMemberOrders($start, $end, $rechargeFilter)
             ->selectRaw('DATE(FROM_UNIXTIME(pay_time)) as date_value')
             ->selectRaw('COUNT(*) as paid_count')
             ->selectRaw('COUNT(DISTINCT user_id) as paid_users')
@@ -838,6 +840,48 @@ class OperationStatisticsService
     }
 
     /**
+     * 充值统计订单维度筛选。
+     */
+    private function rechargeFilter(array $filter): array
+    {
+        $marketChannel = trim((string)($filter['market_channel'] ?? ''));
+        $version = trim((string)($filter['version'] ?? ''));
+
+        return [
+            'app_id' => (int)($filter['app_id'] ?? 0),
+            'market_channel' => $marketChannel === 'all' ? '' : $marketChannel,
+            'version' => $version === 'all' ? '' : $version,
+        ];
+    }
+
+    /**
+     * user_statistics 暂无渠道和版本维度，带这些条件时新增、活跃相关指标返回占位符。
+     */
+    private function hasOrderDimensionFilter(array $filter): bool
+    {
+        return !empty($filter['market_channel']) || !empty($filter['version']);
+    }
+
+    private function applyRechargeFilter(Builder $query, array $filter): Builder
+    {
+        return $query
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when($filter['market_channel'] !== '', fn (Builder $query) => $query->where('market_channel', $filter['market_channel']))
+            ->when($filter['version'] !== '', fn (Builder $query) => $query->where('version', $filter['version']));
+    }
+
+    private function filterSubscriptionByMemberOrder(Builder $query, array $filter): Builder
+    {
+        return $query->whereExists(function ($subQuery) use ($filter) {
+            $subQuery->selectRaw('1')
+                ->from('member_orders')
+                ->whereRaw('BINARY member_orders.trade_no = BINARY subscription_orders.original_transaction_id')
+                ->when($filter['market_channel'] !== '', fn ($query) => $query->where('member_orders.market_channel', $filter['market_channel']))
+                ->when($filter['version'] !== '', fn ($query) => $query->where('member_orders.version', $filter['version']));
+        });
+    }
+
+    /**
      * 新增用户数。
      *
      * 优先读取 user_statistics 日表，日表无数据时回退到用户注册时间实时统计。
@@ -887,18 +931,19 @@ class OperationStatisticsService
      *
      * 同时统计会员订单和订阅订单里的试用记录，覆盖一次性会员和订阅两类业务。
      */
-    private function trialUsers(Carbon $start, Carbon $end, int $appId): int
+    private function trialUsers(Carbon $start, Carbon $end, array $filter): int
     {
         $member = MemberOrder::query()
             ->where('is_trial_period', 1)
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->tap(fn (Builder $query) => $this->applyRechargeFilter($query, $filter))
             ->whereBetween('purchase_date', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
             ->distinct('user_id')
             ->count('user_id');
 
         $subscription = SubscriptionOrder::query()
             ->where('is_trial_period', 1)
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when($this->hasOrderDimensionFilter($filter), fn (Builder $query) => $this->filterSubscriptionByMemberOrder($query, $filter))
             ->whereBetween('purchase_date', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
             ->distinct('user_id')
             ->count('user_id');
@@ -909,12 +954,13 @@ class OperationStatisticsService
     /**
      * 续费用户和续费金额。
      */
-    private function renewStats(Carbon $start, Carbon $end, int $appId): array
+    private function renewStats(Carbon $start, Carbon $end, array $filter): array
     {
         $query = SubscriptionOrder::query()
             ->where('status', 'active')
             ->where('is_trial_period', 0)
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when($this->hasOrderDimensionFilter($filter), fn (Builder $query) => $this->filterSubscriptionByMemberOrder($query, $filter))
             ->whereBetween('renewal_date', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
 
         return [
@@ -926,11 +972,12 @@ class OperationStatisticsService
     /**
      * 取消订阅用户和关联金额。
      */
-    private function cancelStats(Carbon $start, Carbon $end, int $appId): array
+    private function cancelStats(Carbon $start, Carbon $end, array $filter): array
     {
         $query = SubscriptionOrder::query()
             ->whereNotNull('cancellation_date')
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when($this->hasOrderDimensionFilter($filter), fn (Builder $query) => $this->filterSubscriptionByMemberOrder($query, $filter))
             ->whereBetween('cancellation_date', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
 
         return [
@@ -944,10 +991,12 @@ class OperationStatisticsService
      *
      * paid 和 pay_status 两套字段都兼容，避免历史数据字段口径不同导致漏算。
      */
-    private function paidMemberOrders(Carbon $start, Carbon $end, int $appId): Builder
+    private function paidMemberOrders(Carbon $start, Carbon $end, int|array $filter): Builder
     {
+        $filter = is_array($filter) ? $filter : ['app_id' => $filter, 'market_channel' => '', 'version' => ''];
+
         return MemberOrder::query()
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->tap(fn (Builder $query) => $this->applyRechargeFilter($query, $filter))
             ->whereBetween('pay_time', [$start->copy()->startOfDay()->timestamp, $end->copy()->endOfDay()->timestamp])
             ->where(function (Builder $query) {
                 $query->where('paid', 1)->orWhere('pay_status', MemberOrder::PAY_STATUS_PAID);
@@ -969,10 +1018,12 @@ class OperationStatisticsService
     /**
      * 会员订单创建查询，用于下单人数、下单笔数、下单金额等漏斗前置指标。
      */
-    private function memberOrders(Carbon $start, Carbon $end, int $appId): Builder
+    private function memberOrders(Carbon $start, Carbon $end, int|array $filter): Builder
     {
+        $filter = is_array($filter) ? $filter : ['app_id' => $filter, 'market_channel' => '', 'version' => ''];
+
         return MemberOrder::query()
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->tap(fn (Builder $query) => $this->applyRechargeFilter($query, $filter))
             ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
     }
 

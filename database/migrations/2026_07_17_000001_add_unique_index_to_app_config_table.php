@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::table('app_config', function (Blueprint $table) {
             $table->unique(
-                ['app_id', 'version', 'channel', 'key'],
-                'app_config_app_version_channel_key_unique'
+                ['app_id', 'channel', 'key'],
+                'app_config_app_channel_key_unique'
             );
         });
     }
@@ -25,7 +25,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('app_config', function (Blueprint $table) {
-            $table->dropUnique('app_config_app_version_channel_key_unique');
+            $table->dropUnique('app_config_app_channel_key_unique');
         });
     }
 };

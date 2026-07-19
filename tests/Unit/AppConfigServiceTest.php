@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 
 class AppConfigServiceTest extends TestCase
 {
-    public function test_save_rejects_duplicate_key_in_same_app_version_and_channel(): void
+    public function test_save_rejects_duplicate_key_in_same_app_and_channel(): void
     {
         $data = [
             'app_id' => 10001,
@@ -31,7 +31,7 @@ class AppConfigServiceTest extends TestCase
         $dao->expects($this->never())->method('save');
 
         $this->expectException(AdminException::class);
-        $this->expectExceptionMessage('同一应用、同一版本、同一渠道下参数key不能重复');
+        $this->expectExceptionMessage('同一应用、同一渠道下参数key不能重复');
 
         (new AppConfigService($dao))->save($data);
     }

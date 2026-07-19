@@ -163,7 +163,7 @@ class AppConfigService extends Service
     private function ensureKeyUnique(array $data, int $ignoreId = 0): void
     {
         if ($this->dao->existsByUniqueKey($data, $ignoreId)) {
-            throw new AdminException('同一应用、同一版本、同一渠道下参数key不能重复');
+            throw new AdminException('同一应用、同一渠道下参数key不能重复');
         }
     }
 }

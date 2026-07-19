@@ -12,7 +12,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('member_orders', function (Blueprint $table) {
-            $table->unsignedTinyInteger('refund_status')->default(0)->comment('退款状态：0未退款 2已退款')->after('pay_price');
+            $table->unsignedTinyInteger('refund_status')->default(0)->comment('退款状态：0未退款 1部分退款 2已退款')->after('pay_price');
             $table->decimal('refund_price', 10, 2)->default(0)->comment('退款金额')->after('refund_status');
             $table->unsignedInteger('refund_time')->default(0)->comment('退款时间')->after('refund_price');
         });

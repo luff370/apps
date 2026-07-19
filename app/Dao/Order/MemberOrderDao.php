@@ -33,7 +33,13 @@ class MemberOrderDao extends BaseDao
         }
 
         if (isset($where['pay_status']) && $where['pay_status'] !== '') {
-            $query->where('pay_status', $where['pay_status']);
+            if ($where['pay_status'] === 'refunded') {
+                $query->where('refund_status', MemberOrder::REFUND_STATUS_REFUNDED);
+            } elseif ($where['pay_status'] === 'partial_refunded') {
+                $query->where('refund_status', MemberOrder::REFUND_STATUS_PARTIAL);
+            } else {
+                $query->where('pay_status', $where['pay_status']);
+            }
         }
 
         if (!empty($where['member_status'])) {

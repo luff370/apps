@@ -69,6 +69,7 @@ class MemberOrder extends BaseModel
     const MEMBER_STATUS_EXPIRED = 'expired';
 
     const REFUND_STATUS_NONE = 0;
+    const REFUND_STATUS_PARTIAL = 1;
     const REFUND_STATUS_REFUNDED = 2;
 
     protected $casts = [
@@ -183,6 +184,7 @@ class MemberOrder extends BaseModel
     {
         return [
             self::REFUND_STATUS_NONE => '未退款',
+            self::REFUND_STATUS_PARTIAL => '部分退款',
             self::REFUND_STATUS_REFUNDED => '已退款',
         ];
     }
@@ -191,6 +193,7 @@ class MemberOrder extends BaseModel
     {
         return [
             self::REFUND_STATUS_NONE => 'default',
+            self::REFUND_STATUS_PARTIAL => 'warning',
             self::REFUND_STATUS_REFUNDED => 'red',
         ];
     }

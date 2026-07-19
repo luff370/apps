@@ -88,6 +88,10 @@ class MemberOrderService extends Service
             $item['pay_type_name'] = $payTypeMap[$item['pay_type']] ?? '';
             $item['refund_status_name'] = $refundStatusMap[(int)($item['refund_status'] ?? 0)] ?? '';
             $item['refund_status_color'] = $refundStatusColorMap[(int)($item['refund_status'] ?? 0)] ?? '';
+            if ((int)($item['refund_status'] ?? 0) !== MemberOrder::REFUND_STATUS_NONE) {
+                $item['pay_status_name'] = $item['refund_status_name'];
+                $item['pay_status_color'] = $item['refund_status_color'];
+            }
             $item['pay_time'] = empty($item['pay_time']) ? '' : date('Y-m-d H:i', $item['pay_time']);
             $item['refund_time'] = empty($item['refund_time']) ? '' : date('Y-m-d H:i', $item['refund_time']);
             $item['product'] = [
@@ -122,7 +126,7 @@ class MemberOrderService extends Service
                 throw new RequestException('未支付订单不能退款');
             }
 
-            if ($order->member_status !== MemberOrder::MEMBER_STATUS_ACTIVE) {
+            if ($order->member_status !== MemberOrder::MEMBER_STATUS_ACTIVE && (int)$order->refund_status === MemberOrder::REFUND_STATUS_NONE) {
                 throw new RequestException('只有有效状态的会员订单可以退款');
             }
 
@@ -131,12 +135,14 @@ class MemberOrderService extends Service
             }
 
             $payPrice = $this->money($order->pay_price);
-            if ($refundPrice > $payPrice) {
+            $refundedPrice = $this->money($order->refund_price);
+            $totalRefundPrice = $this->money($refundedPrice + $refundPrice);
+            if ($totalRefundPrice > $payPrice) {
                 throw new RequestException('退款金额不能大于订单金额');
             }
 
-            $order->refund_status = MemberOrder::REFUND_STATUS_REFUNDED;
-            $order->refund_price = $refundPrice;
+            $order->refund_status = $totalRefundPrice >= $payPrice ? MemberOrder::REFUND_STATUS_REFUNDED : MemberOrder::REFUND_STATUS_PARTIAL;
+            $order->refund_price = $totalRefundPrice;
             $order->refund_time = time();
             $order->member_status = MemberOrder::MEMBER_STATUS_EXPIRED;
             if (trim((string)($data['remark'] ?? '')) !== '') {
