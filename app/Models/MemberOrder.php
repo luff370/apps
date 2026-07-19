@@ -26,6 +26,9 @@ use Carbon\Carbon;
  * @property string $pay_source
  * @property bool $paid
  * @property float $pay_price
+ * @property int $refund_status
+ * @property float $refund_price
+ * @property int $refund_time
  * @property float $member_price
  * @property int $pay_time
  * @property string $trade_no
@@ -62,6 +65,12 @@ class MemberOrder extends BaseModel
     const PAY_STATUS_PAID = 'paid';
     const PAY_STATUS_FIELD = 'payment_failed';
 
+    const MEMBER_STATUS_ACTIVE = 'active';
+    const MEMBER_STATUS_EXPIRED = 'expired';
+
+    const REFUND_STATUS_NONE = 0;
+    const REFUND_STATUS_REFUNDED = 2;
+
     protected $casts = [
         'app_id' => 'int',
         'product_id' => 'int',
@@ -70,6 +79,9 @@ class MemberOrder extends BaseModel
         'type' => 'int',
         'paid' => 'bool',
         'pay_price' => 'float',
+        'refund_status' => 'int',
+        'refund_price' => 'float',
+        'refund_time' => 'int',
         'member_price' => 'float',
         'pay_time' => 'int',
         'is_subscribe' => 'int',
@@ -96,6 +108,9 @@ class MemberOrder extends BaseModel
         'pay_source',
         'paid',
         'pay_price',
+        'refund_status',
+        'refund_price',
+        'refund_time',
         'member_price',
         'pay_time',
         'trade_no',
@@ -164,14 +179,30 @@ class MemberOrder extends BaseModel
         ];
     }
 
+    public static function refundStatusMap()
+    {
+        return [
+            self::REFUND_STATUS_NONE => '未退款',
+            self::REFUND_STATUS_REFUNDED => '已退款',
+        ];
+    }
+
+    public static function refundStatusColorMap()
+    {
+        return [
+            self::REFUND_STATUS_NONE => 'default',
+            self::REFUND_STATUS_REFUNDED => 'red',
+        ];
+    }
+
     // 会员状态
     public static function memberStatusMap()
     {
         return [
             'not_ordered' => '未订购',
             'trial' => '试用中',
-            'active' => '有效',
-            'expired' => '已过期',
+            self::MEMBER_STATUS_ACTIVE => '有效',
+            self::MEMBER_STATUS_EXPIRED => '已过期',
         ];
     }
 
@@ -179,9 +210,9 @@ class MemberOrder extends BaseModel
     {
         return [
             'not_ordered' => 'default',
-            'active' => 'success',
+            self::MEMBER_STATUS_ACTIVE => 'success',
             'trial' => 'success',
-            'expired' => 'red',
+            self::MEMBER_STATUS_EXPIRED => 'red',
         ];
     }
 

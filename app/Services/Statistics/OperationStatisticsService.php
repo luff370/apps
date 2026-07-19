@@ -69,7 +69,7 @@ class OperationStatisticsService
 
         $paidUsers = (clone $paidOrderQuery)->distinct('user_id')->count('user_id');
         $paidCount = (clone $paidOrderQuery)->count();
-        $paidAmount = $this->money((clone $paidOrderQuery)->sum('pay_price'));
+        $paidAmount = $this->paidMemberOrderAmount(clone $paidOrderQuery);
 
         $trialUsers = $this->trialUsers($start, $end, $appId);
         $renew = $this->renewStats($start, $end, $appId);
@@ -116,7 +116,7 @@ class OperationStatisticsService
                 ->selectRaw('HOUR(FROM_UNIXTIME(pay_time)) as hour_value')
                 ->selectRaw('COUNT(*) as paid_count')
                 ->selectRaw('COUNT(DISTINCT user_id) as paid_users')
-                ->selectRaw('COALESCE(SUM(pay_price), 0) as paid_amount')
+                ->selectRaw($this->sumNetPayPriceSql('paid_amount'))
                 ->where('pay_time', '>', 0)
                 ->groupBy('hour_value')
                 ->get()
@@ -137,7 +137,7 @@ class OperationStatisticsService
             ->selectRaw('DATE(FROM_UNIXTIME(pay_time)) as date_value')
             ->selectRaw('COUNT(*) as paid_count')
             ->selectRaw('COUNT(DISTINCT user_id) as paid_users')
-            ->selectRaw('COALESCE(SUM(pay_price), 0) as paid_amount')
+            ->selectRaw($this->sumNetPayPriceSql('paid_amount'))
             ->where('pay_time', '>', 0)
             ->groupBy('date_value')
             ->get()
@@ -314,7 +314,7 @@ class OperationStatisticsService
         return [
             'new_users' => $this->newUsers($start, $end, $appId),
             'active_users' => $this->activeUsers($start, $end, $appId),
-            'recharge_revenue' => $this->money($this->paidMemberOrders($start, $end, $appId)->sum('pay_price')),
+            'recharge_revenue' => $this->paidMemberOrderAmount($this->paidMemberOrders($start, $end, $appId)),
             'ad_revenue' => $this->money($this->adRevenueQuery($start, $end, $appId)->sum('ad_revenue')),
         ];
     }
@@ -467,7 +467,8 @@ class OperationStatisticsService
         }
 
         return $this->paidMemberOrders($start, $end, $appId)
-            ->selectRaw('DATE(FROM_UNIXTIME(pay_time)) as date_value, SUM(pay_price) as value')
+            ->selectRaw('DATE(FROM_UNIXTIME(pay_time)) as date_value')
+            ->selectRaw($this->sumNetPayPriceSql('value'))
             ->where('pay_time', '>', 0)
             ->groupBy('date_value')
             ->pluck('value', 'date_value')
@@ -500,7 +501,8 @@ class OperationStatisticsService
         }
 
         return $this->paidMemberOrders($start, $end, $appId)
-            ->selectRaw("DATE_FORMAT(FROM_UNIXTIME(pay_time), '%Y-%m') as month_value, SUM(pay_price) as value")
+            ->selectRaw("DATE_FORMAT(FROM_UNIXTIME(pay_time), '%Y-%m') as month_value")
+            ->selectRaw($this->sumNetPayPriceSql('value'))
             ->where('pay_time', '>', 0)
             ->groupBy('month_value')
             ->pluck('value', 'month_value')
@@ -531,7 +533,8 @@ class OperationStatisticsService
     private function rechargeRows(Carbon $start, Carbon $end, array $appIds): array
     {
         return $this->paidMemberOrders($start, $end, 0)
-            ->selectRaw('DATE(FROM_UNIXTIME(pay_time)) as date_value, app_id, SUM(pay_price) as recharge_revenue')
+            ->selectRaw('DATE(FROM_UNIXTIME(pay_time)) as date_value, app_id')
+            ->selectRaw($this->sumNetPayPriceSql('recharge_revenue'))
             ->where('pay_time', '>', 0)
             ->when($appIds, fn (Builder $query) => $query->whereIn('app_id', $appIds))
             ->groupBy('date_value', 'app_id')
@@ -951,6 +954,18 @@ class OperationStatisticsService
             });
     }
 
+    private function paidMemberOrderAmount(Builder $query): float
+    {
+        return $this->money($query->selectRaw($this->sumNetPayPriceSql('amount'))->value('amount') ?? 0);
+    }
+
+    private function sumNetPayPriceSql(string $alias): string
+    {
+        $netPayPrice = 'pay_price - COALESCE(refund_price, 0)';
+
+        return "COALESCE(SUM(CASE WHEN {$netPayPrice} > 0 THEN {$netPayPrice} ELSE 0 END), 0) as {$alias}";
+    }
+
     /**
      * 会员订单创建查询，用于下单人数、下单笔数、下单金额等漏斗前置指标。
      */
@@ -977,7 +992,8 @@ class OperationStatisticsService
     private function rechargeByApp(Carbon $start, Carbon $end, int $appId): array
     {
         return $this->paidMemberOrders($start, $end, $appId)
-            ->selectRaw('app_id, SUM(pay_price) as value')
+            ->selectRaw('app_id')
+            ->selectRaw($this->sumNetPayPriceSql('value'))
             ->groupBy('app_id')
             ->pluck('value', 'app_id')
             ->map(fn ($value) => (float)$value)
