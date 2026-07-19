@@ -440,8 +440,8 @@ class SystemMenusTableSeeder extends Seeder
                 'methods' => '',
                 'params' => '[]',
                 'sort' => 1,
-                'is_show' => 1,
-                'is_show_path' => 0,
+                'is_show' => 0,
+                'is_show_path' => 1,
                 'access' => 1,
                 'menu_path' => '/admin/system',
                 'path' => '',
@@ -982,7 +982,7 @@ class SystemMenusTableSeeder extends Seeder
             40 => 
             array (
                 'id' => 56,
-                'pid' => 25,
+                'pid' => 135,
                 'icon' => '',
                 'menu_name' => '开发配置',
                 'module' => 'admin',
@@ -996,7 +996,7 @@ class SystemMenusTableSeeder extends Seeder
                 'is_show_path' => 0,
                 'access' => 1,
                 'menu_path' => '/admin/system/config',
-                'path' => '',
+                'path' => '135',
                 'auth_type' => 1,
                 'header' => 'system',
                 'is_header' => 1,
@@ -10222,7 +10222,7 @@ class SystemMenusTableSeeder extends Seeder
             425 => 
             array (
                 'id' => 566,
-                'pid' => 25,
+                'pid' => 135,
                 'icon' => '',
                 'menu_name' => '素材管理',
                 'module' => 'admin',
@@ -10231,12 +10231,12 @@ class SystemMenusTableSeeder extends Seeder
                 'api_url' => '',
                 'methods' => '',
                 'params' => '[]',
-                'sort' => 0,
+                'sort' => 30,
                 'is_show' => 1,
                 'is_show_path' => 0,
                 'access' => 1,
                 'menu_path' => '/admin/system/file',
-                'path' => '25',
+                'path' => '135',
                 'auth_type' => 1,
                 'header' => '',
                 'is_header' => 0,
@@ -18143,102 +18143,6 @@ class SystemMenusTableSeeder extends Seeder
             ),
             255 => 
             array (
-                'id' => 993,
-                'pid' => 135,
-                'icon' => '',
-                'menu_name' => '小程序',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 3,
-                'is_show' => 0,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/app/routine',
-                'path' => '135',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'admin-routine',
-                'is_del' => 0,
-            ),
-            256 => 
-            array (
-                'id' => 994,
-                'pid' => 993,
-                'icon' => '',
-                'menu_name' => '小程序下载',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 1,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/app/routine/download',
-                'path' => '135/993',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'routine-download',
-                'is_del' => 0,
-            ),
-            257 => 
-            array (
-                'id' => 995,
-                'pid' => 994,
-                'icon' => '',
-                'menu_name' => '下载小程序页面数据',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => 'app/routine/info',
-                'methods' => 'GET',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 0,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '',
-                'path' => '135/993/994',
-                'auth_type' => 2,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => '',
-                'is_del' => 0,
-            ),
-            258 => 
-            array (
-                'id' => 996,
-                'pid' => 994,
-                'icon' => '',
-                'menu_name' => '下载小程序模版',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => 'app/routine/download',
-                'methods' => 'POST',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 0,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '',
-                'path' => '135/993/994',
-                'auth_type' => 2,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => '',
-                'is_del' => 0,
-            ),
-            259 => 
-            array (
                 'id' => 998,
                 'pid' => 35,
                 'icon' => '',
@@ -18261,7 +18165,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'finance-capital_flow-index',
                 'is_del' => 0,
             ),
-            260 => 
+            256 => 
             array (
                 'id' => 999,
                 'pid' => 37,
@@ -18285,7 +18189,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'finance-billing_records-index',
                 'is_del' => 0,
             ),
-            261 => 
+            257 => 
             array (
                 'id' => 1000,
                 'pid' => 566,
@@ -18309,7 +18213,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-user-user-index',
                 'is_del' => 0,
             ),
-            262 => 
+            258 => 
             array (
                 'id' => 1001,
                 'pid' => 34,
@@ -18333,7 +18237,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-point_record-index',
                 'is_del' => 0,
             ),
-            263 => 
+            259 => 
             array (
                 'id' => 1002,
                 'pid' => 34,
@@ -18357,7 +18261,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-point_statistic-index',
                 'is_del' => 0,
             ),
-            264 => 
+            260 => 
             array (
                 'id' => 1003,
                 'pid' => 35,
@@ -18381,7 +18285,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'finance-balance-index',
                 'is_del' => 0,
             ),
-            265 => 
+            261 => 
             array (
                 'id' => 1004,
                 'pid' => 1003,
@@ -18405,7 +18309,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'finance-user-balance',
                 'is_del' => 0,
             ),
-            266 => 
+            262 => 
             array (
                 'id' => 1005,
                 'pid' => 1003,
@@ -18429,7 +18333,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-statistic',
                 'is_del' => 0,
             ),
-            267 => 
+            263 => 
             array (
                 'id' => 1006,
                 'pid' => 69,
@@ -18453,127 +18357,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-system-config',
                 'is_del' => 0,
             ),
-            268 => 
-            array (
-                'id' => 1007,
-                'pid' => 993,
-                'icon' => '',
-                'menu_name' => '小程序配置',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 1,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/setting/routine_config/3/7',
-                'path' => '135/993',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'setting-system-config',
-                'is_del' => 0,
-            ),
-            269 => 
-            array (
-                'id' => 1008,
-                'pid' => 135,
-                'icon' => '',
-                'menu_name' => 'PC端',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 0,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/app/pc',
-                'path' => '135',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'admin-pc',
-                'is_del' => 0,
-            ),
-            270 => 
-            array (
-                'id' => 1009,
-                'pid' => 135,
-                'icon' => '',
-                'menu_name' => 'APP',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 2,
-                'is_show' => 0,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/app/app',
-                'path' => '135',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'admin-app',
-                'is_del' => 0,
-            ),
-            271 => 
-            array (
-                'id' => 1010,
-                'pid' => 1008,
-                'icon' => '',
-                'menu_name' => 'PC端配置',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 1,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/setting/pc_config/3/75',
-                'path' => '135/1008',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'setting-system-config',
-                'is_del' => 0,
-            ),
-            272 => 
-            array (
-                'id' => 1011,
-                'pid' => 1009,
-                'icon' => '',
-                'menu_name' => 'APP配置',
-                'module' => 'admin',
-                'controller' => '',
-                'action' => '',
-                'api_url' => '',
-                'methods' => '',
-                'params' => '[]',
-                'sort' => 0,
-                'is_show' => 1,
-                'is_show_path' => 0,
-                'access' => 1,
-                'menu_path' => '/admin/setting/app_config/3/77',
-                'path' => '135/1009',
-                'auth_type' => 1,
-                'header' => '',
-                'is_header' => 0,
-                'unique_auth' => 'setting-system-config',
-                'is_del' => 0,
-            ),
-            273 => 
+            264 => 
             array (
                 'id' => 1012,
                 'pid' => 1056,
@@ -18597,7 +18381,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-storage',
                 'is_del' => 0,
             ),
-            274 => 
+            265 => 
             array (
                 'id' => 1018,
                 'pid' => 909,
@@ -18621,7 +18405,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-marketing-lottery-create',
                 'is_del' => 0,
             ),
-            275 => 
+            266 => 
             array (
                 'id' => 1019,
                 'pid' => 909,
@@ -18645,7 +18429,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-marketing-lottery-recording_list-id',
                 'is_del' => 0,
             ),
-            276 => 
+            267 => 
             array (
                 'id' => 1023,
                 'pid' => 27,
@@ -18669,7 +18453,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-channel_code-index',
                 'is_del' => 0,
             ),
-            277 => 
+            268 => 
             array (
                 'id' => 1024,
                 'pid' => 1023,
@@ -18693,7 +18477,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-channel_code-create',
                 'is_del' => 0,
             ),
-            278 => 
+            269 => 
             array (
                 'id' => 1025,
                 'pid' => 1023,
@@ -18717,7 +18501,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-channel_code-statistic',
                 'is_del' => 0,
             ),
-            279 => 
+            270 => 
             array (
                 'id' => 1042,
                 'pid' => 1023,
@@ -18741,7 +18525,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            280 => 
+            271 => 
             array (
                 'id' => 1043,
                 'pid' => 1023,
@@ -18765,7 +18549,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            281 => 
+            272 => 
             array (
                 'id' => 1044,
                 'pid' => 1023,
@@ -18789,7 +18573,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            282 => 
+            273 => 
             array (
                 'id' => 1045,
                 'pid' => 1023,
@@ -18813,7 +18597,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            283 => 
+            274 => 
             array (
                 'id' => 1046,
                 'pid' => 1023,
@@ -18837,7 +18621,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            284 => 
+            275 => 
             array (
                 'id' => 1047,
                 'pid' => 1023,
@@ -18861,7 +18645,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            285 => 
+            276 => 
             array (
                 'id' => 1048,
                 'pid' => 1023,
@@ -18885,7 +18669,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            286 => 
+            277 => 
             array (
                 'id' => 1049,
                 'pid' => 1023,
@@ -18909,7 +18693,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            287 => 
+            278 => 
             array (
                 'id' => 1050,
                 'pid' => 1023,
@@ -18933,7 +18717,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            288 => 
+            279 => 
             array (
                 'id' => 1051,
                 'pid' => 1023,
@@ -18957,7 +18741,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            289 => 
+            280 => 
             array (
                 'id' => 1052,
                 'pid' => 1023,
@@ -18981,7 +18765,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            290 => 
+            281 => 
             array (
                 'id' => 1053,
                 'pid' => 27,
@@ -19005,7 +18789,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-recharge-index',
                 'is_del' => 0,
             ),
-            291 => 
+            282 => 
             array (
                 'id' => 1055,
                 'pid' => 135,
@@ -19029,7 +18813,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-app-version',
                 'is_del' => 0,
             ),
-            292 => 
+            283 => 
             array (
                 'id' => 1056,
                 'pid' => 25,
@@ -19053,7 +18837,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other',
                 'is_del' => 0,
             ),
-            293 => 
+            284 => 
             array (
                 'id' => 1057,
                 'pid' => 1056,
@@ -19077,7 +18861,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other-print',
                 'is_del' => 0,
             ),
-            294 => 
+            285 => 
             array (
                 'id' => 1058,
                 'pid' => 1056,
@@ -19101,7 +18885,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other-copy',
                 'is_del' => 0,
             ),
-            295 => 
+            286 => 
             array (
                 'id' => 1059,
                 'pid' => 1056,
@@ -19125,7 +18909,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other-logistics',
                 'is_del' => 0,
             ),
-            296 => 
+            287 => 
             array (
                 'id' => 1060,
                 'pid' => 1056,
@@ -19149,7 +18933,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other-electronic',
                 'is_del' => 0,
             ),
-            297 => 
+            288 => 
             array (
                 'id' => 1061,
                 'pid' => 12,
@@ -19173,7 +18957,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-agreement',
                 'is_del' => 0,
             ),
-            298 => 
+            289 => 
             array (
                 'id' => 1062,
                 'pid' => 1056,
@@ -19197,7 +18981,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other-sms',
                 'is_del' => 0,
             ),
-            299 => 
+            290 => 
             array (
                 'id' => 1063,
                 'pid' => 1056,
@@ -19221,7 +19005,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'setting-other-pay',
                 'is_del' => 0,
             ),
-            300 => 
+            291 => 
             array (
                 'id' => 1067,
                 'pid' => 25,
@@ -19245,7 +19029,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-lang',
                 'is_del' => 0,
             ),
-            301 => 
+            292 => 
             array (
                 'id' => 1068,
                 'pid' => 1067,
@@ -19269,7 +19053,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-lang-list',
                 'is_del' => 0,
             ),
-            302 => 
+            293 => 
             array (
                 'id' => 1069,
                 'pid' => 1067,
@@ -19293,7 +19077,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-lang-info',
                 'is_del' => 0,
             ),
-            303 => 
+            294 => 
             array (
                 'id' => 1070,
                 'pid' => 1067,
@@ -19317,7 +19101,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-lang-country',
                 'is_del' => 0,
             ),
-            304 => 
+            295 => 
             array (
                 'id' => 1071,
                 'pid' => 56,
@@ -19341,7 +19125,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'system-maintain-system-file',
                 'is_del' => 0,
             ),
-            305 => 
+            296 => 
             array (
                 'id' => 1073,
                 'pid' => 25,
@@ -19365,7 +19149,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'system-database-index',
                 'is_del' => 0,
             ),
-            306 => 
+            297 => 
             array (
                 'id' => 1075,
                 'pid' => 731,
@@ -19389,7 +19173,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-member-system_config',
                 'is_del' => 0,
             ),
-            307 => 
+            298 => 
             array (
                 'id' => 1076,
                 'pid' => 0,
@@ -19413,7 +19197,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier',
                 'is_del' => 0,
             ),
-            308 => 
+            299 => 
             array (
                 'id' => 1077,
                 'pid' => 1076,
@@ -19437,7 +19221,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-supplier',
                 'is_del' => 0,
             ),
-            309 => 
+            300 => 
             array (
                 'id' => 1078,
                 'pid' => 1077,
@@ -19461,7 +19245,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-index',
                 'is_del' => 0,
             ),
-            310 => 
+            301 => 
             array (
                 'id' => 1079,
                 'pid' => 1077,
@@ -19485,7 +19269,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-add',
                 'is_del' => 0,
             ),
-            311 => 
+            302 => 
             array (
                 'id' => 1080,
                 'pid' => 1077,
@@ -19509,7 +19293,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-edit',
                 'is_del' => 0,
             ),
-            312 => 
+            303 => 
             array (
                 'id' => 1081,
                 'pid' => 1077,
@@ -19533,7 +19317,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-delete',
                 'is_del' => 0,
             ),
-            313 => 
+            304 => 
             array (
                 'id' => 1082,
                 'pid' => 1077,
@@ -19557,7 +19341,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-update',
                 'is_del' => 0,
             ),
-            314 => 
+            305 => 
             array (
                 'id' => 1083,
                 'pid' => 1077,
@@ -19581,7 +19365,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-supplier-set-enable',
                 'is_del' => 0,
             ),
-            315 => 
+            306 => 
             array (
                 'id' => 1084,
                 'pid' => 1,
@@ -19605,7 +19389,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-store-product-brand',
                 'is_del' => 0,
             ),
-            316 => 
+            307 => 
             array (
                 'id' => 1085,
                 'pid' => 1084,
@@ -19629,7 +19413,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => '',
                 'is_del' => 0,
             ),
-            317 => 
+            308 => 
             array (
                 'id' => 1086,
                 'pid' => 1084,
@@ -19653,7 +19437,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'product-brand-save',
                 'is_del' => 0,
             ),
-            318 => 
+            309 => 
             array (
                 'id' => 1087,
                 'pid' => 1084,
@@ -19677,7 +19461,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'product-brand-edit',
                 'is_del' => 0,
             ),
-            319 => 
+            310 => 
             array (
                 'id' => 1088,
                 'pid' => 1084,
@@ -19701,7 +19485,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'product-brand-update',
                 'is_del' => 0,
             ),
-            320 => 
+            311 => 
             array (
                 'id' => 1089,
                 'pid' => 1084,
@@ -19725,7 +19509,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'product-brand-delete',
                 'is_del' => 0,
             ),
-            321 => 
+            312 => 
             array (
                 'id' => 1090,
                 'pid' => 1084,
@@ -19749,7 +19533,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'product-brand-setShow',
                 'is_del' => 0,
             ),
-            322 => 
+            313 => 
             array (
                 'id' => 1091,
                 'pid' => 4,
@@ -19773,7 +19557,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-short_url-index',
                 'is_del' => 0,
             ),
-            323 => 
+            314 => 
             array (
                 'id' => 1092,
                 'pid' => 1091,
@@ -19797,7 +19581,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-short_url-create',
                 'is_del' => 0,
             ),
-            324 => 
+            315 => 
             array (
                 'id' => 1093,
                 'pid' => 1091,
@@ -19821,7 +19605,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-short_url-edit',
                 'is_del' => 0,
             ),
-            325 => 
+            316 => 
             array (
                 'id' => 1094,
                 'pid' => 581,
@@ -19845,7 +19629,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'order-update-address',
                 'is_del' => 0,
             ),
-            326 => 
+            317 => 
             array (
                 'id' => 1095,
                 'pid' => 581,
@@ -19869,7 +19653,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'order-take-delivery',
                 'is_del' => 0,
             ),
-            327 => 
+            318 => 
             array (
                 'id' => 1096,
                 'pid' => 581,
@@ -19893,7 +19677,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'order-update-address',
                 'is_del' => 0,
             ),
-            328 => 
+            319 => 
             array (
                 'id' => 1097,
                 'pid' => 1091,
@@ -19917,7 +19701,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-short_url-del',
                 'is_del' => 0,
             ),
-            329 => 
+            320 => 
             array (
                 'id' => 1098,
                 'pid' => 4,
@@ -19941,7 +19725,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'order-member-list',
                 'is_del' => 0,
             ),
-            330 => 
+            321 => 
             array (
                 'id' => 1099,
                 'pid' => 26,
@@ -19965,7 +19749,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-distribution-agent',
                 'is_del' => 0,
             ),
-            331 => 
+            322 => 
             array (
                 'id' => 1100,
                 'pid' => 26,
@@ -19989,7 +19773,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-distribution-spread',
                 'is_del' => 0,
             ),
-            332 => 
+            323 => 
             array (
                 'id' => 1101,
                 'pid' => 26,
@@ -20013,7 +19797,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-distribution-category',
                 'is_del' => 0,
             ),
-            333 => 
+            324 => 
             array (
                 'id' => 1102,
                 'pid' => 1101,
@@ -20037,7 +19821,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-category-save',
                 'is_del' => 0,
             ),
-            334 => 
+            325 => 
             array (
                 'id' => 1103,
                 'pid' => 1101,
@@ -20061,7 +19845,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-category-update',
                 'is_del' => 0,
             ),
-            335 => 
+            326 => 
             array (
                 'id' => 1104,
                 'pid' => 1101,
@@ -20085,7 +19869,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-category-delete',
                 'is_del' => 0,
             ),
-            336 => 
+            327 => 
             array (
                 'id' => 1105,
                 'pid' => 1099,
@@ -20109,7 +19893,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-agent-orders',
                 'is_del' => 0,
             ),
-            337 => 
+            328 => 
             array (
                 'id' => 1106,
                 'pid' => 1099,
@@ -20133,7 +19917,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-agent-update',
                 'is_del' => 0,
             ),
-            338 => 
+            329 => 
             array (
                 'id' => 1107,
                 'pid' => 1100,
@@ -20157,7 +19941,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-spread-orders',
                 'is_del' => 0,
             ),
-            339 => 
+            330 => 
             array (
                 'id' => 1108,
                 'pid' => 1100,
@@ -20181,7 +19965,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-spread-update',
                 'is_del' => 0,
             ),
-            340 => 
+            331 => 
             array (
                 'id' => 1109,
                 'pid' => 1099,
@@ -20205,7 +19989,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-agent-save',
                 'is_del' => 0,
             ),
-            341 => 
+            332 => 
             array (
                 'id' => 1110,
                 'pid' => 1091,
@@ -20229,7 +20013,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'marketing-short_url-set_cost',
                 'is_del' => 0,
             ),
-            342 => 
+            333 => 
             array (
                 'id' => 1111,
                 'pid' => 1099,
@@ -20253,7 +20037,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-agent-settlement',
                 'is_del' => 0,
             ),
-            343 => 
+            334 => 
             array (
                 'id' => 1112,
                 'pid' => 1099,
@@ -20277,7 +20061,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'distribution-agent-delete',
                 'is_del' => 0,
             ),
-            344 => 
+            335 => 
             array (
                 'id' => 1113,
                 'pid' => 25,
@@ -20301,7 +20085,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'system-sms-records',
                 'is_del' => 0,
             ),
-            345 => 
+            336 => 
             array (
                 'id' => 1114,
                 'pid' => 135,
@@ -20325,7 +20109,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-app-apps',
                 'is_del' => 0,
             ),
-            346 => 
+            337 => 
             array (
                 'id' => 1115,
                 'pid' => 1114,
@@ -20349,7 +20133,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'apps-create',
                 'is_del' => 0,
             ),
-            347 => 
+            338 => 
             array (
                 'id' => 1116,
                 'pid' => 1114,
@@ -20373,7 +20157,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'apps-update',
                 'is_del' => 0,
             ),
-            348 => 
+            339 => 
             array (
                 'id' => 1117,
                 'pid' => 1114,
@@ -20397,7 +20181,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'apps-delete',
                 'is_del' => 0,
             ),
-            349 => 
+            340 => 
             array (
                 'id' => 1118,
                 'pid' => 1114,
@@ -20421,7 +20205,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-versions',
                 'is_del' => 0,
             ),
-            350 => 
+            341 => 
             array (
                 'id' => 1119,
                 'pid' => 1140,
@@ -20445,7 +20229,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-advertisement',
                 'is_del' => 0,
             ),
-            351 => 
+            342 => 
             array (
                 'id' => 1121,
                 'pid' => 135,
@@ -20469,7 +20253,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-product',
                 'is_del' => 0,
             ),
-            352 => 
+            343 => 
             array (
                 'id' => 1122,
                 'pid' => 135,
@@ -20493,7 +20277,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-agreements',
                 'is_del' => 0,
             ),
-            353 => 
+            344 => 
             array (
                 'id' => 1123,
                 'pid' => 135,
@@ -20517,31 +20301,31 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-payments',
                 'is_del' => 0,
             ),
-            354 => 
+            345 => 
             array (
                 'id' => 1124,
-                'pid' => 25,
+                'pid' => 135,
                 'icon' => '',
-                'menu_name' => '支付配置',
+                'menu_name' => '支付管理',
                 'module' => 'admin',
                 'controller' => '',
                 'action' => '',
                 'api_url' => '',
                 'methods' => '',
                 'params' => '',
-                'sort' => 0,
+                'sort' => 50,
                 'is_show' => 1,
                 'is_show_path' => 0,
                 'access' => 1,
                 'menu_path' => '/admin/system/payment',
-                'path' => '25',
+                'path' => '135',
                 'auth_type' => 1,
                 'header' => '',
                 'is_header' => 0,
                 'unique_auth' => 'admin-system-payment',
                 'is_del' => 0,
             ),
-            355 => 
+            346 => 
             array (
                 'id' => 1125,
                 'pid' => 43,
@@ -20565,7 +20349,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'cms-traffic_violation_content',
                 'is_del' => 0,
             ),
-            356 => 
+            347 => 
             array (
                 'id' => 1126,
                 'pid' => 35,
@@ -20589,7 +20373,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'finance-user_withdrawal',
                 'is_del' => 0,
             ),
-            357 => 
+            348 => 
             array (
                 'id' => 1127,
                 'pid' => 43,
@@ -20613,7 +20397,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'cms-article-course',
                 'is_del' => 0,
             ),
-            358 => 
+            349 => 
             array (
                 'id' => 1128,
                 'pid' => 135,
@@ -20637,7 +20421,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-config',
                 'is_del' => 0,
             ),
-            359 => 
+            350 => 
             array (
                 'id' => 1129,
                 'pid' => 9,
@@ -20661,7 +20445,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'user-whitelist',
                 'is_del' => 0,
             ),
-            360 => 
+            351 => 
             array (
                 'id' => 1130,
                 'pid' => 1129,
@@ -20685,7 +20469,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'user-whitelist-device',
                 'is_del' => 0,
             ),
-            361 => 
+            352 => 
             array (
                 'id' => 1131,
                 'pid' => 1129,
@@ -20709,7 +20493,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'user-whitelist-ip',
                 'is_del' => 0,
             ),
-            362 => 
+            353 => 
             array (
                 'id' => 1132,
                 'pid' => 1129,
@@ -20733,7 +20517,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'user-whitelist-region',
                 'is_del' => 0,
             ),
-            363 => 
+            354 => 
             array (
                 'id' => 1133,
                 'pid' => 43,
@@ -20757,7 +20541,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-cms-generate',
                 'is_del' => 0,
             ),
-            364 => 
+            355 => 
             array (
                 'id' => 1134,
                 'pid' => 1129,
@@ -20781,7 +20565,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-whitelist-log',
                 'is_del' => 0,
             ),
-            365 => 
+            356 => 
             array (
                 'id' => 1135,
                 'pid' => 9,
@@ -20805,7 +20589,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'admin-user-access-log',
                 'is_del' => 0,
             ),
-            366 => 
+            357 => 
             array (
                 'id' => 1136,
                 'pid' => 9,
@@ -20829,10 +20613,10 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'user-feedback',
                 'is_del' => 0,
             ),
-            367 => 
+            358 => 
             array (
                 'id' => 1137,
-                'pid' => 25,
+                'pid' => 135,
                 'icon' => '',
                 'menu_name' => '商户管理',
                 'module' => 'admin',
@@ -20841,19 +20625,19 @@ class SystemMenusTableSeeder extends Seeder
                 'api_url' => '',
                 'methods' => '',
                 'params' => '',
-                'sort' => 0,
+                'sort' => 90,
                 'is_show' => 1,
                 'is_show_path' => 0,
                 'access' => 1,
                 'menu_path' => '/admin/app/merchant',
-                'path' => '25',
+                'path' => '135',
                 'auth_type' => 1,
                 'header' => '',
                 'is_header' => 0,
                 'unique_auth' => 'app-merchant',
                 'is_del' => 0,
             ),
-            368 => 
+            359 => 
             array (
                 'id' => 1138,
                 'pid' => 135,
@@ -20865,7 +20649,7 @@ class SystemMenusTableSeeder extends Seeder
                 'api_url' => '',
                 'methods' => '',
                 'params' => '',
-                'sort' => 0,
+                'sort' => 95,
                 'is_show' => 1,
                 'is_show_path' => 0,
                 'access' => 1,
@@ -20877,7 +20661,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-obfuscation',
                 'is_del' => 0,
             ),
-            369 => 
+            360 => 
             array (
                 'id' => 1139,
                 'pid' => 56,
@@ -20901,7 +20685,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'system-api-interfaces',
                 'is_del' => 0,
             ),
-            370 => 
+            361 => 
             array (
                 'id' => 1140,
                 'pid' => 0,
@@ -20925,7 +20709,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-ad-manage',
                 'is_del' => 0,
             ),
-            371 => 
+            362 => 
             array (
                 'id' => 1141,
                 'pid' => 1140,
@@ -20949,7 +20733,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-ad-access-stat',
                 'is_del' => 0,
             ),
-            372 => 
+            363 => 
             array (
                 'id' => 1142,
                 'pid' => 1140,
@@ -20973,7 +20757,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'app-ad-access-log',
                 'is_del' => 0,
             ),
-            373 => 
+            364 => 
             array (
                 'id' => 1147,
                 'pid' => 0,
@@ -20997,7 +20781,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'data_statistic',
                 'is_del' => 0,
             ),
-            374 => 
+            365 => 
             array (
                 'id' => 1148,
                 'pid' => 1147,
@@ -21021,7 +20805,7 @@ class SystemMenusTableSeeder extends Seeder
                 'unique_auth' => 'data-statistic-revenue-report',
                 'is_del' => 0,
             ),
-            375 => 
+            366 => 
             array (
                 'id' => 1149,
                 'pid' => 1147,
