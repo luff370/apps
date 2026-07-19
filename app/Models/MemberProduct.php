@@ -58,6 +58,7 @@ class MemberProduct extends Model
         'grace_period' => 'int',
         'renewal_price' => 'float',
         'is_enable' => 'int',
+        'sort' => 'int',
     ];
 
     protected $fillable = [
@@ -84,6 +85,8 @@ class MemberProduct extends Model
         'renewal_price',
         'is_enable',
         'remark',
+        'buy_info',
+        'sort',
         'create_time',
         'update_time',
     ];

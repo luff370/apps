@@ -66,6 +66,7 @@ class ProductController extends Controller
                 ['is_enable', ''],
                 ['remark', ''],
                 ['buy_info', ''],
+                ['sort', 0],
             ]);
 
         logger()->info('---product---', $data);
@@ -137,6 +138,8 @@ class ProductController extends Controller
                 'is_enable' => $info['is_enable'],
                 'remark' => $info['remark'],
                 'buy_info' => $info['buy_info'],
+                'lang' => $info['lang'],
+                'sort' => $info['sort'],
 
             ]
         );

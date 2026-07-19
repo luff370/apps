@@ -39,6 +39,19 @@ class FormOptions
         return $result;
     }
 
+    public static function toStringValueFormOptions(array|\Illuminate\Support\Collection $idNameArr, array $firstOption = []): array
+    {
+        $options = self::toFormOptions($idNameArr, $firstOption);
+
+        foreach ($options as &$option) {
+            if (array_key_exists('value', $option) && $option['value'] !== null) {
+                $option['value'] = (string)$option['value'];
+            }
+        }
+
+        return $options;
+    }
+
     public static function getAllByType(string $type, array $firstOption = []): array
     {
         return match ($type) {
@@ -91,14 +104,14 @@ class FormOptions
     {
         $arr = SystemApp::marketChannelsMap();
 
-        return self::toFormOptions($arr, $firstOption);
+        return self::toStringValueFormOptions($arr, $firstOption);
     }
 
     public static function memberProductPlatforms($firstOption = []): array
     {
         $arr = MemberProduct::platformsMap();
 
-        return self::toFormOptions($arr, $firstOption);
+        return self::toStringValueFormOptions($arr, $firstOption);
     }
 
     public static function agreementType($firstOption = []): array
