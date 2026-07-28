@@ -30,8 +30,10 @@ Route::middleware(['token_auth'])->post('common/upload', 'CommonController@fileU
 Route::prefix('payment')->group(function (\Illuminate\Routing\Router $route) {
     // 支付通知
     $route->post('/wechat/{id}/notify', 'PayCallbackController@wechatNotify');
+    $route->post('/alipay/agreement/{id}/notify', 'PayCallbackController@alipayAgreementNotify');
     $route->post('/alipay/{id}/notify', 'PayCallbackController@alipayNotify');
     $route->post('/apple/notify', 'PayCallbackController@appleNotify');
+    $route->get('/alipay/agreement/return', 'PayCallbackController@alipayAgreementReturn');
     // 支付返回跳转
     $route->get('/return', 'PaymentController@payReturn');
     // 获取当前应用下已开启的支付通道
@@ -45,6 +47,8 @@ Route::prefix('payment')->group(function (\Illuminate\Routing\Router $route) {
     $route->middleware(['token_auth'])->group(function (\Illuminate\Routing\Router $route) {
         // 订单支付
         $route->post('order', 'PaymentController@orderPay');
+        // 支付宝自动续费解约
+        $route->post('/alipay/agreement/cancel', 'PaymentController@cancelAlipayAgreement');
 
         // 支付验证
         $route->post('/apple/verify', 'PayCallbackController@applePayVerify');

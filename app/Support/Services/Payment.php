@@ -105,6 +105,7 @@ class Payment
     private static function tidyAlipayConfig($paymentInfo, $orderNo = ''): array
     {
         return [
+            'id' => $paymentInfo['id'],
             'mch_id' => $paymentInfo['mch_id'],
             'app_id' => $paymentInfo['pay_app_id'],
             'app_secret_cert' => $paymentInfo['payment']['private_key'],
@@ -198,5 +199,25 @@ class Payment
             ->where('pay_type', $payType)
             ->where('app_id', $appId)
             ->value('return_url');
+    }
+
+    /**
+     * @throws ApiException
+     */
+    public static function getDefaultAlipayConfigByAppId($appId, $orderNo = ''): array
+    {
+        $paymentInfo = AppPayment::query()->with('payment')
+            ->where('pay_channel', 'alipay')
+            ->where('app_id', $appId)
+            ->where('status', true)
+            ->orderBy('sort', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if (empty($paymentInfo)) {
+            throw new ApiException('支付宝配置信息获取失败');
+        }
+
+        return self::tidyAlipayConfig($paymentInfo, $orderNo);
     }
 }

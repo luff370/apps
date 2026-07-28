@@ -16,17 +16,23 @@ use Carbon\Carbon;
  * @property int $user_id
  * @property int $is_sandbox
  * @property string $original_transaction_id
+ * @property string $agreement_no
+ * @property string $external_agreement_no
  * @property string $product_id
  * @property string $pay_type
  * @property string $currency
  * @property float $pay_amount
  * @property string $status
+ * @property string $agreement_status
  * @property int $subscribe_success_count
  * @property int $subscribe_fail_count
+ * @property int $deduct_fail_count
  * @property string $subscribe_fail_reason
  * @property Carbon $purchase_date
+ * @property Carbon|null $last_pay_date
  * @property Carbon $expires_date
  * @property Carbon|null $renewal_date
+ * @property Carbon|null $next_pay_date
  * @property Carbon|null $cancellation_date
  * @property Carbon|null $grace_period_expires_date
  * @property bool|null $is_trial_period
@@ -50,9 +56,12 @@ class SubscriptionOrder extends BaseModel
         'pay_amount' => 'float',
         'subscribe_success_count' => 'int',
         'subscribe_fail_count' => 'int',
+        'deduct_fail_count' => 'int',
         'purchase_date' => 'datetime',
+        'last_pay_date' => 'datetime',
         'expires_date' => 'datetime',
         'renewal_date' => 'datetime',
+        'next_pay_date' => 'datetime',
         'cancellation_date' => 'datetime',
         'grace_period_expires_date' => 'datetime',
         'is_trial_period' => 'bool',
@@ -64,17 +73,23 @@ class SubscriptionOrder extends BaseModel
         'user_id',
         'is_sandbox',
         'original_transaction_id',
+        'agreement_no',
+        'external_agreement_no',
         'product_id',
         'pay_type',
         'currency',
         'pay_amount',
         'status',
+        'agreement_status',
         'subscribe_success_count',
         'subscribe_fail_count',
+        'deduct_fail_count',
         'subscribe_fail_reason',
         'purchase_date',
+        'last_pay_date',
         'expires_date',
         'renewal_date',
+        'next_pay_date',
         'cancellation_date',
         'grace_period_expires_date',
         'is_trial_period',
@@ -88,6 +103,7 @@ class SubscriptionOrder extends BaseModel
     public static function subscribeStatusMap()
     {
         return [
+            'pending' => '签约中',
             'active' => '已订阅',
             'canceled' => '已取消',
             'failed_to_renew' => '续订失败',
@@ -100,6 +116,7 @@ class SubscriptionOrder extends BaseModel
     public static function subscribeStatusColorMap()
     {
         return [
+            'pending' => 'default',
             'active' => 'success',
             'canceled' => 'red',
             'failed_to_renew' => 'error',

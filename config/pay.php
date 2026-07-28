@@ -22,6 +22,16 @@ return [
             'service_provider_id' => '',
         ]
     ],
+    'alipay_agreement' => [
+        // 支付宝周期扣款签约产品码，商户需要先在支付宝侧开通对应能力。
+        'sign_product_code' => env('ALIPAY_AGREEMENT_SIGN_PRODUCT_CODE', 'CYCLE_PAY_AUTH_P'),
+        // 需按商户行业填写，例如 INDUSTRY|APP_STORE、INDUSTRY|DIGITAL_MEDIA。
+        'sign_scene' => env('ALIPAY_AGREEMENT_SIGN_SCENE', 'INDUSTRY|APP_STORE'),
+        'pay_product_code' => env('ALIPAY_AGREEMENT_PAY_PRODUCT_CODE', 'GENERAL_WITHHOLDING'),
+        // 0 表示不限制总期数。
+        'total_payments' => env('ALIPAY_AGREEMENT_TOTAL_PAYMENTS', 0),
+        'max_deduct_fail_count' => env('ALIPAY_AGREEMENT_MAX_DEDUCT_FAIL_COUNT', 3),
+    ],
     'wechat' => [
         'default' => [
             // 必填-商户号，服务商模式下为服务商商户号

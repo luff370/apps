@@ -36,6 +36,9 @@ class Kernel extends ConsoleKernel
         // 每天1:00执行订阅用户状态检测定时任务
         $schedule->command('subscriptions:check')->dailyAt('01:00');
 
+        // 每天1:10执行支付宝自动续费扣款任务
+        $schedule->command('alipay:auto-renewal-charge')->dailyAt('01:10');
+
         // 每天00:00执行用户会员状态变更定时任务
         $schedule->command('app:member-status-auto-update')->dailyAt('00:00');
     }

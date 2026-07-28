@@ -11,6 +11,7 @@ use App\Support\Utils\Apple;
 use App\Exceptions\ApiException;
 use App\Models\SubscriptionOrder;
 use App\Support\Services\Payment;
+use App\Support\Services\AlipayAutoRenewalService;
 use App\Exceptions\AdminException;
 use Illuminate\Support\Facades\Log;
 use App\Services\Order\PaymentService;
@@ -303,5 +304,28 @@ class PayCallbackController extends Controller
 
             return response('fail', 400);
         }
+    }
+
+    public function alipayAgreementNotify($id, AlipayAutoRenewalService $service)
+    {
+        Log::info("AlipayAgreementNotify data:", request()->all());
+
+        try {
+            $config = Payment::getAlipayConfigByPaymentId($id);
+            $service->handleAgreementCallback(request()->except(['s']), $config);
+
+            return response('success');
+        } catch (\Exception $e) {
+            Log::error('Alipay Agreement Notify Error:', ['message' => $e->getMessage()]);
+
+            return response('fail', 400);
+        }
+    }
+
+    public function alipayAgreementReturn(Request $request, AlipayAutoRenewalService $service)
+    {
+        Log::info("AlipayAgreementReturn data:", $request->all());
+
+        return redirect('/api/payment/return?order_no=' . urlencode((string)$request->get('order_no', '')));
     }
 }

@@ -7,6 +7,7 @@ use App\Models\MemberOrder;
 use Illuminate\Http\Request;
 use App\Exceptions\ApiException;
 use App\Support\Services\Payment;
+use App\Support\Services\AlipayAutoRenewalService;
 use App\Services\Order\PaymentService;
 use Illuminate\Support\Facades\Log;
 use Psr\Http\Message\ResponseInterface;
@@ -118,6 +119,10 @@ class PaymentController extends Controller
 
                 switch ($payChannel) {
                     case Payment::PAY_CHANNEL_ALIPAY: // 支付宝支付
+                        if ((int)$order['type'] === MemberOrder::TYPE_SUBSCRIBE) {
+                            return $this->success(app(AlipayAutoRenewalService::class)->createSignPayload($order, $payType));
+                        }
+
                         $payParams = [
                             'out_trade_no' => $orderNo,
                             'subject' => '会员订购',
@@ -236,6 +241,20 @@ class PaymentController extends Controller
         }
 
         return $this->success(['pay_status' => $order['pay_status']]);
+    }
+
+    public function cancelAlipayAgreement(Request $request, AlipayAutoRenewalService $service)
+    {
+        $agreementNo = trim((string)$request->get('agreement_no', ''));
+        $payType = $request->get('pay_type', Payment::PAY_TYPE_APP);
+
+        if ($agreementNo === '') {
+            return $this->fail('缺少支付宝协议号');
+        }
+
+        $service->cancel((int)authUserId(), $agreementNo, $payType);
+
+        return $this->success('解约成功');
     }
 
     public function test(Request $request, PaymentService $paymentService)
