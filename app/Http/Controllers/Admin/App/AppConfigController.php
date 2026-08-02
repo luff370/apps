@@ -136,24 +136,6 @@ class AppConfigController extends Controller
 
     public function copy($id)
     {
-        $info = $this->service->get($id);
-        if (empty($info)) {
-            return $this->fail(100100);
-        }
-
-        AppConfig::query()->create(
-            [
-                'app_id' => $info['app_id'],
-                'channel' => $info['channel'],
-                'version' => $info['version'],
-                'name' => $info['name'],
-                'key' => $info['key'],
-                'value' => $info['value'],
-                'remark' => $info['remark'],
-                'is_enable' => 0
-            ]
-        );
-
-        return $this->success(100021);
+        return $this->success($this->service->copyForm((int)$id));
     }
 }

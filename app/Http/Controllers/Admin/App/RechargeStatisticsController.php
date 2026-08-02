@@ -16,7 +16,13 @@ class RechargeStatisticsController extends Controller
      */
     public function summary(Request $request, OperationStatisticsService $service): JsonResponse
     {
-        return $this->success($service->rechargeSummary($request->only(['app_id', 'start_date', 'end_date'])));
+        return $this->success($service->rechargeSummary($request->only([
+            'app_id',
+            'start_date',
+            'end_date',
+            'market_channel',
+            'version',
+        ])));
     }
 
     /**
@@ -26,6 +32,13 @@ class RechargeStatisticsController extends Controller
      */
     public function trend(Request $request, OperationStatisticsService $service): JsonResponse
     {
-        return $this->success($service->rechargeTrend($request->only(['app_id', 'start_date', 'end_date', 'metric'])));
+        return $this->success($service->rechargeTrend($request->only([
+            'app_id',
+            'start_date',
+            'end_date',
+            'metric',
+            'market_channel',
+            'version',
+        ])));
     }
 }

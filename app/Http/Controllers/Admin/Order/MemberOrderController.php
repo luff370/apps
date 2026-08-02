@@ -21,4 +21,26 @@ class MemberOrderController extends Controller
         return $this->success($data);
     }
 
+    public function refund($id)
+    {
+        $data = $this->getMore([
+            ['refund_price', 0],
+            ['remark', ''],
+        ]);
+
+        $this->service->refund((int)$id, $data);
+
+        return $this->success('退款成功');
+    }
+
+    public function remark($id)
+    {
+        $data = $this->getMore([
+            ['remark', ''],
+        ]);
+
+        $this->service->remark((int)$id, (string)$data['remark']);
+
+        return $this->success('备注保存成功');
+    }
 }

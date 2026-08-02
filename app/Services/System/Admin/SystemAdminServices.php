@@ -51,6 +51,7 @@ class SystemAdminServices extends Service
     public function verifyLogin(string $account, string $password)
     {
         $adminInfo = $this->dao->accountByAdmin($account);
+        logger()->info("密码验证---",['adminInfo'=>$adminInfo,'password'=>$password,'pwdHash'=>$this->passwordHash($password)]);
         if (!$adminInfo || !password_verify($password, $adminInfo->pwd)) {
             return false;
         }

@@ -30,4 +30,15 @@ class AppConfigDao extends BaseDao
         return $query;
     }
 
+    public function existsByUniqueKey(array $data, int $ignoreId = 0): bool
+    {
+        return $this->newQuery()
+            ->where('app_id', $data['app_id'])
+            ->where('channel', $data['channel'])
+            ->where('key', $data['key'])
+            ->when($ignoreId > 0, function (Builder $query) use ($ignoreId) {
+                $query->where('id', '<>', $ignoreId);
+            })
+            ->exists();
+    }
 }

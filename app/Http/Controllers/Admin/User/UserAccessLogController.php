@@ -24,6 +24,7 @@ class UserAccessLogController extends Controller
             ['user_id', ''],
             ['app_id', ''],
             ['market_channel', ''],
+            ['version', ''],
             ['keyword', ''],
             ['time', ''],
         ]);

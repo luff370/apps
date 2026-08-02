@@ -43,6 +43,27 @@ class ApiObfuscationController extends Controller
         return $this->success('保存成功');
     }
 
+    public function updateAliasParams()
+    {
+        $data = $this->getMore([['id', 0], ['alias', ''], ['request_key_map', []], ['response_key_map', []], ['response_data_key_map', []], ['is_enable', 1], ['remark', '']]);
+        if (empty($data['id'])) return $this->fail('请选择接口别名');
+        return $this->success($this->obfuscationService->updateAliasParams($data), '保存成功');
+    }
+
+    public function syncAliasParams($id)
+    {
+        $data = $this->obfuscationService->syncAliasParams((int) $id);
+        if (!$data) return $this->fail('接口别名不存在或公共接口不存在');
+        return $this->success($data, '同步成功');
+    }
+
+    public function generateAliasParams()
+    {
+        $data = $this->getMore([['id', 0]]);
+        if (empty($data['id'])) return $this->fail('请选择接口别名');
+        return $this->success($this->obfuscationService->generateAliasParams($data));
+    }
+
     public function deleteAlias($id)
     {
         $this->obfuscationService->deleteAlias((int) $id);

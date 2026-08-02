@@ -30,6 +30,10 @@ class UserAccessLogDao extends BaseDao
             $query->where('market_channel', $where['market_channel']);
         }
 
+        if (!empty($where['version'])) {
+            $query->where('version', $where['version']);
+        }
+
         if (!empty($where['time'])) {
             $this->searchDate($query, 'created_at', $where['time']);
         }

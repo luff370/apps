@@ -6,7 +6,9 @@ use App\Services\Service;
 use App\Models\MemberOrder;
 use App\Models\MemberProduct;
 use App\Dao\Order\MemberOrderDao;
+use App\Models\User;
 use App\Exceptions\RequestException;
+use Illuminate\Support\Facades\DB;
 
 class MemberOrderService extends Service
 {
@@ -74,6 +76,8 @@ class MemberOrderService extends Service
         $memberStatusColorMap = MemberOrder::memberStatusColorMap();
         $payStatusMap = MemberOrder::payStatusMap();
         $payStatusColorMap = MemberOrder::payStatusColorMap();
+        $refundStatusMap = MemberOrder::refundStatusMap();
+        $refundStatusColorMap = MemberOrder::refundStatusColorMap();
         foreach ($list as &$item) {
             $item['type_name'] = $typeMap[$item['type']] ?? '';
             $item['member_type_name'] = $memberTypeMap[$item['member_type']] ?? '';
@@ -82,7 +86,14 @@ class MemberOrderService extends Service
             $item['pay_status_name'] = $payStatusMap[$item['pay_status']] ?? '';
             $item['pay_status_color'] = $payStatusColorMap[$item['pay_status']] ?? '';
             $item['pay_type_name'] = $payTypeMap[$item['pay_type']] ?? '';
+            $item['refund_status_name'] = $refundStatusMap[(int)($item['refund_status'] ?? 0)] ?? '';
+            $item['refund_status_color'] = $refundStatusColorMap[(int)($item['refund_status'] ?? 0)] ?? '';
+            if ((int)($item['refund_status'] ?? 0) !== MemberOrder::REFUND_STATUS_NONE) {
+                $item['pay_status_name'] = $item['refund_status_name'];
+                $item['pay_status_color'] = $item['refund_status_color'];
+            }
             $item['pay_time'] = empty($item['pay_time']) ? '' : date('Y-m-d H:i', $item['pay_time']);
+            $item['refund_time'] = empty($item['refund_time']) ? '' : date('Y-m-d H:i', $item['refund_time']);
             $item['product'] = [
                 'id' => $item['product_id'],
                 'name' => $item['product_name'],
@@ -91,5 +102,79 @@ class MemberOrderService extends Service
         }
 
         return $list;
+    }
+
+    /**
+     * 会员订单后台手动退款，仅记录退款结果，不调用支付渠道退款接口。
+     *
+     * @throws RequestException
+     */
+    public function refund(int $id, array $data): void
+    {
+        $refundPrice = $this->money($data['refund_price'] ?? 0);
+        if ($refundPrice <= 0) {
+            throw new RequestException('请输入退款金额');
+        }
+
+        DB::transaction(function () use ($id, $refundPrice, $data) {
+            $order = MemberOrder::query()->where('id', $id)->lockForUpdate()->first();
+            if (!$order) {
+                throw new RequestException('订单不存在');
+            }
+
+            if (!$order->paid && $order->pay_status !== MemberOrder::PAY_STATUS_PAID) {
+                throw new RequestException('未支付订单不能退款');
+            }
+
+            if ($order->member_status !== MemberOrder::MEMBER_STATUS_ACTIVE && (int)$order->refund_status === MemberOrder::REFUND_STATUS_NONE) {
+                throw new RequestException('只有有效状态的会员订单可以退款');
+            }
+
+            if ((int)$order->refund_status === MemberOrder::REFUND_STATUS_REFUNDED) {
+                throw new RequestException('订单已退款');
+            }
+
+            $payPrice = $this->money($order->pay_price);
+            $refundedPrice = $this->money($order->refund_price);
+            $totalRefundPrice = $this->money($refundedPrice + $refundPrice);
+            if ($totalRefundPrice > $payPrice) {
+                throw new RequestException('退款金额不能大于订单金额');
+            }
+
+            $order->refund_status = $totalRefundPrice >= $payPrice ? MemberOrder::REFUND_STATUS_REFUNDED : MemberOrder::REFUND_STATUS_PARTIAL;
+            $order->refund_price = $totalRefundPrice;
+            $order->refund_time = time();
+            $order->member_status = MemberOrder::MEMBER_STATUS_EXPIRED;
+            if (trim((string)($data['remark'] ?? '')) !== '') {
+                $order->remark = trim((string)$data['remark']);
+            }
+            $order->save();
+
+            $user = User::query()->where('id', $order->user_id)->lockForUpdate()->first();
+            if ($user) {
+                $user->is_vip = 0;
+                $user->vip_type = 0;
+                $user->overdue_time = time();
+                $user->expires_date = now()->toDateTimeString();
+                $user->save();
+            }
+        });
+    }
+
+    /**
+     * @throws RequestException
+     */
+    public function remark(int $id, string $remark): void
+    {
+        if ($id <= 0) {
+            throw new RequestException('订单不存在');
+        }
+
+        $this->dao->update($id, ['remark' => trim($remark)]);
+    }
+
+    private function money(float|int|string $value): float
+    {
+        return round((float)$value, 2);
     }
 }
