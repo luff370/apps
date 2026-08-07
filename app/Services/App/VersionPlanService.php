@@ -8,15 +8,16 @@ use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
 use App\Models\SystemApp;
 use App\Services\Service;
+use App\Services\System\AppVersionServices;
 use App\Support\Services\AppConfigService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
 {
-    private const REVIEW_PASSED_STATUS = '已过审';
-
     private const AUTO_ADD_WHITE_LIST_KEY = 'auto_add_white_list';
+
+    private const AUTO_ADD_WHITE_LIST_NAME = '自动添加白名单';
 
     /**
      * 版本规划列表直接返回前端页面需要的嵌套结构。
@@ -86,19 +87,27 @@ class VersionPlanService extends Service
 
             // 计划任务属于一个小集合，整体重建比逐条 diff 更稳定，也避免遗留已删除渠道。
             AppVersionPlanTask::query()->where('plan_id', $plan->id)->delete();
-            $reviewPassedChannels = [];
+            $auditCacheKeys = [];
+            $autoAddWhiteListTasks = [];
             foreach ($data['tasks'] as $task) {
                 $this->createTask($plan, $task);
-                if ((string)($task['status'] ?? '') === self::REVIEW_PASSED_STATUS) {
-                    $channel = (string)($task['market_channel'] ?? '');
-                    if ($channel !== '') {
-                        $reviewPassedChannels[$channel] = true;
-                    }
+                $channel = (string)($task['market_channel'] ?? '');
+                $version = (string)($task['version'] ?? '');
+                if ($channel !== '' && $version !== '') {
+                    $auditCacheKeys[AppVersionServices::auditStatusCacheKey($appId, $channel, $version)] = true;
+                    $autoAddWhiteListTasks[$channel] = $task;
                 }
             }
-            $closedAutoAddWhiteList = $this->closeAutoAddWhiteListForChannels($appId, array_keys($reviewPassedChannels));
-            if ($closedAutoAddWhiteList) {
+            $syncedAutoAddWhiteList = $this->syncAutoAddWhiteListConfigs($appId, array_values($autoAddWhiteListTasks));
+            if ($syncedAutoAddWhiteList) {
                 DB::afterCommit(fn() => AppConfigService::cacheByAppId($appId));
+            }
+            if (!empty($auditCacheKeys)) {
+                DB::afterCommit(function () use ($auditCacheKeys) {
+                    foreach (array_keys($auditCacheKeys) as $cacheKey) {
+                        cache()->forget($cacheKey);
+                    }
+                });
             }
             $this->syncAppMarketsFromListedTasks($appId);
 
@@ -278,19 +287,69 @@ class VersionPlanService extends Service
         ]);
     }
 
-    private function closeAutoAddWhiteListForChannels(int $appId, array $channels): bool
+    private function syncAutoAddWhiteListConfigs(int $appId, array $tasks): bool
     {
-        $channels = array_values(array_unique(array_filter($channels, fn($channel) => $channel !== '')));
-        if ($appId <= 0 || empty($channels)) {
-            return false;
+        $changed = false;
+        foreach ($tasks as $task) {
+            $channel = (string)($task['market_channel'] ?? '');
+            $version = (string)($task['version'] ?? '');
+            if ($channel === '' || $version === '') {
+                continue;
+            }
+
+            $value = (string)($task['status'] ?? '') === '审核中' ? '1' : '0';
+            $config = AppConfig::query()
+                ->where('app_id', $appId)
+                ->where('channel', $channel)
+                ->where('key', self::AUTO_ADD_WHITE_LIST_KEY)
+                ->first();
+
+            if ($config) {
+                $next = [
+                    'version' => $version,
+                    'value' => $value,
+                    'remark' => $this->autoAddWhiteListRemark($value),
+                    'is_enable' => 1,
+                ];
+                $dirty = false;
+                foreach ($next as $field => $fieldValue) {
+                    if ((string)$config->{$field} !== (string)$fieldValue) {
+                        $dirty = true;
+                        break;
+                    }
+                }
+                if ($dirty) {
+                    $config->fill($next)->save();
+                    $changed = true;
+                }
+                continue;
+            }
+
+            if ($value !== '1') {
+                continue;
+            }
+
+            AppConfig::query()->create([
+                'app_id' => $appId,
+                'channel' => $channel,
+                'version' => $version,
+                'name' => self::AUTO_ADD_WHITE_LIST_NAME,
+                'key' => self::AUTO_ADD_WHITE_LIST_KEY,
+                'value' => $value,
+                'remark' => $this->autoAddWhiteListRemark($value),
+                'is_enable' => 1,
+            ]);
+            $changed = true;
         }
 
-        return AppConfig::query()
-            ->where('app_id', $appId)
-            ->whereIn('channel', $channels)
-            ->where('key', self::AUTO_ADD_WHITE_LIST_KEY)
-            ->where('value', '<>', '0')
-            ->update(['value' => '0']) > 0;
+        return $changed;
+    }
+
+    private function autoAddWhiteListRemark(string $value): string
+    {
+        return $value === '1'
+            ? '渠道状态为审核中，版本规划自动打开。'
+            : '渠道状态为非审核中，版本规划自动关闭。';
     }
 
     private function formatPlan(AppVersionPlan $plan): array

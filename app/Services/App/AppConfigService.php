@@ -32,6 +32,7 @@ class AppConfigService extends Service
         $channels = SystemApp::marketChannelsMap();
         foreach ($list as &$item) {
             $item['app_name'] = $apps[$item['app_id']] ?? '';
+            $item['channel_value'] = $item['channel'];
             $item['channel']  = $channels[$item['channel']] ?? '全部';
         }
 
