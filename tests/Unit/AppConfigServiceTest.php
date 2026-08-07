@@ -6,7 +6,7 @@ use App\Dao\App\AppConfigDao;
 use App\Exceptions\AdminException;
 use App\Models\AppConfig;
 use App\Services\App\AppConfigService;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class AppConfigServiceTest extends TestCase
 {
@@ -77,6 +77,40 @@ class AppConfigServiceTest extends TestCase
             ->willReturn(1);
 
         $this->assertSame(1, (new AppConfigService($dao))->update(10, $updateData));
+    }
+
+    public function test_update_form_uses_put_method_for_existing_config(): void
+    {
+        $info = new AppConfig([
+            'app_id' => 10001,
+            'channel' => 'huawei',
+            'version' => '1.0.0',
+            'name' => '开关',
+            'key' => 'feature_switch',
+            'value' => '1',
+            'remark' => '',
+            'is_enable' => 1,
+        ]);
+        $info->id = 10;
+
+        $dao = $this->createMock(AppConfigDao::class);
+        $dao->expects($this->once())
+            ->method('get')
+            ->with(10)
+            ->willReturn($info);
+
+        $service = new class($dao) extends AppConfigService {
+            public function createUpdateForm(array $info = []): array
+            {
+                return [];
+            }
+        };
+
+        $form = $service->updateForm(10);
+
+        $this->assertSame('修改', $form['title']);
+        $this->assertSame('PUT', $form['method']);
+        $this->assertStringEndsWith('/admin/app/app_config/10', $form['action']);
     }
 
     public function test_copy_returns_create_form_with_original_values_without_saving(): void

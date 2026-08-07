@@ -7,6 +7,7 @@ namespace App\Services\System;
 use App\Services\Service;
 use App\Models\SystemApp;
 use App\Models\AppVersion;
+use App\Models\AppVersionPlanTask;
 use App\Dao\System\AppVersionDao;
 use App\Exceptions\AdminException;
 use App\Support\Services\FormOptions;
@@ -104,16 +105,20 @@ class AppVersionServices extends Service
 
     public static function getAuditStatusByVersion($appId, $marketChannel, $version): int
     {
-        $cacheKey = 'app_audit_status:' . $appId . '-' . $marketChannel . '-' . $version;
+        $cacheKey = self::auditStatusCacheKey($appId, $marketChannel, $version);
 
         $isAudit = cache($cacheKey);
         if ($isAudit === null) {
             $isAudit = 0;
-            $info = AppVersion::query()->where('app_id', $appId)
-                ->where('platform', $marketChannel)
-                ->where('version', $version)
-                ->first(['id', 'audit_status']);
-            if ($info && $info['audit_status'] == 0) {
+            $status = AppVersionPlanTask::query()
+                ->join('app_version_plans', 'app_version_plans.id', '=', 'app_version_plan_tasks.plan_id')
+                ->where('app_version_plans.app_id', $appId)
+                ->where('app_version_plan_tasks.market_channel', $marketChannel)
+                ->where('app_version_plan_tasks.version', $version)
+                ->orderByDesc('app_version_plan_tasks.updated_at')
+                ->orderByDesc('app_version_plan_tasks.id')
+                ->value('app_version_plan_tasks.status');
+            if ($status === '审核中') {
                 $isAudit = 1;
             }
 
@@ -121,5 +126,10 @@ class AppVersionServices extends Service
         }
 
         return (int) $isAudit;
+    }
+
+    public static function auditStatusCacheKey($appId, $marketChannel, $version): string
+    {
+        return 'app_audit_status:' . $appId . '-' . $marketChannel . '-' . $version;
     }
 }
