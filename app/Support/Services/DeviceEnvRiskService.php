@@ -14,6 +14,9 @@ class DeviceEnvRiskService
      * 注意：ts/nc/ver 是密文内元数据，客户端没有混淆，但统一放在这里便于递归还原。
      */
     private const WIRE_KEY_MAP = [
+        'ev' => 'env_schema_v',
+        'ef' => 'env_field_count',
+        'eg' => 'env_payload_digest',
         'pv' => 'probe_v',
         'pf' => 'platform',
         'mk' => 'is_monkey',
@@ -25,14 +28,54 @@ class DeviceEnvRiskService
         'ss' => 'sim_state',
         'dr' => 'drm_ok',
         'ap' => 'automation_proc_count',
+        'np' => 'native_probe_ok',
+        'nv' => 'native_protocol_v',
+        'nq' => 'native_channel_ok',
+        'nm' => 'native_method_ok',
         'rk' => 'root_suspect',
+        'cp' => 'is_cloud_phone',
+        'ao' => 'adb_control_port_open',
+        'sd' => 'sensor_data_dead',
+        'bf' => 'build_emulator_fingerprint',
+        'to' => 'touch_coordinate_oob',
+        'ns' => 'input_source_not_touchscreen',
+        'sc' => 'screen_is_captured',
+        'pj' => 'screen_projection_active',
+        'rd' => 'release_debuggable',
+        'bu' => 'build_type_not_user',
         'jb' => 'is_jailbroken',
         'px' => 'has_proxy',
         'rt' => 'probe_variant',
         'tc' => 'touch_sample_count',
         'tt' => 'touch_timing_entropy',
         'td' => 'touch_coord_dispersion',
+        'tp' => 'touch_pressure_variation',
+        'tv' => 'touch_contact_variation',
+        'tz' => 'touch_pressure_zero_ratio',
+        'cc' => 'click_sample_count',
+        'ct' => 'click_target_entropy',
+        'cb' => 'click_center_bias',
+        'ci' => 'click_in_bounds_ratio',
+        'wc' => 'swipe_sample_count',
+        'wl' => 'swipe_linearity',
+        'ws' => 'swipe_speed_uniformity',
+        'wj' => 'swipe_micro_jitter',
         'sg' => 'sensor_static_score',
+        'kc' => 'click_sample_count',
+        'ke' => 'click_target_entropy',
+        'kb' => 'click_center_bias',
+        'kr' => 'click_in_bounds_ratio',
+        'pr' => 'touch_pressure_variation',
+        'cv' => 'touch_contact_variation',
+        'pz' => 'touch_pressure_zero_ratio',
+        'wc' => 'swipe_sample_count',
+        'wl' => 'swipe_linearity',
+        'wu' => 'swipe_speed_uniformity',
+        'wj' => 'swipe_micro_jitter',
+        'gy' => 'gyro_static_score',
+        'iu' => 'imu_static_during_touch',
+        'gs' => 'gyro_static_score',
+        'it' => 'imu_static_during_touch',
         'em' => 'is_emulator',
         'vp' => 'is_vpn',
         'nt' => 'network_transport',
@@ -43,6 +86,14 @@ class DeviceEnvRiskService
         'rf' => 'remote_is_free_ad',
         'cm' => 'remote_compliance_mode',
         'ca' => 'client_allows_ads',
+        // probe_v=8 轻量客户端兼容字段。
+        'sim' => 'is_simulator',
+        'vpn' => 'vpn_connected',
+        'tcn' => 'touch_count',
+        'ucc' => 'ui_click_count',
+        'swc' => 'swipe_count',
+        'tpm' => 'touch_pressure_avg_milli',
+        'ist' => 'imu_samples_during_touch',
         'ts' => 'ts',
         'nc' => 'nc',
         'ver' => 'ver',
@@ -77,9 +128,12 @@ class DeviceEnvRiskService
             $probe = $this->decrypt($sealed, $packageName, $appId);
             $this->assertReplayAllowed($probe, $packageName, $appId);
 
+            $validation = $this->validateProbeSchema($probe);
+
             return $this->context('ok', $probe, [
                 'package_name' => $packageName,
                 'app_id' => $appId,
+                'validation' => $validation,
             ]);
         } catch (RuntimeException $e) {
             return $this->context('error', [], [
@@ -223,7 +277,7 @@ class DeviceEnvRiskService
     {
         // 统一返回结构放到 request attributes 中，后续控制器、日志或审计任务都可以复用。
         // status=missing/error 时 probe 为空，score 会自然为 0，不会触发广告降级。
-        $decision = $this->score($probe);
+        $decision = $this->score($probe, $meta['validation']['errors'] ?? []);
 
         return array_merge($meta, [
             'status' => $status,
@@ -234,7 +288,7 @@ class DeviceEnvRiskService
         ]);
     }
 
-    private function score(array $probe): array
+    private function score(array $probe, array $validationErrors = []): array
     {
         $score = 0;
         $reasons = [];
@@ -254,10 +308,50 @@ class DeviceEnvRiskService
         $add((bool) ($probe['has_user_ca'] ?? false), 60, 'user_ca');
         $add(array_key_exists('path_safe', $probe) && $probe['path_safe'] === false, 50, 'path_unsafe');
         $add((bool) ($probe['is_emulator'] ?? false), 50, 'emulator');
+        $add((bool) ($probe['is_cloud_phone'] ?? false), 50, 'cloud_phone');
         $add((bool) ($probe['is_vpn'] ?? false), 50, 'vpn');
         $add((bool) ($probe['is_debugger'] ?? false), 50, 'debugger');
+        $add((bool) ($probe['adb_control_port_open'] ?? false), 80, 'adb_control_port');
+        $add((bool) ($probe['touch_coordinate_oob'] ?? false), 80, 'touch_coordinate_oob');
+        $add((bool) ($probe['sensor_data_dead'] ?? false), 70, 'sensor_data_dead');
+        $add((bool) ($probe['screen_is_captured'] ?? false), 70, 'screen_captured');
+        $add((bool) ($probe['screen_projection_active'] ?? false), 70, 'screen_projection');
+        $add((bool) ($probe['build_emulator_fingerprint'] ?? false), 50, 'emulator_fingerprint');
+        $add((bool) ($probe['input_source_not_touchscreen'] ?? false), 60, 'input_not_touchscreen');
+        $add((bool) ($probe['release_debuggable'] ?? false), 60, 'release_debuggable');
+        $add((bool) ($probe['build_type_not_user'] ?? false), 50, 'build_type_not_user');
         $add((int) ($probe['automation_proc_count'] ?? 0) >= 1, 40, 'automation_proc');
-        $add((int) ($probe['touch_timing_entropy'] ?? 100) < 20 && (int) ($probe['touch_coord_dispersion'] ?? 100) < 15, 35, 'touch_low_entropy');
+
+        $touchSamples = (int) ($probe['touch_sample_count'] ?? 0);
+        $clickSamples = (int) ($probe['click_sample_count'] ?? 0);
+        $swipeSamples = (int) ($probe['swipe_sample_count'] ?? 0);
+
+        // 行为信号必须满足样本门槛和完整组合，避免刚启动的零值或手机平放真人被单项误判。
+        $add($touchSamples >= 5 && (int) ($probe['touch_timing_entropy'] ?? 100) < 20 && (int) ($probe['touch_coord_dispersion'] ?? 100) < 15, 35, 'touch_low_entropy');
+        $add(
+            $touchSamples >= 5
+            && (int) ($probe['touch_pressure_zero_ratio'] ?? 0) > 80
+            && (int) ($probe['touch_pressure_variation'] ?? 100) < 15
+            && (int) ($probe['touch_contact_variation'] ?? 100) < 15,
+            30,
+            'touch_biometrics_synthetic'
+        );
+        $add(
+            ($touchSamples >= 5 || $clickSamples >= 3)
+            && (int) ($probe['imu_static_during_touch'] ?? 0) > 85
+            && (int) ($probe['gyro_static_score'] ?? 0) > 85,
+            30,
+            'imu_static_during_activity'
+        );
+        $add(
+            $swipeSamples >= 2
+            && (int) ($probe['swipe_linearity'] ?? 0) > 92
+            && (int) ($probe['swipe_speed_uniformity'] ?? 0) > 85
+            && (int) ($probe['swipe_micro_jitter'] ?? 100) < 10,
+            25,
+            'swipe_synthetic'
+        );
+        $add((int) ($probe['click_sample_count'] ?? 0) >= 3 && (int) ($probe['click_target_entropy'] ?? 100) < 25 && (int) ($probe['click_center_bias'] ?? 0) > 80, 20, 'click_synthetic');
         $add((int) ($probe['sensor_static_score'] ?? 0) > 85, 25, 'sensor_static');
         $add((int) ($probe['sim_state'] ?? 0) === 1 && ($probe['network_transport'] ?? '') === 'wifi', 20, 'sim_absent_wifi');
         $add((bool) ($probe['root_suspect'] ?? false), 15, 'root');
@@ -265,6 +359,9 @@ class DeviceEnvRiskService
         $add((bool) ($probe['is_jailbroken'] ?? false), 15, 'jailbroken');
         $add((int) ($probe['suspicious_a11y_count'] ?? 0) >= 1, 10, 'suspicious_a11y');
         $add(array_key_exists('drm_ok', $probe) && $probe['drm_ok'] === false, 10, 'drm_failed');
+        $add(in_array('native_probe_protocol_mismatch', $validationErrors, true), 15, 'native_probe_protocol_mismatch');
+        $add(in_array('device_env_digest_mismatch', $validationErrors, true), 10, 'device_env_digest_mismatch');
+        $add(in_array('env_field_count_mismatch', $validationErrors, true), 5, 'env_field_count_mismatch');
 
         // env_allows_ads=false 表示客户端本地硬门禁已经关闭广告。
         // 即使单项分数没有凑够 60，服务端也要同步进入 compliance_mode，保证 AI/广告策略一致。
@@ -275,11 +372,86 @@ class DeviceEnvRiskService
 
         // 当前阈值：>=60 下发 compliance_mode=1 且关广告；40-59 只关广告。
         // 后续如果需要运营动态调整，可以把这段阈值迁到配置表，但输出字段保持不变。
+        $score = min(100, $score);
+        $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
+        $adBlockThreshold = (int) config('api_obfuscation.device_env.ad_block_score_threshold', 40);
+
         return [
             'score' => $score,
             'reasons' => array_values(array_unique($reasons)),
-            'compliance_mode' => $score >= 60 ? 1 : 0,
-            'ad_switch' => $score >= 40 ? 0 : 1,
+            'compliance_mode' => $score >= $complianceThreshold ? 1 : 0,
+            'ad_switch' => $score >= $adBlockThreshold ? 0 : 1,
         ];
+    }
+
+    private function validateProbeSchema(array $probe): array
+    {
+        $errors = [];
+        $digestOk = null;
+        $fieldCountOk = null;
+
+        if ((int) ($probe['probe_v'] ?? 0) >= 9) {
+            if ((int) ($probe['env_schema_v'] ?? 0) !== 2) {
+                $errors[] = 'env_schema_v_invalid';
+            }
+
+            $excluded = ['env_schema_v', 'env_field_count', 'env_payload_digest', 'ts', 'nc', 'ver'];
+            $actualCount = count(array_filter(
+                $probe,
+                fn($value, $key) => $value !== null && !in_array($key, $excluded, true),
+                ARRAY_FILTER_USE_BOTH
+            ));
+            if (is_int($probe['env_field_count'] ?? null)) {
+                $fieldCountOk = $probe['env_field_count'] === $actualCount;
+                if (!$fieldCountOk) {
+                    $errors[] = 'env_field_count_mismatch';
+                }
+            }
+
+            $digest = $probe['env_payload_digest'] ?? null;
+            if (is_string($digest) && preg_match('/^[a-f0-9]{16}$/', $digest)) {
+                $digestPayload = array_diff_key($probe, array_flip(['env_payload_digest', 'ts', 'nc', 'ver']));
+                $expected = substr(hash('sha256', $this->canonicalJson($digestPayload)), 0, 16);
+                $digestOk = hash_equals($expected, $digest);
+                if (!$digestOk) {
+                    $errors[] = 'device_env_digest_mismatch';
+                }
+            }
+
+            if (($probe['native_probe_ok'] ?? null) === false) {
+                $errors[] = 'native_probe_protocol_mismatch';
+            }
+            if (($probe['native_channel_ok'] ?? null) === false) {
+                $errors[] = 'native_channel_mismatch';
+            }
+            if (($probe['native_method_ok'] ?? null) === false) {
+                $errors[] = 'native_method_mismatch';
+            }
+        }
+
+        return [
+            'errors' => array_values(array_unique($errors)),
+            'env_digest_ok' => $digestOk,
+            'env_field_count_ok' => $fieldCountOk,
+        ];
+    }
+
+    private function canonicalJson(array $payload): string
+    {
+        $normalize = function ($value) use (&$normalize) {
+            if (!is_array($value)) {
+                return $value;
+            }
+
+            if (array_is_list($value)) {
+                return array_map($normalize, $value);
+            }
+
+            $value = array_filter($value, fn($item) => $item !== null);
+            ksort($value, SORT_STRING);
+            return array_map($normalize, $value);
+        };
+
+        return json_encode($normalize($payload), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION);
     }
 }

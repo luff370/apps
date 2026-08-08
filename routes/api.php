@@ -78,6 +78,8 @@ Route::prefix('user')->middleware(['token_auth'])->group(
         $route->post('sign_out', 'UserController@singOut');
         // 用户设备信息更新
         $route->post('save_device_info', 'UserController@deviceInfoUpdate');
+        // 用户行为与同 payload 的设备环境上报
+        $route->post('behavior/report', 'UserBehaviorController@report');
 
         // 用户提现操作
         Route::prefix('withdrawal')->group(
