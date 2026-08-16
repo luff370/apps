@@ -108,8 +108,10 @@ class AppApiObfuscationService extends Service
         $responseOrigin=$this->paramsFromAliasRow($row->toArray(),'response');
         return [
             'request_key_map'=>$this->stableParamsMap($requestOrigin,$profileArr,'request'),
-            'response_key_map'=>[],
-            'response_data_key_map'=>$this->stableParamsMap($responseOrigin,$profileArr,'response'),
+            // 响应别名优先填到 response_key_map，这样无论响应是根数组还是普通对象，前端“响应别名映射”都会立刻生效。
+            // response_data_key_map 只保留给“data 包裹型”响应的手工扩展，不参与默认生成，避免和根响应重复改名。
+            'response_key_map'=>$this->stableParamsMap($responseOrigin,$profileArr,'response'),
+            'response_data_key_map'=>[],
         ];
     }
 
@@ -140,7 +142,7 @@ class AppApiObfuscationService extends Service
         $r=$this->aliasDao->get($id,['*'],['apiInterface']); if(!$r)return[]; $raw=$r->toArray(); $r=$this->formatAliasRow($raw); $req=$this->example($this->paramsFromAliasRow($raw,'request')); $res=$this->example($this->paramsFromAliasRow($raw,'response'));
         $profile=$this->dao->get((int)($raw['profile_id']??0));
         $prefix = $this->gatewayPrefixForProfile($profile ? $profile->toArray() : []);
-        return ['request'=>['origin_path'=>'/api/'.ltrim((string)$r['path'],'/'),'alias_path'=>$prefix.(string)$r['alias'],'origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[]))],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_data_key_map']??[]))]];
+        return ['request'=>['origin_path'=>'/api/'.ltrim((string)$r['path'],'/'),'alias_path'=>$prefix.(string)$r['alias'],'origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[]))],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_key_map']??[]))]];
     }
 
     public function exportAliases(array $d): array
@@ -177,7 +179,7 @@ class AppApiObfuscationService extends Service
     // - request.origin_params / response.origin 来自 origin 快照；
     // - request.alias_params / response.alias 通过当前映射实时生成；
     // - *_key_map 一并导出，方便客户端调试或按映射自行转换。
-    private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$req=$this->example($this->paramsFromAliasRow($row,'request'));$res=$this->example($this->paramsFromAliasRow($row,'response'));return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[])),'request_key_map'=>(array)($r['request_key_map']??[])],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_data_key_map']??[])),'response_key_map'=>(array)($r['response_key_map']??[]),'response_data_key_map'=>(array)($r['response_data_key_map']??[])]];}
+    private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$req=$this->example($this->paramsFromAliasRow($row,'request'));$res=$this->example($this->paramsFromAliasRow($row,'response'));return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[])),'request_key_map'=>(array)($r['request_key_map']??[])],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_key_map']??[])),'response_key_map'=>(array)($r['response_key_map']??[]),'response_data_key_map'=>(array)($r['response_data_key_map']??[])]];}
     private function generateMapsForInterface(array $i,string $rule):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule),'response_key_map'=>[],'response_data_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule)];}
     // 参数别名也按应用身份稳定生成：应用ID + 包名 + 参数作用域 + 原字段名。
     // 同一应用同一原始参数反复点击“生成别名”结果一致，不同应用会生成各自独立的一套参数别名。
