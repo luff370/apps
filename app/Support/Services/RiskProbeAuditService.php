@@ -8,6 +8,10 @@ use App\Models\RiskProbeLog;
 
 class RiskProbeAuditService
 {
+    /**
+     * 行为指标既保留在完整 probe_json 中，也单独存入 behavior_json。
+     * 单独拆分的目的不是再次评分，而是方便后台直接按触摸、点击、滑动、IMU 维度分析。
+     */
     private const BEHAVIOR_FIELDS = [
         'touch_sample_count', 'touch_timing_entropy', 'touch_coord_dispersion',
         'touch_pressure_variation', 'touch_contact_variation', 'touch_pressure_zero_ratio',
@@ -25,6 +29,13 @@ class RiskProbeAuditService
         try {
             $probe = $context['probe'] ?? [];
             $validation = $context['validation'] ?? [];
+
+            /*
+             * 一次请求对应一条审计记录：
+             * - status=ok：保存解密后的完整探针、行为子集、评分与决策；
+             * - status=missing/error：保存路由、设备和错误状态，probe 相关字段为空；
+             * - nonce 不保存明文，只保存 SHA-256，避免数据库泄露后被直接用于重放。
+             */
             RiskProbeLog::query()->create([
                 'package_name' => $context['package_name'] ?: null,
                 'app_id' => is_numeric($context['app_id'] ?? null) ? (int) $context['app_id'] : null,
@@ -69,6 +80,7 @@ class RiskProbeAuditService
 
     private function deviceSn(Request $request): ?string
     {
+        // 大量 API 未登录，因此优先使用 Device-Sn 聚合；旧客户端没有该头时回退 Uuid。
         $deviceSn = trim((string) $request->header('Device-Sn', ''));
         if ($deviceSn === '') {
             $deviceSn = trim((string) $request->header('Uuid', ''));
@@ -84,6 +96,7 @@ class RiskProbeAuditService
 
     private function sampleCount(array $probe, string $field): ?int
     {
+        // 样本数冗余成普通列，避免统计任务频繁扫描 JSON。
         return is_numeric($probe[$field] ?? null) ? max(0, (int) $probe[$field]) : null;
     }
 }

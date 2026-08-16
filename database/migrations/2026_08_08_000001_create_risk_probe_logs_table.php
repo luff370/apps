@@ -9,6 +9,7 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('risk_probe_logs', function (Blueprint $table) {
+            // 请求身份与解析结果：missing/error 也会落库，便于统计旧版本覆盖率和异常率。
             $table->id();
             $table->string('package_name')->nullable()->index();
             $table->unsignedInteger('app_id')->nullable()->index();
@@ -16,6 +17,8 @@ return new class extends Migration
             $table->string('request_method', 10);
             $table->string('status', 16)->index();
             $table->string('error')->nullable();
+
+            // 协议与评分结果。nonce 仅保存不可逆摘要，不保存可重放明文。
             $table->char('nonce_hash', 64)->nullable()->index();
             $table->unsignedSmallInteger('probe_v')->nullable()->index();
             $table->unsignedSmallInteger('env_schema_v')->nullable();
@@ -28,11 +31,15 @@ return new class extends Migration
             $table->boolean('env_allows_ads')->nullable();
             $table->unsignedTinyInteger('compliance_mode')->default(0)->index();
             $table->unsignedTinyInteger('ad_switch')->default(1);
+
+            // 完整探针 + 行为子集。样本数量冗余为列，便于按时间范围高效聚合。
             $table->json('probe_json')->nullable();
             $table->json('behavior_json')->nullable()->comment('从 Device-Env 提取的行为探针字段');
             $table->unsignedInteger('touch_sample_count')->nullable();
             $table->unsignedInteger('click_sample_count')->nullable();
             $table->unsignedInteger('swipe_sample_count')->nullable();
+
+            // 请求来源。未登录请求主要依靠 device_sn 关联同一设备。
             $table->string('client_ip', 45)->nullable();
             $table->string('app_version', 64)->nullable();
             $table->string('market_channel', 64)->nullable();

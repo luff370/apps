@@ -24,8 +24,16 @@ class DeviceEnvRiskMiddleware
             return $next($request);
         }
 
-        // 风控探针解析要早于业务控制器执行，但不和 api_obfuscation 的别名/字段映射耦合。
-        // 如果请求来自混淆网关的内部转发，外层请求已经解析过并透传了 attribute，这里直接复用。
+        /*
+         * API 风控主入口：
+         * 1. inspect() 读取并解密 Device-Env，生成统一的风险上下文；
+         * 2. 风险上下文挂到 Request attributes，业务控制器无需重复解密；
+         * 3. record() 将成功、缺失和失败结果都写入审计表，供后续按设备分析；
+         * 4. 无论解析或落库结果如何，默认继续执行原业务，避免旧客户端被误伤。
+         *
+         * 混淆网关会把外层请求内部转发到真实路由。外层已经消费 nonce 并注入上下文时，
+         * 内层必须直接复用，否则同一次 HTTP 请求会被第二次解析并判定为重放。
+         */
         if (!$request->attributes->has('device_env_risk')) {
             $context = $this->riskService->inspect($request);
             $request->attributes->set('device_env_risk', $context);

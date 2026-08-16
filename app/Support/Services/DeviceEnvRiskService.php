@@ -9,11 +9,19 @@ use Illuminate\Support\Facades\Cache;
 class DeviceEnvRiskService
 {
     /**
-     * 客户端为了降低明文字段暴露，会把探针 JSON 的字段名压缩成短键后再加密。
-     * 服务端评分和业务策略都使用语义化字段名，所以解密后第一步就是按这张表还原。
-     * 注意：ts/nc/ver 是密文内元数据，客户端没有混淆，但统一放在这里便于递归还原。
+     * Device-Env 的核心处理顺序：
+     *
+     * wire header -> HMAC 验签 -> AES 解密 -> 短键还原 -> 防重放
+     * -> probe_v=9 schema 校验 -> 环境/行为组合评分 -> 风控决策
+     *
+     * 本服务只生成风险上下文，不直接写数据库。落库由 RiskProbeAuditService 负责，
+     * /app/info 的响应覆盖由 applyAppInfoPolicy() 负责，以保持解密、存储、业务策略解耦。
+     *
+     * 客户端为了降低明文字段暴露，会把字段名压缩成短键后再整体加密。
+     * 服务端统一使用语义化字段名评分，因此解密后必须先按此表还原。
      */
     private const WIRE_KEY_MAP = [
+        // probe_v=9 schema 与原生协议自检。
         'ev' => 'env_schema_v',
         'ef' => 'env_field_count',
         'eg' => 'env_payload_digest',
@@ -32,6 +40,8 @@ class DeviceEnvRiskService
         'nv' => 'native_protocol_v',
         'nq' => 'native_channel_ok',
         'nm' => 'native_method_ok',
+
+        // 设备环境、自动化与系统完整性探针。
         'rk' => 'root_suspect',
         'cp' => 'is_cloud_phone',
         'ao' => 'adb_control_port_open',
@@ -46,6 +56,8 @@ class DeviceEnvRiskService
         'jb' => 'is_jailbroken',
         'px' => 'has_proxy',
         'rt' => 'probe_variant',
+
+        // 完整版行为探针。tp/tv/... 是旧客户端别名，pr/cv/... 是当前 v9 短键。
         'tc' => 'touch_sample_count',
         'tt' => 'touch_timing_entropy',
         'td' => 'touch_coord_dispersion',
@@ -56,11 +68,7 @@ class DeviceEnvRiskService
         'ct' => 'click_target_entropy',
         'cb' => 'click_center_bias',
         'ci' => 'click_in_bounds_ratio',
-        'wc' => 'swipe_sample_count',
-        'wl' => 'swipe_linearity',
         'ws' => 'swipe_speed_uniformity',
-        'wj' => 'swipe_micro_jitter',
-        'sg' => 'sensor_static_score',
         'kc' => 'click_sample_count',
         'ke' => 'click_target_entropy',
         'kb' => 'click_center_bias',
@@ -74,8 +82,11 @@ class DeviceEnvRiskService
         'wj' => 'swipe_micro_jitter',
         'gy' => 'gyro_static_score',
         'iu' => 'imu_static_during_touch',
+        'sg' => 'sensor_static_score',
         'gs' => 'gyro_static_score',
         'it' => 'imu_static_during_touch',
+
+        // 环境结论与服务端广告配置回传状态。
         'em' => 'is_emulator',
         'vp' => 'is_vpn',
         'nt' => 'network_transport',
@@ -86,6 +97,7 @@ class DeviceEnvRiskService
         'rf' => 'remote_is_free_ad',
         'cm' => 'remote_compliance_mode',
         'ca' => 'client_allows_ads',
+
         // probe_v=8 轻量客户端兼容字段。
         'sim' => 'is_simulator',
         'vpn' => 'vpn_connected',
@@ -94,6 +106,8 @@ class DeviceEnvRiskService
         'swc' => 'swipe_count',
         'tpm' => 'touch_pressure_avg_milli',
         'ist' => 'imu_samples_during_touch',
+
+        // 密文内部协议元数据；nc 只用于防重放，落库前会移除明文。
         'ts' => 'ts',
         'nc' => 'nc',
         'ver' => 'ver',
@@ -128,6 +142,7 @@ class DeviceEnvRiskService
             $probe = $this->decrypt($sealed, $packageName, $appId);
             $this->assertReplayAllowed($probe, $packageName, $appId);
 
+            // schema 异常只记分和留痕，不直接拒绝真实用户请求。
             $validation = $this->validateProbeSchema($probe);
 
             return $this->context('ok', $probe, [
@@ -300,9 +315,11 @@ class DeviceEnvRiskService
             }
         };
 
-        // 评分表来自 SERVER_RISK_INTEGRATION.md：
-        // P0 环境信号（Monkey、Hook、用户 CA、模拟器、VPN 等）权重高；
-        // 触摸、传感器、SIM 等软信号只加分，不单独决定拦截。
+        /*
+         * 第一组：环境与自动化信号。
+         * P0 信号权重高，通常客户端已经通过 env_allows_ads=false 本地关广告；
+         * 服务端继续评分是为了同步 compliance_mode、记录原因和进行设备维度统计。
+         */
         $add((bool) ($probe['is_monkey'] ?? false), 100, 'monkey');
         $add((bool) ($probe['hook_suspect'] ?? false), 80, 'hook');
         $add((bool) ($probe['has_user_ca'] ?? false), 60, 'user_ca');
@@ -326,7 +343,15 @@ class DeviceEnvRiskService
         $clickSamples = (int) ($probe['click_sample_count'] ?? 0);
         $swipeSamples = (int) ($probe['swipe_sample_count'] ?? 0);
 
-        // 行为信号必须满足样本门槛和完整组合，避免刚启动的零值或手机平放真人被单项误判。
+        /*
+         * 第二组：人机行为组合。
+         * 行为指标本身都是统计值，不应单项封禁。必须先满足样本量，再同时命中多个指标：
+         * - 固定节奏 + 固定坐标；
+         * - 压力全零 + 压力/接触面积低变化；
+         * - 操作期间 IMU 与陀螺仪同时异常静止；
+         * - 高直线、高匀速且几乎无微抖动；
+         * - 多次点击集中在少量目标且高度贴近中心。
+         */
         $add($touchSamples >= 5 && (int) ($probe['touch_timing_entropy'] ?? 100) < 20 && (int) ($probe['touch_coord_dispersion'] ?? 100) < 15, 35, 'touch_low_entropy');
         $add(
             $touchSamples >= 5
@@ -363,17 +388,15 @@ class DeviceEnvRiskService
         $add(in_array('device_env_digest_mismatch', $validationErrors, true), 10, 'device_env_digest_mismatch');
         $add(in_array('env_field_count_mismatch', $validationErrors, true), 5, 'env_field_count_mismatch');
 
-        // env_allows_ads=false 表示客户端本地硬门禁已经关闭广告。
-        // 即使单项分数没有凑够 60，服务端也要同步进入 compliance_mode，保证 AI/广告策略一致。
-        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < 60) {
-            $score = 60;
+        // 客户端已经执行硬门禁时，服务端至少提升到合规阈值，保证广告与 AI 策略一致。
+        $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
+        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < $complianceThreshold) {
+            $score = $complianceThreshold;
             $reasons[] = 'env_blocks_ads';
         }
 
-        // 当前阈值：>=60 下发 compliance_mode=1 且关广告；40-59 只关广告。
-        // 后续如果需要运营动态调整，可以把这段阈值迁到配置表，但输出字段保持不变。
+        // 总分保持在 100 分制；阈值可通过环境变量调整，不需要修改评分代码。
         $score = min(100, $score);
-        $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
         $adBlockThreshold = (int) config('api_obfuscation.device_env.ad_block_score_threshold', 40);
 
         return [
@@ -386,6 +409,11 @@ class DeviceEnvRiskService
 
     private function validateProbeSchema(array $probe): array
     {
+        /*
+         * probe_v=9 增加了字段数、稳定 JSON 摘要和原生协议自检。
+         * 这些字段用于发现客户端接入漂移或探针被篡改。校验失败会进入 validation.errors，
+         * 再由 score() 保守加分；不会在这里抛异常，以免客户端版本差异直接中断业务。
+         */
         $errors = [];
         $digestOk = null;
         $fieldCountOk = null;
