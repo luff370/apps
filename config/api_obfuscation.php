@@ -17,6 +17,9 @@ return [
         'timestamp_window_seconds' => (int) env('DEVICE_ENV_TS_WINDOW', 300),
         'nonce_ttl_seconds' => (int) env('DEVICE_ENV_NONCE_TTL', 600),
         'nonce_cache_prefix' => env('DEVICE_ENV_NONCE_PREFIX', 'device_env:nc:'),
+        'audit_enabled' => (bool) env('DEVICE_ENV_AUDIT_ENABLED', true),
+        'ad_block_score_threshold' => (int) env('DEVICE_ENV_AD_BLOCK_SCORE', 40),
+        'compliance_score_threshold' => (int) env('DEVICE_ENV_COMPLIANCE_SCORE', 60),
     ],
 
     /*
