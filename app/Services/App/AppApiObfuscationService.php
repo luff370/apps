@@ -194,11 +194,9 @@ class AppApiObfuscationService extends Service
     // - 旧数据如果只存了 response_data_key_map，也临时当作响应映射使用；
     // - 这样旧别名不需要重生成也能继续预览、导出和编辑。
     private function effectiveResponseAliasMap(array $row):array{return $this->decodeMap($row['response_key_map']??[])?:$this->decodeMap($row['response_data_key_map']??[]);}
-    // 导出时同时给客户端原始参数示例和别名参数示例：
-    // - request.origin_params / response.origin 来自 origin 快照；
-    // - request.alias_params / response.alias 通过当前映射实时生成；
-    // - *_key_map 一并导出，方便客户端调试或按映射自行转换。
-    private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$req=$this->example($this->paramsFromAliasRow($row,'request'));$res=$this->example($this->paramsFromAliasRow($row,'response'));return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[])),'request_key_map'=>(array)($r['request_key_map']??[])],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_key_map']??[])),'response_key_map'=>(array)($r['response_key_map']??[])]];}
+    // 导出时同时带上“原始参数快照 + 别名参数 + 映射表”。
+    // 这样导出的 JSON 既能给客户端直接看，也能作为后续同步/回灌的完整依据。
+    private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$reqOrigin=$this->paramsFromAliasRow($row,'request');$resOrigin=$this->paramsFromAliasRow($row,'response');$req=$this->example($reqOrigin);$res=$this->example($resOrigin);$requestMap=(array)($r['request_key_map']??[]);$responseMap=(array)($r['response_key_map']??[]);return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,$requestMap),'request_origin_params'=>$reqOrigin,'request_alias_params'=>$this->applyMap($reqOrigin,$requestMap),'request_key_map'=>$requestMap],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,$responseMap),'response_origin_params'=>$resOrigin,'response_alias_params'=>$this->applyMap($resOrigin,$responseMap),'response_key_map'=>$responseMap]];}
     private function generateMapsForInterface(array $i,string $rule):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule),'response_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule),'response_data_key_map'=>[]];}
     // 参数别名也按应用身份稳定生成：应用ID + 包名 + 参数作用域 + 原字段名。
     // 同一应用同一原始参数反复点击“生成别名”结果一致，不同应用会生成各自独立的一套参数别名。
