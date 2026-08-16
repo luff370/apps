@@ -5,8 +5,10 @@ namespace Tests\Unit;
 use ReflectionClass;
 use Tests\TestCase;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use App\Services\App\AppApiObfuscationService;
 use App\Http\Controllers\Api\ObfuscatedGatewayController;
+use App\Http\Middleware\ApiObfuscationMiddleware;
 
 class ApiObfuscationStableRoutingTest extends TestCase
 {
@@ -120,6 +122,28 @@ class ApiObfuscationStableRoutingTest extends TestCase
             $route->getAction('controller')
         );
         $this->assertSame('73be', $route->parameter('alias'));
+    }
+
+    public function test_route_alias_response_map_is_applied_in_gateway_response(): void
+    {
+        $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
+        $wrap = $this->method(ApiObfuscationMiddleware::class, 'wrapJsonResponse');
+
+        $request = Request::create('/api/open/abc12345', 'POST');
+        $request->attributes->set('api_obfuscation_route_alias', [
+            'response_key_map' => ['data' => 'result', 'msg' => 'message'],
+        ]);
+
+        $response = new JsonResponse(['msg' => 'ok', 'data' => ['list' => []]]);
+        $next = fn() => $response;
+
+        $result = $wrap->invoke($middleware, $response, [
+            'response_key_map' => [],
+            'response_data_key_map' => [],
+            'protocol' => [],
+        ], $request);
+
+        $this->assertSame(['message' => 'ok', 'result' => ['list' => []]], $result->getData(true));
     }
 
     private function newService(): AppApiObfuscationService

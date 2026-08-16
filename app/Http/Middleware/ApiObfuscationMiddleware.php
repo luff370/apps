@@ -39,27 +39,33 @@ class ApiObfuscationMiddleware
 
         $response = $next($request);
 
-        return $this->wrapJsonResponse($response, $profile);
+        return $this->wrapJsonResponse($response, $profile, $request);
     }
 
-    private function wrapJsonResponse(Response $response, array $profile): Response
+    private function wrapJsonResponse(Response $response, array $profile, ?Request $request = null): Response
     {
         if (!$response instanceof JsonResponse) {
             return $response;
         }
 
+        $request = $request ?: request();
         $payload = $response->getData(true);
         if (!is_array($payload)) {
             return $response;
         }
 
-        $payload = $this->rewriteImageUrls($payload, $profile, request());
+        $payload = $this->rewriteImageUrls($payload, $profile, $request);
+        $routeAlias = (array) $request->attributes->get('api_obfuscation_route_alias', []);
 
-        if (isset($payload['data']) && is_array($payload['data'])) {
-            $payload['data'] = $this->remapKeys($payload['data'], $profile['response_data_key_map'] ?? []);
+        $responseDataKeyMap = (array) ($routeAlias['response_key_map'] ?? ($profile['response_data_key_map'] ?? []));
+        if (isset($payload['data']) && is_array($payload['data']) && !empty($responseDataKeyMap)) {
+            $payload['data'] = $this->remapKeys($payload['data'], $responseDataKeyMap);
         }
 
-        $payload = $this->remapKeys($payload, $profile['response_key_map'] ?? []);
+        $responseKeyMap = (array) ($routeAlias['response_key_map'] ?? ($profile['response_key_map'] ?? []));
+        if (!empty($responseKeyMap)) {
+            $payload = $this->remapKeys($payload, $responseKeyMap);
+        }
 
         $protocol = $profile['protocol'] ?? [];
         if (($protocol['encrypt_response'] ?? false) && config('api_obfuscation.encryption_enabled', false)) {

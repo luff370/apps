@@ -104,9 +104,15 @@ class ApiObfuscationProfileResolver
             if (!$row->apiInterface || empty($row['alias']) || empty($row->apiInterface['path'])) {
                 continue;
             }
+            $responseKeyMap = (array) ($row['response_key_map'] ?? []);
+            if (empty($responseKeyMap)) {
+                $responseKeyMap = (array) ($row['response_data_key_map'] ?? []);
+            }
             $aliases[$row['alias']] = [
                 'path' => ltrim((string) $row->apiInterface['path'], '/'),
                 'method' => strtoupper((string) $row->apiInterface['method']),
+                'request_key_map' => (array) ($row['request_key_map'] ?? []),
+                'response_key_map' => $responseKeyMap,
             ];
         }
 

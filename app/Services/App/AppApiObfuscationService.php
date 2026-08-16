@@ -71,7 +71,21 @@ class AppApiObfuscationService extends Service
         // 后续公共 API 参数如果被调整，已下发给客户端的旧别名仍按自己的快照预览/导出；
         // 管理员需要最新参数时，再点列表里的“同步”按钮覆盖这份快照。
         $interface=$this->interfaceDao->get(intval($d['interface_id']??0)); $snap=$this->originSnapshot($interface?$interface->toArray():[]);
-        $s = ['profile_id'=>(int)$p['id'],'interface_id'=>intval($d['interface_id']??0),'alias'=>(string)($d['alias']??''),'request_origin_params'=>$snap['request_origin_params'],'response_origin_params'=>$snap['response_origin_params'],'request_key_map'=>$this->decodeMap($d['request_key_map']??[]),'response_key_map'=>$this->decodeMap($d['response_key_map']??[]),'response_data_key_map'=>$this->decodeMap($d['response_data_key_map']??[]),'is_enable'=>intval($d['is_enable']??1),'remark'=>(string)($d['remark']??'')];
+        $responseMap = $this->decodeMap($d['response_key_map'] ?? ($d['response_data_key_map'] ?? []));
+        $s = [
+            'profile_id' => (int) $p['id'],
+            'interface_id' => intval($d['interface_id'] ?? 0),
+            'alias' => (string) ($d['alias'] ?? ''),
+            'request_origin_params' => $snap['request_origin_params'],
+            'response_origin_params' => $snap['response_origin_params'],
+            'request_key_map' => $this->decodeMap($d['request_key_map'] ?? []),
+            // 接口别名的响应映射现在统一只保留一层：response_key_map。
+            // 旧数据里如果还带着 response_data_key_map，这里先回落读取，再统一写回主字段，避免历史别名失效。
+            'response_key_map' => $responseMap,
+            'response_data_key_map' => [],
+            'is_enable' => intval($d['is_enable'] ?? 1),
+            'remark' => (string) ($d['remark'] ?? ''),
+        ];
         $id = intval($d['id']??0); if ($id>0) $this->aliasDao->update($id,$s); else { $old=$this->aliasDao->search(['profile_id'=>$s['profile_id'],'interface_id'=>$s['interface_id']])->first(); $old?$this->aliasDao->update($old['id'],$s):$this->aliasDao->save($s); }
         $this->refreshRouteAliases((int)$p['id']);
     }
@@ -82,7 +96,7 @@ class AppApiObfuscationService extends Service
         // origin 参数快照不在这里保存，避免用户编辑映射时误把公共 API 的原始参数覆盖掉；
         // 原始参数统一通过 syncAliasParams 从公共 API 重新同步。
         $row=$this->aliasDao->get((int)($d['id']??0)); if(!$row)return[];
-        $save=['request_key_map'=>$this->decodeMap($d['request_key_map']??[]),'response_key_map'=>$this->decodeMap($d['response_key_map']??[]),'response_data_key_map'=>$this->decodeMap($d['response_data_key_map']??[])];
+        $save=['request_key_map'=>$this->decodeMap($d['request_key_map']??[]),'response_key_map'=>$this->decodeMap($d['response_key_map']??($d['response_data_key_map']??[])),'response_data_key_map'=>[]];
         if(array_key_exists('alias',$d))$save['alias']=(string)$d['alias'];
         if(array_key_exists('is_enable',$d))$save['is_enable']=intval($d['is_enable']);
         if(array_key_exists('remark',$d))$save['remark']=(string)$d['remark'];
@@ -108,8 +122,8 @@ class AppApiObfuscationService extends Service
         $responseOrigin=$this->paramsFromAliasRow($row->toArray(),'response');
         return [
             'request_key_map'=>$this->stableParamsMap($requestOrigin,$profileArr,'request'),
-            // 响应别名优先填到 response_key_map，这样无论响应是根数组还是普通对象，前端“响应别名映射”都会立刻生效。
-            // response_data_key_map 只保留给“data 包裹型”响应的手工扩展，不参与默认生成，避免和根响应重复改名。
+            // 响应别名现在也只落到 response_key_map，接口别名编辑器不再区分“外层 / data 内层”两套响应映射。
+            // 旧接口别名如果还只存了 response_data_key_map，下面的 formatAliasRow / paramsFromAliasRow 会自动兜底读取。
             'response_key_map'=>$this->stableParamsMap($responseOrigin,$profileArr,'response'),
             'response_data_key_map'=>[],
         ];
@@ -133,8 +147,8 @@ class AppApiObfuscationService extends Service
     public function generateDefaultProfileFields(array $d): array
     {
         $img=['image','images','avatar','cover','thumb','icon','url']; $pre=['attach/','/attach/','uploads/attach/','/uploads/attach/','storage/attach/','/storage/attach/'];
-        if(($d['map_rule']??'short')==='biz') return ['request_key_map'=>['page'=>'cursor','limit'=>'batch','keywords'=>'query','uuid'=>'deviceCode','token'=>'sessionCode'],'response_key_map'=>['status'=>'code','msg'=>'message','data'=>'result'],'response_data_key_map'=>['list'=>'records','count'=>'totalCount','total'=>'total'],'image_fields'=>$img,'image_prefixes'=>$pre];
-        return ['request_key_map'=>['page'=>'pg','limit'=>'sz','keywords'=>'kw','uuid'=>'ud','token'=>'tk'],'response_key_map'=>['status'=>'s','msg'=>'m','data'=>'d'],'response_data_key_map'=>['list'=>'ls','count'=>'ct','total'=>'tt'],'image_fields'=>$img,'image_prefixes'=>$pre];
+        if(($d['map_rule']??'short')==='biz') return ['request_key_map'=>['page'=>'cursor','limit'=>'batch','keywords'=>'query','uuid'=>'deviceCode','token'=>'sessionCode'],'response_key_map'=>['status'=>'code','msg'=>'message','data'=>'result'],'image_fields'=>$img,'image_prefixes'=>$pre];
+        return ['request_key_map'=>['page'=>'pg','limit'=>'sz','keywords'=>'kw','uuid'=>'ud','token'=>'tk'],'response_key_map'=>['status'=>'s','msg'=>'m','data'=>'d'],'image_fields'=>$img,'image_prefixes'=>$pre];
     }
 
     public function previewAlias(int $id): array
@@ -166,7 +180,7 @@ class AppApiObfuscationService extends Service
     private function profileImageDomain(array $profile,array $merchant=[]):string{$image=(array)($profile['image_url']??[]);$domain=(string)($profile['image_domain']??($image['domain']??''));return $domain!==''?$domain:(string)($merchant['image_domain']??'');}
     private function ensureProfile(int $appId,string $pkg){return $this->findProfile($appId,$pkg)?:$this->dao->save(['app_id'=>$appId,'package_name'=>$pkg,'enabled'=>0,'alias_rule'=>'stable_url','protocol'=>config('api_obfuscation.profiles.default.protocol',[]),'security'=>config('api_obfuscation.profiles.default.security',[]),'crypto'=>config('api_obfuscation.profiles.default.crypto',[]),'image_url'=>config('api_obfuscation.profiles.default.image_url',[]),'route_aliases'=>[]]);}
     private function refreshRouteAliases(int $pid):void{$this->dao->update($pid,['route_aliases'=>$this->buildRouteAliasesByProfile($pid)]);}
-    private function formatAliasRow(array $r):array{$i=$r['api_interface']??[];return array_merge($r,['interface_name'=>$i['name']??'','module'=>$i['module']??'','path'=>$i['path']??'','method'=>$i['method']??'','request_params'=>$i['request_params']??[],'response_params'=>$i['response_params']??[]]);}
+    private function formatAliasRow(array $r):array{$i=$r['api_interface']??[];$r['response_key_map']=$this->effectiveResponseAliasMap($r);return array_merge($r,['interface_name'=>$i['name']??'','module'=>$i['module']??'','path'=>$i['path']??'','method'=>$i['method']??'','request_params'=>$i['request_params']??[],'response_params'=>$i['response_params']??[]]);}
     private function aliasDetail(int $id):array{$row=$this->aliasDao->get($id,['*'],['apiInterface']);return$row?$this->formatAliasRow($row->toArray()):[];}
     // 将公共 API 的参数定义保存到接口别名行，形成 origin 快照。
     // 字段名保持为表字段 request_origin_params/response_origin_params，导出时再转换成客户端文档需要的
@@ -175,12 +189,17 @@ class AppApiObfuscationService extends Service
     // 优先使用别名行自己的 origin 快照；旧版数据没有快照时，回退到关联公共 API 的 request_params/response_params。
     // 这保证“只加新字段、未重新生成别名”的应用仍能预览和导出，不会破坏既有别名。
     private function paramsFromAliasRow(array $row,string $type):array{$field=$type==='request'?'request_origin_params':'response_origin_params';$fallback=$type==='request'?'request_params':'response_params';return (array)($row[$field]??$row['api_interface'][$fallback]??$row[$fallback]??[]);}
+    // 接口别名的响应映射做兼容兜底：
+    // - 新数据只写 response_key_map；
+    // - 旧数据如果只存了 response_data_key_map，也临时当作响应映射使用；
+    // - 这样旧别名不需要重生成也能继续预览、导出和编辑。
+    private function effectiveResponseAliasMap(array $row):array{return $this->decodeMap($row['response_key_map']??[])?:$this->decodeMap($row['response_data_key_map']??[]);}
     // 导出时同时给客户端原始参数示例和别名参数示例：
     // - request.origin_params / response.origin 来自 origin 快照；
     // - request.alias_params / response.alias 通过当前映射实时生成；
     // - *_key_map 一并导出，方便客户端调试或按映射自行转换。
-    private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$req=$this->example($this->paramsFromAliasRow($row,'request'));$res=$this->example($this->paramsFromAliasRow($row,'response'));return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[])),'request_key_map'=>(array)($r['request_key_map']??[])],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_key_map']??[])),'response_key_map'=>(array)($r['response_key_map']??[]),'response_data_key_map'=>(array)($r['response_data_key_map']??[])]];}
-    private function generateMapsForInterface(array $i,string $rule):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule),'response_key_map'=>[],'response_data_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule)];}
+    private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$req=$this->example($this->paramsFromAliasRow($row,'request'));$res=$this->example($this->paramsFromAliasRow($row,'response'));return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,(array)($r['request_key_map']??[])),'request_key_map'=>(array)($r['request_key_map']??[])],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,(array)($r['response_key_map']??[])),'response_key_map'=>(array)($r['response_key_map']??[])]];}
+    private function generateMapsForInterface(array $i,string $rule):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule),'response_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule),'response_data_key_map'=>[]];}
     // 参数别名也按应用身份稳定生成：应用ID + 包名 + 参数作用域 + 原字段名。
     // 同一应用同一原始参数反复点击“生成别名”结果一致，不同应用会生成各自独立的一套参数别名。
     private function stableParamsMap(array $params,array $profile,string $scope):array{$map=[];$used=[];$n=0;foreach($this->paramKeys($params) as $key){$n++;$alias=$this->stableParamAlias($profile,$scope,$key,$n,$used);$map[$key]=$alias;}return$map;}
