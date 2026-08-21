@@ -48,14 +48,13 @@ class ObfuscatedGatewayController extends Controller
         }
 
         $targetMethod = strtoupper((string) ($aliasRoute['method'] ?? $request->getMethod()));
-        if (isset($aliasRoute['response_key_map'])) {
-            // 这里必须挂在原始外层请求上，外层 ApiObfuscationMiddleware 在 controller 返回后
-            // 才会读取到这份路由级响应映射；只挂到 forwardRequest 上会被内层跳过逻辑吞掉。
-            $request->attributes->set('api_obfuscation_route_alias', [
-                'alias' => $alias,
-                'response_key_map' => (array) ($aliasRoute['response_key_map'] ?? []),
-            ]);
-        }
+        // 路由级响应映射必须挂在原始外层请求上，外层 ApiObfuscationMiddleware 在 controller
+        // 返回后才会读取；请求参数别名则在 middleware 入口按 route alias 反查。
+        $request->attributes->set('api_obfuscation_route_alias', [
+            'alias' => $alias,
+            'request_key_map' => (array) ($aliasRoute['request_key_map'] ?? []),
+            'response_key_map' => (array) ($aliasRoute['response_key_map'] ?? []),
+        ]);
         $forwardRequest = Request::create(
             '/api/' . $targetPath,
             $targetMethod,

@@ -35,7 +35,11 @@ class ApiObfuscationMiddleware
             return $decrypted;
         }
 
-        $request->merge($this->remapKeys($request->all(), $profile['request_key_map'] ?? []));
+        $requestKeyMap = $this->resolveRequestKeyMap($request, $profile);
+        if (!empty($requestKeyMap)) {
+            // 映射表是「真实字段 => 别名」；客户端提交别名，需反查回真实字段。
+            $request->merge($this->unmapKeys($request->all(), $requestKeyMap));
+        }
 
         $response = $next($request);
 
@@ -312,6 +316,18 @@ class ApiObfuscationMiddleware
             || str_starts_with($value, 'data:');
     }
 
+    private function resolveRequestKeyMap(Request $request, array $profile): array
+    {
+        $alias = (string) ($request->route()?->parameter('alias') ?? '');
+        $routeAlias = (array) (($profile['route_aliases'][$alias] ?? []) ?: []);
+        $perAliasMap = (array) ($routeAlias['request_key_map'] ?? []);
+        if (!empty($perAliasMap)) {
+            return $perAliasMap;
+        }
+
+        return (array) ($profile['request_key_map'] ?? []);
+    }
+
     private function remapKeys(array $source, array $map): array
     {
         if (empty($map)) {
@@ -322,6 +338,22 @@ class ApiObfuscationMiddleware
         foreach ($source as $key => $value) {
             $mappedKey = $map[$key] ?? $key;
             $target[$mappedKey] = is_array($value) ? $this->remapKeys($value, $map) : $value;
+        }
+
+        return $target;
+    }
+
+    private function unmapKeys(array $source, array $map): array
+    {
+        if (empty($map)) {
+            return $source;
+        }
+
+        $reverseMap = array_flip($map);
+        $target = [];
+        foreach ($source as $key => $value) {
+            $mappedKey = $reverseMap[$key] ?? $key;
+            $target[$mappedKey] = is_array($value) ? $this->unmapKeys($value, $map) : $value;
         }
 
         return $target;

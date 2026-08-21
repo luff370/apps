@@ -146,6 +146,58 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $this->assertSame(['message' => 'ok', 'result' => ['list' => []]], $result->getData(true));
     }
 
+    public function test_route_alias_request_map_is_unmapped_before_controller(): void
+    {
+        $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
+        $resolveRequestKeyMap = $this->method(ApiObfuscationMiddleware::class, 'resolveRequestKeyMap');
+        $unmapKeys = $this->method(ApiObfuscationMiddleware::class, 'unmapKeys');
+
+        $request = Request::create('/api/open/abc12345', 'POST', ['pg' => 1, 'sz' => 20]);
+        $route = app('router')->getRoutes()->match($request);
+        $request->setRouteResolver(fn () => $route);
+
+        $profile = [
+            'request_key_map' => ['page' => 'pg', 'limit' => 'sz'],
+            'route_aliases' => [
+                'abc12345' => [
+                    'path' => 'app/info',
+                    'method' => 'POST',
+                    'request_key_map' => ['keywords' => 'kw'],
+                ],
+            ],
+        ];
+
+        $map = $resolveRequestKeyMap->invoke($middleware, $request, $profile);
+        $this->assertSame(['keywords' => 'kw'], $map);
+
+        $unmapped = $unmapKeys->invoke($middleware, ['kw' => 'hello'], ['keywords' => 'kw']);
+        $this->assertSame(['keywords' => 'hello'], $unmapped);
+    }
+
+    public function test_profile_request_map_is_used_when_route_alias_has_no_request_map(): void
+    {
+        $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
+        $resolveRequestKeyMap = $this->method(ApiObfuscationMiddleware::class, 'resolveRequestKeyMap');
+
+        $request = Request::create('/api/open/abc12345', 'POST');
+        $route = app('router')->getRoutes()->match($request);
+        $request->setRouteResolver(fn () => $route);
+
+        $profile = [
+            'request_key_map' => ['page' => 'pg'],
+            'route_aliases' => [
+                'abc12345' => [
+                    'path' => 'app/info',
+                    'method' => 'POST',
+                    'request_key_map' => [],
+                ],
+            ],
+        ];
+
+        $map = $resolveRequestKeyMap->invoke($middleware, $request, $profile);
+        $this->assertSame(['page' => 'pg'], $map);
+    }
+
     private function newService(): AppApiObfuscationService
     {
         return (new ReflectionClass(AppApiObfuscationService::class))->newInstanceWithoutConstructor();
