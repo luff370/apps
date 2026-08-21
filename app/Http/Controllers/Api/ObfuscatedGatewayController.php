@@ -54,6 +54,7 @@ class ObfuscatedGatewayController extends Controller
             $request->attributes->set('api_obfuscation_route_alias', [
                 'alias' => $alias,
                 'response_key_map' => (array) ($aliasRoute['response_key_map'] ?? []),
+                'response_data_key_map' => (array) ($aliasRoute['response_data_key_map'] ?? $aliasRoute['response_key_map'] ?? []),
             ]);
         }
         $forwardRequest = Request::create(
