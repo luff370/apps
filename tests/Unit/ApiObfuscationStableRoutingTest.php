@@ -131,19 +131,26 @@ class ApiObfuscationStableRoutingTest extends TestCase
 
         $request = Request::create('/api/open/abc12345', 'POST');
         $request->attributes->set('api_obfuscation_route_alias', [
-            'response_key_map' => ['data' => 'result', 'msg' => 'message'],
+            'response_key_map' => ['list' => 'items', 'token' => 'tk'],
         ]);
 
-        $response = new JsonResponse(['msg' => 'ok', 'data' => ['list' => []]]);
-        $next = fn() => $response;
+        $response = new JsonResponse([
+            'status' => 200,
+            'msg' => 'ok',
+            'data' => ['list' => [], 'token' => 'abc', 'status' => 1],
+        ]);
 
         $result = $wrap->invoke($middleware, $response, [
-            'response_key_map' => [],
-            'response_data_key_map' => [],
+            'response_key_map' => ['status' => 's', 'msg' => 'm', 'data' => 'd'],
+            'response_data_key_map' => ['should_not' => 'apply'],
             'protocol' => [],
         ], $request);
 
-        $this->assertSame(['message' => 'ok', 'result' => ['list' => []]], $result->getData(true));
+        $this->assertSame([
+            's' => 200,
+            'm' => 'ok',
+            'd' => ['items' => [], 'tk' => 'abc', 'status' => 1],
+        ], $result->getData(true));
     }
 
     private function newService(): AppApiObfuscationService

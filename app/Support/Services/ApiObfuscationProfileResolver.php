@@ -113,6 +113,7 @@ class ApiObfuscationProfileResolver
                 'method' => strtoupper((string) $row->apiInterface['method']),
                 'request_key_map' => (array) ($row['request_key_map'] ?? []),
                 'response_key_map' => $responseKeyMap,
+                'response_data_key_map' => $responseKeyMap,
             ];
         }
 

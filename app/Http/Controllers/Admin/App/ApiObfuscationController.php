@@ -24,7 +24,7 @@ class ApiObfuscationController extends Controller
     public function saveProfile()
     {
         $data = $this->getMore([
-            ['app_id', 0], ['package_name', ''], ['enabled', 0], ['encrypt_request', 0], ['encrypt_response', 0], ['allow_plaintext_request', 1], ['image_url_enabled', 0], ['image_domain', ''], ['alias_rule', 'stable_url'], ['request_key_map', '{}'], ['response_key_map', '{}'], ['response_data_key_map', '{}'], ['payload_field', 'payload'], ['sign_field', 'sign'], ['timestamp_field', 'ts'], ['nonce_field', 'nonce'], ['version_field', 'ver'], ['timestamp_window_seconds', 300], ['nonce_ttl_seconds', 300], ['cipher', 'AES-256-CBC'], ['crypto_key', ''], ['crypto_iv', ''], ['crypto_sign_key', ''], ['image_fields', ''], ['image_prefixes', ''],
+            ['app_id', 0], ['package_name', ''], ['enabled', 0], ['encrypt_request', 0], ['encrypt_response', 0], ['allow_plaintext_request', 1], ['image_url_enabled', 0], ['image_domain', ''], ['alias_rule', 'stable_url'], ['request_key_map', []], ['response_key_map', []], ['response_data_key_map', []], ['payload_field', 'payload'], ['sign_field', 'sign'], ['timestamp_field', 'ts'], ['nonce_field', 'nonce'], ['version_field', 'ver'], ['timestamp_window_seconds', 300], ['nonce_ttl_seconds', 300], ['cipher', 'AES-256-CBC'], ['crypto_key', ''], ['crypto_iv', ''], ['crypto_sign_key', ''], ['image_fields', ''], ['image_prefixes', ''],
         ]);
         return $this->success($this->obfuscationService->saveProfile($data), '保存成功');
     }
