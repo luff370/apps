@@ -35,7 +35,11 @@ class ApiObfuscationMiddleware
             return $decrypted;
         }
 
-        $request->merge($this->remapKeys($request->all(), $profile['request_key_map'] ?? []));
+        $requestKeyMap = $this->resolveRequestKeyMap($request, $profile);
+        if (!empty($requestKeyMap)) {
+            // 映射表是「真实字段 => 别名」；客户端提交别名，需反查回真实字段。
+            $request->merge($this->unmapKeys($request->all(), $requestKeyMap));
+        }
 
         $response = $next($request);
 
@@ -57,18 +61,14 @@ class ApiObfuscationMiddleware
         $payload = $this->rewriteImageUrls($payload, $profile, $request);
         $routeAlias = (array) $request->attributes->get('api_obfuscation_route_alias', []);
 
-        // 两层响应映射必须分开：
-        // 1) 接口别名（及历史 response_data_key_map）只改 data 里面的字段；
-        // 2) 应用配置里的 response_key_map 只改外层 status/msg/data。
-        // 之前把别名的 response_key_map 同时用在两层，外层映射会被接口别名覆盖而失效。
-        $responseDataKeyMap = $this->responseDataKeyMap($routeAlias, $profile);
+        $responseDataKeyMap = (array) ($routeAlias['response_key_map'] ?? ($profile['response_data_key_map'] ?? []));
         if (isset($payload['data']) && is_array($payload['data']) && !empty($responseDataKeyMap)) {
             $payload['data'] = $this->remapKeys($payload['data'], $responseDataKeyMap);
         }
 
-        $responseKeyMap = (array) ($profile['response_key_map'] ?? []);
+        $responseKeyMap = (array) ($routeAlias['response_key_map'] ?? ($profile['response_key_map'] ?? []));
         if (!empty($responseKeyMap)) {
-            $payload = $this->remapKeys($payload, $responseKeyMap, false);
+            $payload = $this->remapKeys($payload, $responseKeyMap);
         }
 
         $protocol = $profile['protocol'] ?? [];
@@ -316,19 +316,19 @@ class ApiObfuscationMiddleware
             || str_starts_with($value, 'data:');
     }
 
-    private function responseDataKeyMap(array $routeAlias, array $profile): array
+    private function resolveRequestKeyMap(Request $request, array $profile): array
     {
-        foreach (['response_data_key_map', 'response_key_map'] as $field) {
-            $map = (array) ($routeAlias[$field] ?? []);
-            if (!empty($map)) {
-                return $map;
-            }
+        $alias = (string) ($request->route()?->parameter('alias') ?? '');
+        $routeAlias = (array) (($profile['route_aliases'][$alias] ?? []) ?: []);
+        $perAliasMap = (array) ($routeAlias['request_key_map'] ?? []);
+        if (!empty($perAliasMap)) {
+            return $perAliasMap;
         }
 
-        return (array) ($profile['response_data_key_map'] ?? []);
+        return (array) ($profile['request_key_map'] ?? []);
     }
 
-    private function remapKeys(array $source, array $map, bool $deep = true): array
+    private function remapKeys(array $source, array $map): array
     {
         if (empty($map)) {
             return $source;
@@ -337,7 +337,23 @@ class ApiObfuscationMiddleware
         $target = [];
         foreach ($source as $key => $value) {
             $mappedKey = $map[$key] ?? $key;
-            $target[$mappedKey] = ($deep && is_array($value)) ? $this->remapKeys($value, $map, true) : $value;
+            $target[$mappedKey] = is_array($value) ? $this->remapKeys($value, $map) : $value;
+        }
+
+        return $target;
+    }
+
+    private function unmapKeys(array $source, array $map): array
+    {
+        if (empty($map)) {
+            return $source;
+        }
+
+        $reverseMap = array_flip($map);
+        $target = [];
+        foreach ($source as $key => $value) {
+            $mappedKey = $reverseMap[$key] ?? $key;
+            $target[$mappedKey] = is_array($value) ? $this->unmapKeys($value, $map) : $value;
         }
 
         return $target;
