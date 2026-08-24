@@ -151,6 +151,7 @@ class UserController extends Controller
     {
         $profile = $request->all();
         $profile['user_id'] = authUserId();
+        $profile['uuid'] = $this->getUuid();
         $profile['app_id'] = $this->getAppId();
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
