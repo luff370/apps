@@ -60,7 +60,7 @@ class UserController extends Controller
      */
     public function deviceInfoUpdate(Request $request)
     {
-         $this->service->update(authUserId(), [
+        $this->service->update(authUserId(), [
             'device_token' => $request->get('device_token'),
             'platform' => $this->getPlatform(),
             'last_ip' => request()->getClientIp(),
@@ -68,7 +68,7 @@ class UserController extends Controller
             'app_version' => $this->getAppVersion(),
         ]);
 
-         return $this->success();
+        return $this->success();
     }
 
     /**
@@ -121,8 +121,8 @@ class UserController extends Controller
             ->orderBy('id')
             ->get()
             ->map(function (UserFeedback $feedback) {
-                $createTime = (int) $feedback->getRawOriginal('create_time');
-                $updateTime = (int) $feedback->getRawOriginal('update_time');
+                $createTime = (int)$feedback->getRawOriginal('create_time');
+                $updateTime = (int)$feedback->getRawOriginal('update_time');
 
                 return [
                     'id' => $feedback->id,
@@ -150,13 +150,24 @@ class UserController extends Controller
     public function profile(Request $request)
     {
         $profile = $request->all();
-        $profile['user_id'] = authUserId();
+        $profile['user_id'] = 0;
         $profile['uuid'] = $this->getUuid();
         $profile['app_id'] = $this->getAppId();
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
 
-        UserProfile::query()->create($profile);
+        try {
+            UserProfile::query()->create($profile);
+        } catch (\Exception $exception) {
+            logger()->error('用户档案信息保存失败---' . $exception->getMessage());
+
+            $count = UserProfile::query()->where('uuid', $profile['uuid'])->count();
+            if ($count > 0) {
+                return $this->success("保存成功");
+            } else {
+                return $this->fail("保存失败，请稍后重试");
+            }
+        }
 
         return $this->success();
     }

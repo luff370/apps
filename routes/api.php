@@ -97,7 +97,7 @@ Route::prefix('user')->middleware(['token_auth'])->group(
 Route::prefix('user')->group(
     function (\Illuminate\Routing\Router $route) {
         // 用户档案信息保存
-        $route->post(' profile', 'UserController@profile');
+        $route->post('profile', 'UserController@profile');
     });
 
 Route::post('coin/packages', 'UserWithdrawalController@products');
