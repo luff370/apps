@@ -20,6 +20,7 @@ return new class extends Migration
             $table->string('version',32)->comment('版本');
             $table->string('name',32)->comment('姓名');
             $table->string('gender',32)->comment('性别');
+            $table->string('calendar',32)->comment('日历');
             $table->dateTime('birth_date')->comment('出生日期');
             $table->string('birth_place')->comment('出生地');
             $table->timestamps();

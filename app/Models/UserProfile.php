@@ -19,6 +19,7 @@ use Carbon\Carbon;
  * @property string $version
  * @property string $name
  * @property string $gender
+ * @property string $calendar
  * @property Carbon $birth_date
  * @property string $birth_place
  * @property Carbon|null $created_at
@@ -44,6 +45,7 @@ class UserProfile extends BaseModel
 		'version',
 		'name',
 		'gender',
+		'calendar',
 		'birth_date',
 		'birth_place'
 	];
