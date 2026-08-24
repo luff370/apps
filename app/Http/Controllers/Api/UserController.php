@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Models\UserProfile;
 use Illuminate\Http\Request;
 use App\Support\Utils\Token;
 use App\Models\UserFeedback;
@@ -141,6 +142,22 @@ class UserController extends Controller
             });
 
         return $this->success($list);
+    }
+
+    /**
+     * 用户档案信息保存
+     */
+    public function profile(Request $request)
+    {
+        $profile = $request->all();
+        $profile['user_id'] = authUserId();
+        $profile['app_id'] = $this->getAppId();
+        $profile['version'] = $this->getAppVersion();
+        $profile['market_channel'] = $this->getMarketChannel();
+
+        UserProfile::query()->create($profile);
+
+        return $this->success();
     }
 
     /**

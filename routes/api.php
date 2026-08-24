@@ -93,6 +93,12 @@ Route::prefix('user')->middleware(['token_auth'])->group(
             }
         );
     });
+// 未登录用户相关接口
+Route::prefix('user')->group(
+    function (\Illuminate\Routing\Router $route) {
+        // 用户档案信息保存
+        $route->post(' profile', 'UserController@profile');
+    });
 
 Route::post('coin/packages', 'UserWithdrawalController@products');
 

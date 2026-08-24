@@ -23,7 +23,7 @@ function adminInfo()
 
 function authUserId(): int
 {
-    return \Illuminate\Http\Request::authUserId();
+    return \Illuminate\Http\Request::authUserId() ?? 0;
 }
 
 function redis()
