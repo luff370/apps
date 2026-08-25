@@ -64,6 +64,10 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::resource('merchant', 'MerchantController');
     Route::put('merchant/set_field_value/{id}/{value}/{field}', 'MerchantController::class@setFieldValue');
 
+    // 域名管理
+    Route::put('domain/set_field_value/{id}/{value}/{field}', 'DomainController@setFieldValue');
+    Route::resource('domain', 'DomainController');
+
     // API 混淆配置（应用侧只管理别名、映射、导出）
     Route::get('obfuscation', 'ApiObfuscationController@index');
     Route::get('obfuscation/profile', 'ApiObfuscationController@profile');

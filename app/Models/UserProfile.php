@@ -49,4 +49,9 @@ class UserProfile extends BaseModel
 		'birth_date',
 		'birth_place'
 	];
+
+	public function user()
+	{
+		return $this->belongsTo(User::class)->select(['id', 'account', 'nickname', 'uuid']);
+	}
 }

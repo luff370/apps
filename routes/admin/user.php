@@ -171,5 +171,10 @@ Route::name('user')->prefix('user')->namespace('User')->group( function () {
     Route::resource('feedback', 'UserFeedbackController');
     Route::put('feedback/set_field_value/{id}/{value}/{field}', 'UserFeedbackController::class@setFieldValue');
 
+    // 用户档案管理
+    Route::get('archive', 'UserArchiveController@index');
+    Route::get('archive/{id}/edit', 'UserArchiveController@edit');
+    Route::put('archive/{id}', 'UserArchiveController@update');
+
 
 });
