@@ -295,8 +295,7 @@ class SystemAdminServices extends Service
 
         $data['pwd'] = $this->passwordHash($data['pwd']);
         $data['add_time'] = time();
-        // $data['roles'] = implode(',', $data['roles']);
-        $data['account_type'] = $data['roles'];
+        [$data['roles'], $data['account_type']] = $this->normalizeRoles($data['roles']);
 
         return \DB::transaction(function () use ($data) {
             if ($res = $this->dao->save($data)) {
@@ -363,9 +362,7 @@ class SystemAdminServices extends Service
         }
 
         if (isset($data['roles'])) {
-            // $adminInfo->roles = implode(',', $data['roles']);
-            $adminInfo->roles = $data['roles'];
-            $adminInfo->account_type = $data['roles'];
+            [$adminInfo->roles, $adminInfo->account_type] = $this->normalizeRoles($data['roles']);
         }
         $adminInfo->real_name = $data['real_name'] ?? $adminInfo->real_name;
         $adminInfo->account = $data['account'] ?? $adminInfo->account;
@@ -375,6 +372,25 @@ class SystemAdminServices extends Service
         } else {
             return false;
         }
+    }
+
+    /**
+     * 将角色入参规范为库字段：roles 逗号分隔字符串，account_type 单个角色 id
+     *
+     * @param mixed $roles
+     *
+     * @return array{0: string, 1: int}
+     */
+    protected function normalizeRoles($roles): array
+    {
+        if (is_array($roles)) {
+            $roles = array_filter($roles, static fn($id) => $id !== '' && $id !== null);
+            $accountType = (int) reset($roles);
+
+            return [implode(',', $roles), $accountType];
+        }
+
+        return [(string) $roles, (int) $roles];
     }
 
     /**
