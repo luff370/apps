@@ -99,12 +99,55 @@ class SystemApp extends Model
             'xiaomi' => '小米',
             'oppo' => 'OPPO',
             'vivo' => 'VIVO',
-            'yyb' => '应用宝',
+            'yingyongbao' => '应用宝',
             'baidu' => '百度',
             'pp' => 'pp助手',
             'uc' => 'UC助手',
             '360' => '360',
         ];
+    }
+
+    /**
+     * 渠道筛选别名：客户端有写错/历史值时一并查出
+     */
+    public static function marketChannelAliases(string $channel): array
+    {
+        $channel = trim($channel);
+        if ($channel === '') {
+            return [];
+        }
+
+        $groups = [
+            ['yingyongbao', 'yingyongba', 'yyb'],
+        ];
+        foreach ($groups as $group) {
+            if (in_array($channel, $group, true)) {
+                return $group;
+            }
+        }
+
+        return [$channel];
+    }
+
+    public static function marketChannelDisplayName(?string $channel): string
+    {
+        $channel = trim((string) $channel);
+        if ($channel === '') {
+            return '';
+        }
+
+        $map = self::marketChannelsMap();
+        if (isset($map[$channel])) {
+            return $map[$channel];
+        }
+
+        foreach (self::marketChannelAliases($channel) as $alias) {
+            if (isset($map[$alias])) {
+                return $map[$alias];
+            }
+        }
+
+        return $channel;
     }
 
     public static function idToNameMap($filter = []): array

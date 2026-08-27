@@ -7,6 +7,7 @@ use App\Models\MemberOrder;
 use App\Models\MemberProduct;
 use App\Dao\Order\MemberOrderDao;
 use App\Models\User;
+use App\Models\SystemApp;
 use App\Exceptions\RequestException;
 use Illuminate\Support\Facades\DB;
 
@@ -86,6 +87,7 @@ class MemberOrderService extends Service
             $item['pay_status_name'] = $payStatusMap[$item['pay_status']] ?? '';
             $item['pay_status_color'] = $payStatusColorMap[$item['pay_status']] ?? '';
             $item['pay_type_name'] = $payTypeMap[$item['pay_type']] ?? '';
+            $item['market_channel'] = SystemApp::marketChannelDisplayName($item['market_channel'] ?? '');
             $item['refund_status_name'] = $refundStatusMap[(int)($item['refund_status'] ?? 0)] ?? '';
             $item['refund_status_color'] = $refundStatusColorMap[(int)($item['refund_status'] ?? 0)] ?? '';
             if ((int)($item['refund_status'] ?? 0) !== MemberOrder::REFUND_STATUS_NONE) {

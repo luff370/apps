@@ -51,11 +51,11 @@ class MemberOrderDao extends BaseDao
         }
 
         if (!empty($where['market_channel'])) {
-            $query->where('market_channel', $where['market_channel']);
+            $query->whereIn('market_channel', \App\Models\SystemApp::marketChannelAliases((string) $where['market_channel']));
         }
 
         if (!empty($where['version'])) {
-            $query->where('version', $where['version']);
+            $query->where('version', 'like', trim((string) $where['version']) . '%');
         }
 
         if (!empty($where['keyword'])) {
