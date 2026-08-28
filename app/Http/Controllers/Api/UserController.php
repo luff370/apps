@@ -159,7 +159,7 @@ class UserController extends Controller
         try {
             UserProfile::query()->create($profile);
         } catch (\Exception $exception) {
-            logger()->error('用户档案信息保存失败---' . $exception->getMessage());
+            logger()->error('用户档案信息保存失败---' . $exception->getMessage(), $profile);
 
             $count = UserProfile::query()->where('uuid', $profile['uuid'])->count();
             if ($count > 0) {
