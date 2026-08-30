@@ -49,7 +49,7 @@ class OperationStatisticsService
     }
 
     /**
-     * 充值统计汇总：按应用和时间范围计算新增、活跃、下单、支付、试用、续费、取消等转化指标。
+     * 充值统计汇总：按应用和时间范围计算注册、新增充值、活跃、下单、支付、试用、续费、取消等转化指标。
      */
     public function rechargeSummary(array $filter): array
     {
@@ -60,7 +60,8 @@ class OperationStatisticsService
         $orderQuery = $this->memberOrders($start, $end, $rechargeFilter);
         $paidOrderQuery = $this->paidMemberOrders($start, $end, $rechargeFilter);
         $activeUsers = $hasVersionFilter ? null : $this->activeUsers($start, $end, $rechargeFilter);
-        $newUsers = $hasVersionFilter ? null : $this->newUsers($start, $end, $rechargeFilter);
+        $registeredUsers = $hasVersionFilter ? null : $this->newUsers($start, $end, $rechargeFilter);
+        $newRechargeUsers = $this->newRechargeUsers($start, $end, $rechargeFilter);
 
         $orderUsers = (clone $orderQuery)->distinct('user_id')->count('user_id');
         $orderCount = (clone $orderQuery)->count();
@@ -78,9 +79,11 @@ class OperationStatisticsService
         $cancel = $this->cancelStats($start, $end, $rechargeFilter);
 
         return [
-            'new_users' => $hasVersionFilter ? '--' : $newUsers,
+            'registered_users' => $hasVersionFilter ? '--' : $registeredUsers,
+            'new_users' => $newRechargeUsers,
+            'new_recharge_users' => $newRechargeUsers,
             'active_users' => $hasVersionFilter ? '--' : $activeUsers,
-            'active_index' => $hasVersionFilter ? '--' : $this->rate($activeUsers, max($newUsers, 1), false),
+            'active_index' => $hasVersionFilter ? '--' : $this->rate($activeUsers, max($registeredUsers, 1), false),
             'order_users' => $orderUsers,
             'order_count' => $orderCount,
             'order_amount' => $orderAmount,
@@ -1024,6 +1027,35 @@ class OperationStatisticsService
             'users' => (clone $query)->distinct('user_id')->count('user_id'),
             'amount' => $this->money((clone $query)->sum('pay_amount')),
         ];
+    }
+
+    /**
+     * 新增充值人数：筛选范围内首次支付成功发生在统计区间内的去重用户数。
+     *
+     * 与支付人数的区别是只计「第一次充值」，不含区间内的复购用户。
+     * 带应用市场/版本时，首次充值按同一筛选条件下的订单计算。
+     */
+    private function newRechargeUsers(Carbon $start, Carbon $end, array $filter): int
+    {
+        $firstPaid = MemberOrder::query()
+            ->select('user_id')
+            ->selectRaw('MIN(pay_time) as first_pay_time')
+            ->tap(fn (Builder $query) => $this->applyRechargeFilter($query, $filter))
+            ->where(function (Builder $query) {
+                $query->where('paid', 1)->orWhere('pay_status', MemberOrder::PAY_STATUS_PAID);
+            })
+            ->where('pay_time', '>', 0)
+            ->where('user_id', '>', 0)
+            ->where('pay_price', '>', 0)
+            ->groupBy('user_id');
+
+        return (int) DB::query()
+            ->fromSub($firstPaid, 'first_paid')
+            ->whereBetween('first_pay_time', [
+                $start->copy()->startOfDay()->timestamp,
+                $end->copy()->endOfDay()->timestamp,
+            ])
+            ->count();
     }
 
     /**
