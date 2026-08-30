@@ -18,6 +18,7 @@ use Carbon\Carbon;
  * @property int $app_id
  * @property string $market_channel
  * @property int $new_users_count
+ * @property int $new_uuid_count
  * @property int $active_users_count
  * @property Carbon $date
  *
@@ -32,6 +33,7 @@ class UserStatistic extends BaseModel
 	protected $casts = [
 		'app_id' => 'int',
 		'new_users_count' => 'int',
+		'new_uuid_count' => 'int',
 		'active_users_count' => 'int',
 		'date' => 'datetime'
 	];
@@ -41,6 +43,7 @@ class UserStatistic extends BaseModel
         'market_channel',
         'date',
 		'new_users_count',
+		'new_uuid_count',
 		'active_users_count'
 	];
 }

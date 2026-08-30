@@ -12,6 +12,7 @@ use App\Support\Services\AppConfigService;
 use App\Services\User\UserWhitelistService;
 use App\Services\System\AppVersionServices;
 use App\Services\User\UserAccessLogService;
+use App\Jobs\RecordAppInfoUserStat;
 use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\SystemConfigService;
 
@@ -112,9 +113,11 @@ class CommonController extends Controller
         // 记录访问日志
         UserAccessLogService::record(0, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion(), $this->getOsVersion(), $this->getUuid(), $this->getDevice(), $this->getClientIp(), $request->path(), $data);
 
-        // 活跃用户统计
-        $this->userStatisticsService()->userActiveStat($this->getUuid(), $this->getAppId(), $this->getMarketChannel());
-        // logger()->info('返回信息：', $data);
+        RecordAppInfoUserStat::dispatchAfterResponse(
+            (string)($this->getUuid() ?? ''),
+            (int)$this->getAppId(),
+            (string)($this->getMarketChannel() ?? '')
+        );
 
         return $this->success($data);
     }

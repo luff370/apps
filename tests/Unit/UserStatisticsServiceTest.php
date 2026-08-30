@@ -40,20 +40,35 @@ class UserStatisticsServiceTest extends TestCase
         );
     }
 
+    public function test_new_uuid_stat_key_includes_market_channel(): void
+    {
+        $this->assertSame(
+            'user_new_uuid:10001-2026-08-30',
+            $this->service->getNewUuidStatKey(10001, '2026-08-30')
+        );
+        $this->assertSame(
+            'user_new_uuid:10001:huawei-2026-08-30',
+            $this->service->getNewUuidStatKey(10001, '2026-08-30', 'Huawei')
+        );
+    }
+
     public function test_user_active_stat_writes_app_total_and_channel_sets(): void
     {
         $this->redisClient->shouldReceive('sAdd')
             ->once()
             ->with($this->service->getUserActiveStatKey(10001), 'uuid-1')
             ->andReturn(1);
+        $this->redisClient->shouldReceive('expire')->once()->andReturn(true);
         $this->redisClient->shouldReceive('sAdd')
             ->once()
             ->with($this->service->getUserActiveStatKey(10001, null, 'huawei'), 'uuid-1')
             ->andReturn(1);
+        $this->redisClient->shouldReceive('expire')->once()->andReturn(true);
         $this->redisClient->shouldReceive('sAdd')
             ->once()
             ->with($this->service->getUserActiveChannelIndexKey(10001), 'huawei')
             ->andReturn(1);
+        $this->redisClient->shouldReceive('expire')->once()->andReturn(true);
 
         $this->service->userActiveStat('uuid-1', 10001, 'huawei');
     }
