@@ -10,7 +10,7 @@ class UserStatisticsController extends Controller
 
     public function userActiveStat()
     {
-        $this->userStatisticsService()->userActiveStat($this->getUuid(), $this->getAppId());
+        $this->userStatisticsService()->userActiveStat($this->getUuid(), $this->getAppId(), $this->getMarketChannel());
 
         return $this->success();
     }

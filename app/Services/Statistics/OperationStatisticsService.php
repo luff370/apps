@@ -55,12 +55,12 @@ class OperationStatisticsService
     {
         [$start, $end] = $this->dateRange($filter, true);
         $rechargeFilter = $this->rechargeFilter($filter);
-        $appId = $rechargeFilter['app_id'];
         $hasOrderDimensionFilter = $this->hasOrderDimensionFilter($rechargeFilter);
+        $hasVersionFilter = !empty($rechargeFilter['version']);
         $orderQuery = $this->memberOrders($start, $end, $rechargeFilter);
         $paidOrderQuery = $this->paidMemberOrders($start, $end, $rechargeFilter);
-        $activeUsers = $hasOrderDimensionFilter ? null : $this->activeUsers($start, $end, $appId);
-        $newUsers = $hasOrderDimensionFilter ? null : $this->newUsers($start, $end, $appId);
+        $activeUsers = $hasVersionFilter ? null : $this->activeUsers($start, $end, $rechargeFilter);
+        $newUsers = $hasVersionFilter ? null : $this->newUsers($start, $end, $rechargeFilter);
 
         $orderUsers = (clone $orderQuery)->distinct('user_id')->count('user_id');
         $orderCount = (clone $orderQuery)->count();
@@ -78,21 +78,21 @@ class OperationStatisticsService
         $cancel = $this->cancelStats($start, $end, $rechargeFilter);
 
         return [
-            'new_users' => $hasOrderDimensionFilter ? '--' : $newUsers,
-            'active_users' => $hasOrderDimensionFilter ? '--' : $activeUsers,
-            'active_index' => $hasOrderDimensionFilter ? '--' : $this->rate($activeUsers, max($newUsers, 1), false),
+            'new_users' => $hasVersionFilter ? '--' : $newUsers,
+            'active_users' => $hasVersionFilter ? '--' : $activeUsers,
+            'active_index' => $hasVersionFilter ? '--' : $this->rate($activeUsers, max($newUsers, 1), false),
             'order_users' => $orderUsers,
             'order_count' => $orderCount,
             'order_amount' => $orderAmount,
-            'order_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
-            'order_conversion_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
+            'order_rate' => $hasVersionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
+            'order_conversion_rate' => $hasVersionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
             'paid_users' => $paidUsers,
             'paid_count' => $paidCount,
             'paid_amount' => $paidAmount,
-            'pay_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($paidUsers, $activeUsers),
+            'pay_rate' => $hasVersionFilter ? '--' : $this->rate($paidUsers, $activeUsers),
             'pay_conversion_rate' => $this->rate($paidUsers, $orderUsers),
             'trial_users' => $trialUsers,
-            'trial_rate' => $hasOrderDimensionFilter ? '--' : $this->rate($trialUsers, $activeUsers),
+            'trial_rate' => $hasVersionFilter ? '--' : $this->rate($trialUsers, $activeUsers),
             'renew_users' => $renew['users'],
             'renew_amount' => $renew['amount'],
             'renew_rate' => $this->rate($renew['users'], $trialUsers),
@@ -452,6 +452,7 @@ class OperationStatisticsService
             return UserStatistic::query()
                 ->selectRaw('date, SUM(new_users_count) as value')
                 ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+                ->where('market_channel', '')
                 ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
                 ->groupBy('date')
                 ->pluck('value', 'date')
@@ -486,6 +487,7 @@ class OperationStatisticsService
             return UserStatistic::query()
                 ->selectRaw("DATE_FORMAT(date, '%Y-%m') as month_value, SUM(new_users_count) as value")
                 ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+                ->where('market_channel', '')
                 ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
                 ->groupBy('month_value')
                 ->pluck('value', 'month_value')
@@ -519,6 +521,7 @@ class OperationStatisticsService
         return UserStatistic::query()
             ->selectRaw('date, app_id, SUM(new_users_count) as new_users, SUM(active_users_count) as active_users')
             ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->where('market_channel', '')
             ->when($appIds, fn (Builder $query) => $query->whereIn('app_id', $appIds))
             ->groupBy('date', 'app_id')
             ->get()
@@ -855,11 +858,36 @@ class OperationStatisticsService
     }
 
     /**
-     * user_statistics 暂无渠道和版本维度，带这些条件时新增、活跃相关指标返回占位符。
+     * 订单表可按渠道/版本筛选；新增、活跃已支持渠道，仅版本维度仍无日表口径。
      */
     private function hasOrderDimensionFilter(array $filter): bool
     {
         return !empty($filter['market_channel']) || !empty($filter['version']);
+    }
+
+    private function applyUserStatisticFilter(Builder $query, array $filter): Builder
+    {
+        $marketChannel = trim((string)($filter['market_channel'] ?? ''));
+
+        return $query
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(
+                $marketChannel !== '',
+                fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($marketChannel)),
+                fn (Builder $query) => $query->where('market_channel', '')
+            );
+    }
+
+    private function normalizeUserFilter(int|array $filter): array
+    {
+        if (is_array($filter)) {
+            return [
+                'app_id' => (int)($filter['app_id'] ?? 0),
+                'market_channel' => trim((string)($filter['market_channel'] ?? '')),
+            ];
+        }
+
+        return ['app_id' => $filter, 'market_channel' => ''];
     }
 
     private function applyRechargeFilter(Builder $query, array $filter): Builder
@@ -885,12 +913,14 @@ class OperationStatisticsService
      * 新增用户数。
      *
      * 优先读取 user_statistics 日表，日表无数据时回退到用户注册时间实时统计。
+     * 未指定渠道时只读应用合计行（market_channel 为空）；指定渠道时按应用市场筛选。
      */
-    private function newUsers(Carbon $start, Carbon $end, int $appId): int
+    private function newUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
+        $filter = $this->normalizeUserFilter($filter);
         $stat = UserStatistic::query()
             ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->tap(fn (Builder $query) => $this->applyUserStatisticFilter($query, $filter))
             ->sum('new_users_count');
 
         if ($stat > 0) {
@@ -898,7 +928,11 @@ class OperationStatisticsService
         }
 
         return User::query()
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(
+                $filter['market_channel'] !== '',
+                fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
+            )
             ->whereBetween('reg_time', [$start->copy()->startOfDay()->timestamp, $end->copy()->endOfDay()->timestamp])
             ->count();
     }
@@ -907,12 +941,14 @@ class OperationStatisticsService
      * 活跃用户数。
      *
      * 优先读取 user_statistics 日表，日表无数据时回退到 user_access_log 去重统计。
+     * 未指定渠道时只读应用合计行（market_channel 为空）；指定渠道时按应用市场筛选。
      */
-    private function activeUsers(Carbon $start, Carbon $end, int $appId): int
+    private function activeUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
+        $filter = $this->normalizeUserFilter($filter);
         $stat = UserStatistic::query()
             ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->tap(fn (Builder $query) => $this->applyUserStatisticFilter($query, $filter))
             ->sum('active_users_count');
 
         if ($stat > 0) {
@@ -920,7 +956,11 @@ class OperationStatisticsService
         }
 
         return DB::table('user_access_log')
-            ->when($appId > 0, fn ($query) => $query->where('app_id', $appId))
+            ->when($filter['app_id'] > 0, fn ($query) => $query->where('app_id', $filter['app_id']))
+            ->when(
+                $filter['market_channel'] !== '',
+                fn ($query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
+            )
             ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
             ->distinct('user_id')
             ->count('user_id');

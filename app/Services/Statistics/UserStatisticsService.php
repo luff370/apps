@@ -22,37 +22,65 @@ class UserStatisticsService extends Service
     }
 
     /**
-     * 生成指定应用、指定日期的活跃用户 Redis key。
+     * 生成指定应用、指定日期、指定渠道的活跃用户 Redis key。
      *
-     * key 里带 app_id 和日期，避免多应用之间互相污染，也方便按天清理历史临时数据。
+     * 空渠道表示应用合计，key 格式与历史数据保持一致，避免升级当天 Redis 里已有集合失效。
      */
-    public function getUserActiveStatKey($appId, $date = null): string
+    public function getUserActiveStatKey($appId, $date = null, $marketChannel = ''): string
     {
-        return sprintf('user_active_stat:%s-%s', $appId, $date ?? today()->toDateString());
+        $date = $date ?? today()->toDateString();
+        $marketChannel = $this->normalizeMarketChannel($marketChannel);
+        if ($marketChannel === '') {
+            return sprintf('user_active_stat:%s-%s', $appId, $date);
+        }
+
+        return sprintf('user_active_stat:%s:%s-%s', $appId, $marketChannel, $date);
+    }
+
+    /**
+     * 当天出现过的应用市场集合，供定时任务按渠道落库。
+     */
+    public function getUserActiveChannelIndexKey($appId, $date = null): string
+    {
+        return sprintf('user_active_stat_channels:%s-%s', $appId, $date ?? today()->toDateString());
     }
 
     /**
      * 记录一次用户活跃。
      *
-     * 这里写入的是 Redis Set，不直接累加数字，是为了同一 uuid 在同一天多次访问仍只算 1 个活跃。
+     * 同时写入应用合计 Set 和渠道 Set，同一 uuid 在同一天多次访问仍只算 1 个活跃。
      */
-    public function userActiveStat($uuid, $appId): void
+    public function userActiveStat($uuid, $appId, $marketChannel = ''): void
     {
-        $cacheKey = $this->getUserActiveStatKey($appId);
+        $this->redisClient->sAdd($this->getUserActiveStatKey($appId), $uuid);
 
-        $this->redisClient->sAdd($cacheKey, $uuid);
+        $marketChannel = $this->normalizeMarketChannel($marketChannel);
+        if ($marketChannel === '') {
+            return;
+        }
+
+        $this->redisClient->sAdd($this->getUserActiveStatKey($appId, null, $marketChannel), $uuid);
+        $this->redisClient->sAdd($this->getUserActiveChannelIndexKey($appId), $marketChannel);
     }
 
     /**
      * 获取当前应用当天实时活跃人数。
      *
-     * 这个值用于实时看板或日统计落库前的临时查询，最终历史报表仍以 user_statistics 日表为主。
+     * 空渠道返回应用合计；指定渠道返回该应用市场的去重人数。
      */
-    public function getActiveUserCount($appId): int
+    public function getActiveUserCount($appId, $marketChannel = ''): int
     {
-        $cacheKey = $this->getUserActiveStatKey($appId);
+        return (int)$this->redisClient->sCard($this->getUserActiveStatKey($appId, null, $marketChannel));
+    }
 
-        return (int)$this->redisClient->sCard($cacheKey);
+    /**
+     * 当天已产生过活跃记录的应用市场列表。
+     */
+    public function getActiveMarketChannels($appId, $date = null): array
+    {
+        $members = $this->redisClient->sMembers($this->getUserActiveChannelIndexKey($appId, $date)) ?: [];
+
+        return array_values(array_unique(array_filter(array_map([$this, 'normalizeMarketChannel'], $members))));
     }
 
     /**
@@ -62,26 +90,42 @@ class UserStatisticsService extends Service
      */
     public function delUserActiveStatKey($appId, $date = null): void
     {
-        $cacheKey = $this->getUserActiveStatKey($appId, $date);
+        $date = $date ?? today()->toDateString();
+        $keys = [
+            $this->getUserActiveStatKey($appId, $date),
+            $this->getUserActiveChannelIndexKey($appId, $date),
+        ];
+        foreach ($this->getActiveMarketChannels($appId, $date) as $marketChannel) {
+            $keys[] = $this->getUserActiveStatKey($appId, $date, $marketChannel);
+        }
 
-        $this->redisClient->del($cacheKey);
+        foreach ($keys as $key) {
+            $this->redisClient->del($key);
+        }
     }
 
     /**
      * 获取用户趋势图数据。
      *
-     * 按日期聚合新增和活跃人数；app_id 为 0 时表示全应用汇总，指定 app_id 时用于单应用看板。
+     * 按日期聚合新增和活跃人数；只读 market_channel 为空的应用合计行，避免与分渠道行加总重复。
+     * app_id 为 0 时表示全应用汇总，指定 app_id 时用于单应用看板。
      */
     public function userCharts($days, $appId = 0)
     {
         return UserStatistic::query()->when($appId > 0, function ($query) use ($appId) {
             $query->where('app_id', $appId);
         })
+            ->where('market_channel', '')
             ->selectRaw('date, sum(new_users_count) as new_users_count, sum(active_users_count) as active_users_count')
             ->orderBy('date', 'desc')
             ->groupBy('date')
             ->limit($days)
             ->get();
+    }
+
+    private function normalizeMarketChannel($marketChannel): string
+    {
+        return strtolower(trim((string)$marketChannel));
     }
 
 }

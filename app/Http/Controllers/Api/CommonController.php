@@ -113,7 +113,7 @@ class CommonController extends Controller
         UserAccessLogService::record(0, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion(), $this->getOsVersion(), $this->getUuid(), $this->getDevice(), $this->getClientIp(), $request->path(), $data);
 
         // 活跃用户统计
-        $this->userStatisticsService()->userActiveStat($this->getUuid(), $this->getAppId());
+        $this->userStatisticsService()->userActiveStat($this->getUuid(), $this->getAppId(), $this->getMarketChannel());
         // logger()->info('返回信息：', $data);
 
         return $this->success($data);

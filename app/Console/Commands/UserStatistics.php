@@ -40,29 +40,58 @@ class UserStatistics extends Command
         $endTime = today()->endOfDay()->unix();
         $currentMinute = today()->addMinutes(10);
 
-        $newUsers = User::query()->selectRaw("count(id) as count, app_id")
+        $newUsers = User::query()->selectRaw("count(id) as count, app_id, IFNULL(market_channel, '') as market_channel")
             ->whereBetween('reg_time', [$startTime, $endTime])
-            ->groupBy('app_id')
-            ->get()
-            ->pluck('count', 'app_id');
+            ->groupBy('app_id', 'market_channel')
+            ->get();
+
+        $newUsersByApp = [];
+        $newUsersByAppChannel = [];
+        foreach ($newUsers as $row) {
+            $appId = (int)$row->app_id;
+            $channel = strtolower(trim((string)$row->market_channel));
+            $newUsersByApp[$appId] = ($newUsersByApp[$appId] ?? 0) + (int)$row->count;
+            if ($channel === '') {
+                continue;
+            }
+            $newUsersByAppChannel[$appId][$channel] = ($newUsersByAppChannel[$appId][$channel] ?? 0) + (int)$row->count;
+        }
 
         $apps = SystemApp::query()->where('is_del', 0)->pluck('id')->toArray();
 
         $data = [];
         foreach ($apps as $appId) {
-            $newUsersCount = $newUsers[$appId] ?? 0;
+            $newUsersCount = $newUsersByApp[$appId] ?? 0;
             $activeUsersCount = $service->getActiveUserCount($appId);
-            if ($newUsersCount == 0 && $activeUsersCount == 0) {
-                continue;
+            if ($newUsersCount > 0 || $activeUsersCount > 0) {
+                $data[] = [
+                    'app_id' => $appId,
+                    'market_channel' => '',
+                    'date' => $date,
+                    'new_users_count' => $newUsersCount,
+                    'active_users_count' => $activeUsersCount,
+                ];
             }
 
-            $data[] = [
-                'app_id'=>$appId,
-                'date'=>$date,
-                'new_users_count'=>$newUsersCount,
-                'active_users_count'=>$activeUsersCount
-            ];
+            $channels = array_unique(array_merge(
+                array_keys($newUsersByAppChannel[$appId] ?? []),
+                $service->getActiveMarketChannels($appId)
+            ));
+            foreach ($channels as $channel) {
+                $channelNewUsersCount = $newUsersByAppChannel[$appId][$channel] ?? 0;
+                $channelActiveUsersCount = $service->getActiveUserCount($appId, $channel);
+                if ($channelNewUsersCount == 0 && $channelActiveUsersCount == 0) {
+                    continue;
+                }
 
+                $data[] = [
+                    'app_id' => $appId,
+                    'market_channel' => $channel,
+                    'date' => $date,
+                    'new_users_count' => $channelNewUsersCount,
+                    'active_users_count' => $channelActiveUsersCount,
+                ];
+            }
 
             if ($currentMinute > now()) {
                 // 每天00点 新增当天统计数据，并删除昨天的缓存数据
@@ -70,7 +99,11 @@ class UserStatistics extends Command
             }
         }
         if (!empty($data)) {
-            UserStatistic::query()->upsert($data, ['app_id', 'date'], ['new_users_count', 'active_users_count']);
+            UserStatistic::query()->upsert(
+                $data,
+                ['app_id', 'date', 'market_channel'],
+                ['new_users_count', 'active_users_count']
+            );
         }
     }
 }
