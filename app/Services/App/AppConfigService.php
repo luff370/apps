@@ -76,7 +76,8 @@ class AppConfigService extends Service
      */
     public function createUpdateForm(array $info = []): array
     {
-        $f[] = Form::select('app_id', '应用', $info['app_id'] ?? '')->options(FormOptions::systemApps())->filterable(true)->requiredNum();
+        $appId = (int)($info['app_id'] ?? 0);
+        $f[] = Form::select('app_id', '应用', $appId)->options(FormOptions::systemApps())->filterable(true)->requiredNum();
         $f[] = Form::select('channel', '渠道', $info['channel'] ?? 'all')->options(FormOptions::marketChannel(['label' => '全部', 'value' => 'all']));
         $f[] = Form::text('version', '版本', $info['version'] ?? 'all');
         $f[] = Form::text('name', '参数名称', $info['name'] ?? '')->required();
