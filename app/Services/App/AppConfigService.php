@@ -3,6 +3,7 @@
 namespace App\Services\App;
 
 use App\Services\Service;
+use App\Models\AppConfig;
 use App\Models\SystemApp;
 use App\Dao\App\AppConfigDao;
 use App\Exceptions\AdminException;
@@ -81,7 +82,7 @@ class AppConfigService extends Service
         $f[] = Form::text('name', '参数名称', $info['name'] ?? '')->required();
         $f[] = Form::text('key', '参数key', $info['key'] ?? '')->required();
         $f[] = Form::text('value', '参数值', $info['value'] ?? '')->required();
-        $f[] = Form::textarea('remark', '备注', $info['remark'] ?? '');
+        $f[] = Form::textarea('remark', '备注', $this->autoAddWhiteListRemark($info));
         $f[] = Form::radio('is_enable', '是否启用', $info['is_enable'] ?? 1)->options(FormOptions::isEnable());
 
         return $f;
@@ -93,6 +94,7 @@ class AppConfigService extends Service
     public function save(array $data): Model
     {
         $data = $this->normalizeUniqueFields($data);
+        $data = $this->applyAutoAddWhiteListDefaults($data);
         $this->ensureKeyUnique($data);
 
         return $this->dao->save($data);
@@ -109,6 +111,7 @@ class AppConfigService extends Service
         }
 
         $data = $this->normalizeUniqueFields($data, $info->toArray());
+        $data = $this->applyAutoAddWhiteListDefaults($data, $info->toArray());
         $this->ensureKeyUnique($data, (int)$info->id);
 
         return $this->dao->update($id, $data, $key);
@@ -159,6 +162,40 @@ class AppConfigService extends Service
         }
 
         return $data;
+    }
+
+    private function applyAutoAddWhiteListDefaults(array $data, array $origin = []): array
+    {
+        $key = (string)($data['key'] ?? $origin['key'] ?? '');
+        if ($key !== AppConfig::AUTO_ADD_WHITE_LIST_KEY) {
+            return $data;
+        }
+
+        if (!array_key_exists('remark', $data)) {
+            if (trim((string)($origin['remark'] ?? '')) === '') {
+                $data['remark'] = AppConfig::AUTO_ADD_WHITE_LIST_REMARK;
+            }
+
+            return $data;
+        }
+
+        if (trim((string)$data['remark']) === '') {
+            $data['remark'] = AppConfig::AUTO_ADD_WHITE_LIST_REMARK;
+        }
+
+        return $data;
+    }
+
+    private function autoAddWhiteListRemark(array $info): string
+    {
+        $remark = (string)($info['remark'] ?? '');
+        if ($remark !== '') {
+            return $remark;
+        }
+
+        return (string)($info['key'] ?? '') === AppConfig::AUTO_ADD_WHITE_LIST_KEY
+            ? AppConfig::AUTO_ADD_WHITE_LIST_REMARK
+            : '';
     }
 
     private function ensureKeyUnique(array $data, int $ignoreId = 0): void

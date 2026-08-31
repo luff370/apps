@@ -79,6 +79,34 @@ class AppConfigServiceTest extends TestCase
         $this->assertSame(1, (new AppConfigService($dao))->update(10, $updateData));
     }
 
+    public function test_save_fills_default_remark_for_auto_add_white_list(): void
+    {
+        $data = [
+            'app_id' => 10001,
+            'channel' => 'huawei',
+            'version' => '1.0.0',
+            'name' => '自动添加白名单',
+            'key' => AppConfig::AUTO_ADD_WHITE_LIST_KEY,
+            'value' => '1',
+            'remark' => '',
+            'is_enable' => 1,
+        ];
+        $saved = $data;
+        $saved['remark'] = AppConfig::AUTO_ADD_WHITE_LIST_REMARK;
+
+        $dao = $this->createMock(AppConfigDao::class);
+        $dao->expects($this->once())
+            ->method('existsByUniqueKey')
+            ->with($saved, 0)
+            ->willReturn(false);
+        $dao->expects($this->once())
+            ->method('save')
+            ->with($saved)
+            ->willReturn(new AppConfig($saved));
+
+        (new AppConfigService($dao))->save($data);
+    }
+
     public function test_update_form_uses_put_method_for_existing_config(): void
     {
         $info = new AppConfig([

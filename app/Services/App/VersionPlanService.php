@@ -15,10 +15,6 @@ use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
 {
-    private const AUTO_ADD_WHITE_LIST_KEY = 'auto_add_white_list';
-
-    private const AUTO_ADD_WHITE_LIST_NAME = '自动添加白名单';
-
     /**
      * 版本规划列表直接返回前端页面需要的嵌套结构。
      *
@@ -297,19 +293,18 @@ class VersionPlanService extends Service
                 continue;
             }
 
-            $value = (string)($task['status'] ?? '') === '审核中' ? '1' : '0';
+            $enabled = (string)($task['status'] ?? '') === '审核中' ? 1 : 0;
             $config = AppConfig::query()
                 ->where('app_id', $appId)
                 ->where('channel', $channel)
-                ->where('key', self::AUTO_ADD_WHITE_LIST_KEY)
+                ->where('key', AppConfig::AUTO_ADD_WHITE_LIST_KEY)
                 ->first();
 
             if ($config) {
                 $next = [
                     'version' => $version,
-                    'value' => $value,
-                    'remark' => $this->autoAddWhiteListRemark($value),
-                    'is_enable' => 1,
+                    'is_enable' => $enabled,
+                    'remark' => AppConfig::AUTO_ADD_WHITE_LIST_REMARK,
                 ];
                 $dirty = false;
                 foreach ($next as $field => $fieldValue) {
@@ -325,7 +320,7 @@ class VersionPlanService extends Service
                 continue;
             }
 
-            if ($value !== '1') {
+            if ($enabled !== 1) {
                 continue;
             }
 
@@ -333,23 +328,16 @@ class VersionPlanService extends Service
                 'app_id' => $appId,
                 'channel' => $channel,
                 'version' => $version,
-                'name' => self::AUTO_ADD_WHITE_LIST_NAME,
-                'key' => self::AUTO_ADD_WHITE_LIST_KEY,
-                'value' => $value,
-                'remark' => $this->autoAddWhiteListRemark($value),
+                'name' => AppConfig::AUTO_ADD_WHITE_LIST_NAME,
+                'key' => AppConfig::AUTO_ADD_WHITE_LIST_KEY,
+                'value' => '1',
+                'remark' => AppConfig::AUTO_ADD_WHITE_LIST_REMARK,
                 'is_enable' => 1,
             ]);
             $changed = true;
         }
 
         return $changed;
-    }
-
-    private function autoAddWhiteListRemark(string $value): string
-    {
-        return $value === '1'
-            ? '渠道状态为审核中，版本规划自动打开。'
-            : '渠道状态为非审核中，版本规划自动关闭。';
     }
 
     private function formatPlan(AppVersionPlan $plan): array
