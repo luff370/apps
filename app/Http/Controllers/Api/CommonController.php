@@ -100,8 +100,6 @@ class CommonController extends Controller
                 $request->getClientIp(),
                 $this->getAppVersion()
             );
-            // 记录访问日志 (自动添加，暂不记录)
-            // UserWhitelistService::recordWhitelistUserAccessLog($data['auto_add_white_list'],$this->getAppId(), $this->getPlatform(), $this->getMarketChannel(), ip2region($this->getClientIp()), $this->getClientIp(), $this->getDevice(), $this->getAppVersion(), $this->getUuid());
         } else {
             // 判断白名单是否开启
             if (!empty($data['user_white_list_filter']) && $this->getPlatform() != 'ios') {
@@ -113,6 +111,7 @@ class CommonController extends Controller
         // 记录访问日志
         UserAccessLogService::record(0, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion(), $this->getOsVersion(), $this->getUuid(), $this->getDevice(), $this->getClientIp(), $request->path(), $data);
 
+        // 用户新增、活跃统计
         RecordAppInfoUserStat::dispatchAfterResponse(
             (string)($this->getUuid() ?? ''),
             (int)$this->getAppId(),
