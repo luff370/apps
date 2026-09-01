@@ -9,6 +9,7 @@ use App\Models\SubscriptionOrder;
 use App\Models\SystemApp;
 use App\Models\User;
 use App\Models\UserStatistic;
+use App\Models\UserUuid;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
@@ -305,6 +306,7 @@ class OperationStatisticsService
 
         return [
             'new_users' => $this->metric($current['new_users'], $compare['new_users']),
+            'registered_users' => $this->metric($current['registered_users'], $compare['registered_users']),
             'active_users' => $this->metric($current['active_users'], $compare['active_users']),
             'recharge_revenue' => $this->metric($current['recharge_revenue'], $compare['recharge_revenue']),
             'ad_revenue' => $this->metric($current['ad_revenue'], $compare['ad_revenue']),
@@ -317,7 +319,8 @@ class OperationStatisticsService
     private function periodMetrics(Carbon $start, Carbon $end, int $appId): array
     {
         return [
-            'new_users' => $this->newUsers($start, $end, $appId),
+            'new_users' => $this->newUuidUsers($start, $end, $appId),
+            'registered_users' => $this->newUsers($start, $end, $appId),
             'active_users' => $this->activeUsers($start, $end, $appId),
             'recharge_revenue' => $this->paidMemberOrderAmount($this->paidMemberOrders($start, $end, $appId)),
             'ad_revenue' => $this->money($this->adRevenueQuery($start, $end, $appId)->sum('ad_revenue')),
@@ -446,19 +449,18 @@ class OperationStatisticsService
     /**
      * 按天聚合首页趋势数据。
      *
-     * 三类指标来自不同数据源：新增用户来自 user_statistics，广告收益来自广告日报，
+     * 三类指标来自不同数据源：新增用户来自首次 UUID，广告收益来自广告日报，
      * 充值收益来自支付成功的会员订单。
      */
     private function dailyMetricRows(string $metric, Carbon $start, Carbon $end, int $appId): array
     {
         if ($metric === 'new_users') {
-            return UserStatistic::query()
-                ->selectRaw('date, SUM(new_users_count) as value')
-                ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-                ->where('market_channel', '')
+            return UserUuid::query()
+                ->selectRaw('DATE(created_at) as date_value, COUNT(*) as value')
+                ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
                 ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
-                ->groupBy('date')
-                ->pluck('value', 'date')
+                ->groupBy('date_value')
+                ->pluck('value', 'date_value')
                 ->toArray();
         }
 
@@ -487,10 +489,9 @@ class OperationStatisticsService
     private function monthlyMetricRows(string $metric, Carbon $start, Carbon $end, int $appId): array
     {
         if ($metric === 'new_users') {
-            return UserStatistic::query()
-                ->selectRaw("DATE_FORMAT(date, '%Y-%m') as month_value, SUM(new_users_count) as value")
-                ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-                ->where('market_channel', '')
+            return UserUuid::query()
+                ->selectRaw("DATE_FORMAT(created_at, '%Y-%m') as month_value, COUNT(*) as value")
+                ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
                 ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
                 ->groupBy('month_value')
                 ->pluck('value', 'month_value')
@@ -913,7 +914,18 @@ class OperationStatisticsService
     }
 
     /**
-     * 新增用户数。
+     * 新增人数：区间内首次出现的客户端 UUID。
+     */
+    private function newUuidUsers(Carbon $start, Carbon $end, int $appId): int
+    {
+        return (int) UserUuid::query()
+            ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
+            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->count();
+    }
+
+    /**
+     * 注册人数。
      *
      * 优先读取 user_statistics 日表，日表无数据时回退到用户注册时间实时统计。
      * 未指定渠道时只读应用合计行（market_channel 为空）；指定渠道时按应用市场筛选。
