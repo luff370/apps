@@ -35,6 +35,26 @@ class AppConfig extends BaseModel
 
     const AUTO_ADD_WHITE_LIST_REMARK = '0=>关闭，1=>免广告，2=>免费会员，3=>广告和会员';
 
+    const USER_WHITE_LIST_FILTER_KEY = 'user_white_list_filter';
+
+    const USER_WHITE_LIST_FILTER_NAME = '用户白名单过滤';
+
+    const USER_WHITE_LIST_FILTER_REMARK = '0=>关闭，1=>开启';
+
+    public static function defaultUserWhiteListFilterAttributes(int $appId): array
+    {
+        return [
+            'app_id' => $appId,
+            'channel' => 'all',
+            'version' => 'all',
+            'name' => self::USER_WHITE_LIST_FILTER_NAME,
+            'key' => self::USER_WHITE_LIST_FILTER_KEY,
+            'value' => '1',
+            'remark' => self::USER_WHITE_LIST_FILTER_REMARK,
+            'is_enable' => 0,
+        ];
+    }
+
 	protected $table = 'app_config';
 
 	protected $casts = [

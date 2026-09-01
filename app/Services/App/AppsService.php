@@ -3,11 +3,12 @@
 namespace App\Services\App;
 
 use App\Dao\App\AppsDao;
-use App\Services\Service;
 use App\Exceptions\AdminException;
 use App\Models\AppAgreement;
+use App\Models\AppConfig;
 use App\Models\AppVersionPlanTask;
 use App\Models\Merchant;
+use App\Services\Service;
 use App\Support\Services\FormBuilder;
 use App\Support\Services\FormOptions;
 use Carbon\Carbon;
@@ -233,6 +234,7 @@ class AppsService extends Service
         return DB::transaction(function () use ($data) {
             $app = $this->dao->newQuery()->create($data);
             $this->createAgreementsFromMerchantTemplates($app);
+            $this->createDefaultUserWhiteListFilter((int)$app['id']);
 
             return $app;
         });
@@ -285,6 +287,24 @@ class AppsService extends Service
                 'status' => 1,
             ]);
         }
+    }
+
+    private function createDefaultUserWhiteListFilter(int $appId): void
+    {
+        if ($appId <= 0) {
+            return;
+        }
+
+        $exists = AppConfig::query()
+            ->where('app_id', $appId)
+            ->where('channel', 'all')
+            ->where('key', AppConfig::USER_WHITE_LIST_FILTER_KEY)
+            ->exists();
+        if ($exists) {
+            return;
+        }
+
+        AppConfig::query()->create(AppConfig::defaultUserWhiteListFilterAttributes($appId));
     }
 
     /**

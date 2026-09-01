@@ -138,4 +138,16 @@ class AppConfigController extends Controller
     {
         return $this->success($this->service->copyForm((int)$id));
     }
+
+    public function userWhiteListFilter($appId)
+    {
+        return $this->success($this->service->getUserWhiteListFilter((int)$appId));
+    }
+
+    public function setUserWhiteListFilter($appId)
+    {
+        $enabled = (int)$this->getMore([['is_enable', 0]])['is_enable'];
+
+        return $this->success($this->service->setUserWhiteListFilterEnabled((int)$appId, $enabled));
+    }
 }

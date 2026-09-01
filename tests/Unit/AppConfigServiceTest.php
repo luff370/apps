@@ -194,4 +194,18 @@ class AppConfigServiceTest extends TestCase
             'is_enable' => 0,
         ], $service->params);
     }
+
+    public function test_default_user_white_list_filter_is_closed_with_value_one(): void
+    {
+        $this->assertSame([
+            'app_id' => 10036,
+            'channel' => 'all',
+            'version' => 'all',
+            'name' => '用户白名单过滤',
+            'key' => 'user_white_list_filter',
+            'value' => '1',
+            'remark' => '0=>关闭，1=>开启',
+            'is_enable' => 0,
+        ], AppConfig::defaultUserWhiteListFilterAttributes(10036));
+    }
 }

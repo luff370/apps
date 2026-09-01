@@ -2,13 +2,14 @@
 
 namespace App\Services\App;
 
-use App\Services\Service;
-use App\Models\AppConfig;
-use App\Models\SystemApp;
 use App\Dao\App\AppConfigDao;
 use App\Exceptions\AdminException;
-use App\Support\Services\FormOptions;
+use App\Models\AppConfig;
+use App\Models\SystemApp;
+use App\Services\Service;
+use App\Support\Services\AppConfigService as AppConfigCacheService;
 use App\Support\Services\FormBuilder as Form;
+use App\Support\Services\FormOptions;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -116,6 +117,60 @@ class AppConfigService extends Service
         $this->ensureKeyUnique($data, (int)$info->id);
 
         return $this->dao->update($id, $data, $key);
+    }
+
+    public function getUserWhiteListFilter(int $appId): array
+    {
+        $config = $this->findUserWhiteListFilter($appId);
+
+        return $this->formatUserWhiteListFilter($appId, $config);
+    }
+
+    public function setUserWhiteListFilterEnabled(int $appId, int $enabled): array
+    {
+        $config = $this->ensureUserWhiteListFilter($appId);
+        $enabled = $enabled ? 1 : 0;
+        if ((int)$config->is_enable !== $enabled) {
+            $config->is_enable = $enabled;
+            $config->save();
+            AppConfigCacheService::cacheByAppId($appId);
+        }
+
+        return $this->formatUserWhiteListFilter($appId, $config);
+    }
+
+    public function ensureUserWhiteListFilter(int $appId): AppConfig
+    {
+        if ($appId <= 0) {
+            throw new AdminException('应用ID不能为空');
+        }
+
+        $config = $this->findUserWhiteListFilter($appId);
+        if ($config) {
+            return $config;
+        }
+
+        return AppConfig::query()->create(AppConfig::defaultUserWhiteListFilterAttributes($appId));
+    }
+
+    private function findUserWhiteListFilter(int $appId): ?AppConfig
+    {
+        return AppConfig::query()
+            ->where('app_id', $appId)
+            ->where('channel', 'all')
+            ->where('key', AppConfig::USER_WHITE_LIST_FILTER_KEY)
+            ->first();
+    }
+
+    private function formatUserWhiteListFilter(int $appId, ?AppConfig $config): array
+    {
+        return [
+            'app_id' => $appId,
+            'id' => $config ? (int)$config->id : 0,
+            'key' => AppConfig::USER_WHITE_LIST_FILTER_KEY,
+            'value' => $config ? (string)$config->value : '1',
+            'is_enable' => $config ? (int)$config->is_enable : 0,
+        ];
     }
 
     /**

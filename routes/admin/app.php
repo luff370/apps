@@ -8,6 +8,9 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::resource('apps', 'AppsController');
     Route::put('apps/{id}/set_status/{status}', 'AppsController@setStatus');
 
+    Route::get('apps/{appId}/user_white_list_filter', 'AppConfigController@userWhiteListFilter');
+    Route::put('apps/{appId}/user_white_list_filter', 'AppConfigController@setUserWhiteListFilter');
+
     // 协议配置
     Route::resource('agreement', 'AgreementsController');
     Route::put('agreement/{id}/set_status/{status}', 'AgreementsController@setStatus');
