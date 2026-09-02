@@ -19,11 +19,6 @@ use App\Support\Services\AgreementUrlAliasService;
 
 class CommonController extends Controller
 {
-    public function phpinfo()
-    {
-        phpinfo();
-    }
-
     public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService, AgreementUrlAliasService $agreementUrlAlias)
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);
