@@ -17,5 +17,8 @@ Route::get('/article/{id}', 'CommonController@article');
 
 Route::get('/agreement/{type}/{app_id}/{platform}', 'CommonController@appAgreement');
 Route::get('/agreement/{type}/{app_id}/{platform}/{version}', 'CommonController@appAgreement');
+Route::get('/{alias}/{platform}', 'CommonController@appAgreementByAlias')
+    ->where('alias', '[a-z0-9]{8}')
+    ->where('platform', '[A-Za-z0-9_\-]+');
 
 Route::get('/alipay_auth_callback', 'CallbackController@alipayAuth');

@@ -15,6 +15,7 @@ use App\Services\User\UserAccessLogService;
 use App\Jobs\RecordAppInfoUserStat;
 use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\SystemConfigService;
+use App\Support\Services\AgreementUrlAliasService;
 
 class CommonController extends Controller
 {
@@ -23,16 +24,16 @@ class CommonController extends Controller
         phpinfo();
     }
 
-    public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService)
+    public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService, AgreementUrlAliasService $agreementUrlAlias)
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);
 
         // 用户数
         $data['active_users'] = 34099;
         // 用户协议
-        $data['user_agreement'] = url('agreement/user', ['app_id' => $this->getAppId(), 'platform' => $this->getMarketChannel()]);
+        $data['user_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'user', $this->getMarketChannel());
         // 隐私政策
-        $data['privacy_agreement'] = url('agreement/privacy', ['app_id' => $this->getAppId(), 'platform' => $this->getMarketChannel()]);
+        $data['privacy_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'privacy', $this->getMarketChannel());
 
         // 应用基础配置(后期应用已废弃此配置项)
         $sysConfig = SystemConfigService::getAppConfigs($this->getAppId());

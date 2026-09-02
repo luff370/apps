@@ -6,9 +6,20 @@ use App\Models\Article;
 use App\Models\AppAgreement;
 use App\Models\ArticleContent;
 use App\Http\Controllers\Controller;
+use App\Support\Services\AgreementUrlAliasService;
 
 class CommonController extends Controller
 {
+    public function appAgreementByAlias($alias, $platform, AgreementUrlAliasService $aliasService)
+    {
+        $resolved = $aliasService->resolve((string) $alias);
+        if (!$resolved) {
+            return abort(404);
+        }
+
+        return $this->appAgreement($resolved['type'], $resolved['app_id'], $platform);
+    }
+
     public function appAgreement($type, $appId, $platform)
     {
         $agreements = AppAgreement::query()

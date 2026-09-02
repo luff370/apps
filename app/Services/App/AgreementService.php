@@ -7,6 +7,7 @@ use App\Models\SystemApp;
 use App\Models\AppAgreement;
 use App\Dao\Other\AgreementDao;
 use App\Exceptions\AdminException;
+use App\Support\Services\AgreementUrlAliasService;
 
 /**
  * 协议service
@@ -17,7 +18,7 @@ class AgreementService extends Service
     /**
      * StoreBrandServices constructor.
      */
-    public function __construct(AgreementDao $dao)
+    public function __construct(AgreementDao $dao, private AgreementUrlAliasService $agreementUrlAlias)
     {
         $this->dao = $dao;
     }
@@ -36,11 +37,13 @@ class AgreementService extends Service
         $typesMap = AppAgreement::typesMap();
         $channelsMap = SystemApp::marketChannelsMap();
         foreach ($list as &$item) {
-            if (!empty($item['app']['merchant']['domain'])) {
-                $item['url'] = $item['app']['merchant']['domain'] . sprintf('/agreement/%s/%s/%s', $item['type'], $item['app_id'], $item['platform']);
-            } else {
-                $item['url'] = url(sprintf('/agreement/%s/%s/%s', $item['type'], $item['app_id'], $item['platform']));
-            }
+            $item['url'] = $this->agreementUrlAlias->url(
+                (int) $item['app_id'],
+                (string) ($item['app']['package_name'] ?? ''),
+                (string) $item['type'],
+                (string) $item['platform'],
+                $item['app']['merchant']['domain'] ?? null
+            );
             $item['type_name'] = $typesMap[$item['type']] ?? '';
             $item['platform'] = $channelsMap[$item['platform']] ?? '全部';
             $item['version'] = $item['version'] == 'all' ? '全部' : $item['version'];
