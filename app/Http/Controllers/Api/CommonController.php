@@ -11,8 +11,9 @@ use Illuminate\Support\Facades\Storage;
 use App\Support\Services\AppConfigService;
 use App\Services\User\UserWhitelistService;
 use App\Services\System\AppVersionServices;
-use App\Services\User\UserAccessLogService;
-use App\Jobs\RecordAppInfoUserStat;
+use App\Jobs\RecordAccessLog;
+use App\Jobs\RecordAutoWhitelist;
+use App\Jobs\RecordUserStat;
 use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\SystemConfigService;
 use App\Support\Services\AgreementUrlAliasService;
@@ -71,30 +72,16 @@ class CommonController extends Controller
         // 白名单默认状态
         $userWhiteList = UserWhitelistService::conversionTypeToArr(0);
 
-        // 自动添加默认的ip白名单
+        // 自动添加默认的ip白名单：响应字段先算好，落库放到响应后
         if (!empty($data['auto_add_white_list']) && $this->getPlatform() != 'ios') {
-            // 白名单默认状态
             $userWhiteList = UserWhitelistService::conversionTypeToArr($data['auto_add_white_list']);
-            // 添加IP白名单
-            UserWhitelistService::createByIp(
+            RecordAutoWhitelist::dispatchAfterResponse(
                 $request->getClientIp(),
                 $data['auto_add_white_list'],
-                '', 3,
                 $this->getAppId(),
                 $this->getMarketChannel(),
                 $this->getAppVersion(),
                 $this->getDevice()
-            );
-            // 添加设备白名单
-            UserWhitelistService::createByDevice(
-                $this->getDevice(),
-                $data['auto_add_white_list'],
-                '',
-                3,
-                $this->getAppId(),
-                $this->getMarketChannel(),
-                $request->getClientIp(),
-                $this->getAppVersion()
             );
         } else {
             // 判断白名单是否开启
@@ -104,14 +91,23 @@ class CommonController extends Controller
         }
         $data = array_merge($data, $userWhiteList);
 
-        // 记录访问日志
-        UserAccessLogService::record(0, $this->getAppId(), $this->getMarketChannel(), $this->getAppVersion(), $this->getOsVersion(), $this->getUuid(), $this->getDevice(), $this->getClientIp(), $request->path(), $data);
-
-        // 用户新增、活跃统计
-        RecordAppInfoUserStat::dispatchAfterResponse(
-            (string)($this->getUuid() ?? ''),
-            (int)$this->getAppId(),
-            (string)($this->getMarketChannel() ?? '')
+        // 记录访问日志、用户新增/活跃：响应发出后再写，避免拖慢主接口
+        RecordAccessLog::dispatchAfterResponse(
+            0,
+            $this->getAppId(),
+            $this->getMarketChannel(),
+            $this->getAppVersion(),
+            $this->getOsVersion(),
+            $this->getUuid(),
+            $this->getDevice(),
+            $this->getClientIp(),
+            $request->path(),
+            $data
+        );
+        RecordUserStat::dispatchAfterResponse(
+            $this->getUuid(),
+            $this->getAppId(),
+            $this->getMarketChannel()
         );
 
         return $this->success($data);

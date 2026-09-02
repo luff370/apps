@@ -184,13 +184,6 @@ Route::prefix('trafficViolation')->group(
         });
     });
 
-// 用户统计路由组
-Route::prefix('user/stat')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 用户活跃统计
-        $route->post('active', 'UserStatisticsController@userActiveStat');
-    }
-);
 
 Route::prefix('read_task')->group(
     function (\Illuminate\Routing\Router $route) {
@@ -198,16 +191,6 @@ Route::prefix('read_task')->group(
         $route->post('get', 'ReadTaskController@getReadTask');
         // 完成任务回调
         $route->any('completed/{ch}', 'ReadTaskController@completedTaskCallback');
-    });
-
-Route::prefix('xiongfeng')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 获取任务平台链接
-        $route->post('getTaskDomain', 'XiongfengAdController@getTaskDomain');
-        // 获取广告投放链接(返回量专用)
-        $route->post('getReadDomain', 'XiongfengAdController@getReadDomain');
-        // 完成任务回调
-        $route->get('completed', 'XiongfengAdController@completedCallback');
     });
 
 

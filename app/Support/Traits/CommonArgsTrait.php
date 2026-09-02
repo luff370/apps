@@ -7,7 +7,7 @@ trait CommonArgsTrait
     /**
      * 应用ID
      */
-    public function getAppId(): array|string|null
+    public function getAppId(): string|null
     {
         return request()->header('App-Id');
     }
@@ -15,7 +15,7 @@ trait CommonArgsTrait
     /**
      * Uuid客户端唯一标识
      */
-    public function getUuid(): array|string|null
+    public function getUuid(): string|null
     {
         return request()->header('Uuid');
     }
@@ -23,7 +23,7 @@ trait CommonArgsTrait
     /**
      * AppVersion应用版本
      */
-    public function getAppVersion(): array|string|null
+    public function getAppVersion(): string|null
     {
         return request()->header('App-Version');
     }
@@ -31,7 +31,7 @@ trait CommonArgsTrait
     /**
      * 系统平台
      */
-    public function getPlatform(): array|string|null
+    public function getPlatform(): string|null
     {
         if ($this->getAppId() == 10002) {
             return 'ios';
@@ -43,7 +43,7 @@ trait CommonArgsTrait
     /**
      * 终端系统版本
      */
-    public function getOsVersion(): array|string|null
+    public function getOsVersion(): string|null
     {
         return request()->header('OS-Version');
     }
@@ -51,7 +51,7 @@ trait CommonArgsTrait
     /**
      * 应用包名
      */
-    public function getAppPackageName(): array|string|null
+    public function getAppPackageName(): string|null
     {
         return request()->header('Package-Name');
     }
@@ -59,7 +59,7 @@ trait CommonArgsTrait
     /**
      * 应用市场
      */
-    public function getMarketChannel(): array|string|null
+    public function getMarketChannel(): string|null
     {
         return strtolower(request()->header('Market-Channel'));
     }
@@ -67,7 +67,7 @@ trait CommonArgsTrait
     /**
      * 语言
      */
-    public function getLanguage(): array|string|null
+    public function getLanguage(): string|null
     {
         return request()->header('Language');
     }
@@ -75,7 +75,7 @@ trait CommonArgsTrait
     /**
      * 请求时间
      */
-    public function getRequestTime(): array|string|null
+    public function getRequestTime(): string|null
     {
         return request()->header('Time');
     }
@@ -83,7 +83,7 @@ trait CommonArgsTrait
     /**
      * 用户Token
      */
-    public function getToken(): array|string|null
+    public function getToken(): string|null
     {
         return request()->header('Token');
     }
@@ -91,7 +91,7 @@ trait CommonArgsTrait
     /**
      * 设备编码
      */
-    public function getDevice(): array|string|null
+    public function getDevice(): string|null
     {
         $device = request()->header('Device-Sn');
         if (empty($device)) {
