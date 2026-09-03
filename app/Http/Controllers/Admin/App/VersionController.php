@@ -67,6 +67,7 @@ class VersionController extends Controller
             ['remark', ''],
             ['audit_status', 0],
             ['is_new', 1],
+            ['status', 1],
         ]);
         $this->service->versionSave($data['id'], $data);
 
@@ -96,6 +97,7 @@ class VersionController extends Controller
                 'url' => $info['url'],
                 'is_force' => $info['is_force'],
                 'is_new' => $info['is_new'],
+                'status' => $info['status'] ?? 1,
                 'audit_status' => $info['audit_status'],
                 'remark' => $info['remark'],
             ]

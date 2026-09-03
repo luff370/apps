@@ -130,6 +130,7 @@ class CommonController extends Controller
             ->where('app_id', $appId)
             ->where('platform', $appChannel)
             ->where('audit_status', 1)
+            ->where('status', 1)
             ->orderBy('version','desc')
             ->first();
         if (!empty($lastVersion) && $appVersion != $lastVersion['version']){

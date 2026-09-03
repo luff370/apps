@@ -33,6 +33,7 @@ class AppVersionServices extends Service
     public function tidyListData($list)
     {
         $auditStatusMap = AppVersion::auditStatusMap();
+        $statusMap = AppVersion::statusMap();
         $marketChannelMap = SystemApp::marketChannelsMap();
         $rows = [];
         foreach ($list as $item) {
@@ -41,6 +42,8 @@ class AppVersionServices extends Service
             // 强更记录页按 market_channel 展示渠道，这里保留原始渠道码，platform 仍给旧列表当中文名。
             $row['market_channel'] = $platformCode;
             $row['platform'] = $marketChannelMap[$platformCode] ?? $platformCode;
+            $row['status'] = (int)($row['status'] ?? 1);
+            $row['status_name'] = $statusMap[$row['status']] ?? '';
             $row['audit_status_name'] = $auditStatusMap[$row['audit_status'] ?? 0] ?? '';
             $row['app_name'] = (string)($row['app']['name'] ?? $row['name'] ?? '');
             $rows[] = $row;
@@ -73,6 +76,7 @@ class AppVersionServices extends Service
             $info['id'] = 0;
             $info['is_force'] = (int)($info['is_force'] ?? 1);
             $info['is_new'] = (int)($info['is_new'] ?? 0);
+            $info['status'] = (int)($info['status'] ?? 1);
             $info['audit_status'] = (int)($info['audit_status'] ?? 0);
         }
         if (!$id && empty($info['app_id'])) {
@@ -89,6 +93,7 @@ class AppVersionServices extends Service
             ->prop('data', new \stdClass());
         $field[] = Form::radio('is_force', '强制', $info['is_force'] ?? 1)->options([['label' => '开启', 'value' => 1], ['label' => '关闭', 'value' => 0]]);
         $field[] = Form::radio('is_new', '是否最新', $info['is_new'] ?? 1)->options([['label' => '是', 'value' => 1], ['label' => '否', 'value' => 0]]);
+        $field[] = Form::radio('status', '状态', $info['status'] ?? 1)->options($this->toFormSelect(AppVersion::statusMap()));
         $field[] = Form::radio('audit_status', '审核状态', $info['audit_status'] ?? 0)->options($this->toFormSelect(AppVersion::auditStatusMap()));
         $field[] = Form::input('remark', '备注', $info['remark'] ?? '')->type('textarea');
 

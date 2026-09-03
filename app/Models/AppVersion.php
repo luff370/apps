@@ -19,6 +19,7 @@ use Carbon\Carbon;
  * @property string $url
  * @property bool $is_force
  * @property bool $is_new
+ * @property int $status
  * @property bool $audit_status
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
@@ -31,6 +32,7 @@ class AppVersion extends BaseModel
 
     protected $casts = [
         'app_id' => 'int',
+        'status' => 'int',
     ];
 
     protected $fillable = [
@@ -41,9 +43,18 @@ class AppVersion extends BaseModel
         'url',
         'is_force',
         'is_new',
+        'status',
         'audit_status',
         'remark',
     ];
+
+    public static function statusMap()
+    {
+        return [
+            1 => '开启',
+            0 => '关闭',
+        ];
+    }
 
     public static function auditStatusMap()
     {
