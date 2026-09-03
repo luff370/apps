@@ -26,6 +26,11 @@ class RiskProbeAuditService
             return;
         }
 
+        // 没带 Device-Env 的请求（老版本、非客户端）没有探针可分析，不落库。
+        if (($context['status'] ?? '') === 'missing') {
+            return;
+        }
+
         try {
             $probe = $context['probe'] ?? [];
             $validation = $context['validation'] ?? [];
@@ -33,7 +38,7 @@ class RiskProbeAuditService
             /*
              * 一次请求对应一条审计记录：
              * - status=ok：保存解密后的完整探针、行为子集、评分与决策；
-             * - status=missing/error：保存路由、设备和错误状态，probe 相关字段为空；
+             * - status=error：保存验签/解密/重放失败，便于排查异常客户端；
              * - nonce 不保存明文，只保存 SHA-256，避免数据库泄露后被直接用于重放。
              */
             RiskProbeLog::query()->create([

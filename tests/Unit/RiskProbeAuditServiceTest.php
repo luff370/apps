@@ -85,4 +85,18 @@ class RiskProbeAuditServiceTest extends TestCase
         $this->assertSame(55, $log->behavior_json['touch_timing_entropy']);
         $this->assertArrayNotHasKey('env_allows_ads', $log->behavior_json);
     }
+
+    public function test_it_skips_missing_device_env_records(): void
+    {
+        $request = Request::create('/api/app/info', 'POST');
+
+        (new RiskProbeAuditService())->record($request, [
+            'status' => 'missing',
+            'package_name' => 'com.example.app',
+            'app_id' => '123',
+            'missing' => true,
+        ]);
+
+        $this->assertSame(0, RiskProbeLog::query()->count());
+    }
 }
