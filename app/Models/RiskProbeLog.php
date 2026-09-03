@@ -5,7 +5,7 @@ namespace App\Models;
 class RiskProbeLog extends BaseModel
 {
     /**
-     * risk_probe_logs 是请求级事实表：每个经过 DeviceEnvRiskMiddleware 的 API 请求一条记录。
+     * risk_probe_logs 是请求级事实表：每个经过 DeviceEnvRiskMiddleware 的客户端 API 请求一条记录。
      * probe_json 保存脱敏后的完整 Device-Env，behavior_json 保存行为字段子集，普通列用于索引分析。
      */
     protected $fillable = [

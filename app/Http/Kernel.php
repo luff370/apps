@@ -42,7 +42,6 @@ class Kernel extends HttpKernel
         'api' => [
             // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             // \Illuminate\Routing\Middleware\ThrottleRequests::class.':api',
-            \App\Http\Middleware\DeviceEnvRiskMiddleware::class,
             \App\Http\Middleware\ApiObfuscationMiddleware::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
@@ -70,5 +69,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'admin.auth' => \App\Http\Middleware\AdminAuthMiddleware::class,
         'admin.operation_log' => \App\Http\Middleware\AdminLogMiddleware::class,
+        'device_env_risk' => \App\Http\Middleware\DeviceEnvRiskMiddleware::class,
     ];
 }

@@ -19,8 +19,8 @@ class DeviceEnvRiskMiddleware
 
     public function handle(Request $request, Closure $next): Response
     {
-        // 用户行为上报是独立 JSON 协议，不读取或审计 Device-Env。
-        if ($request->is('api/user/behavior/report')) {
+        // 仅处理客户端 API。行为上报是独立协议；支付回调来自微信/支付宝/苹果，没有 Device-Env。
+        if ($this->shouldSkip($request)) {
             return $next($request);
         }
 
@@ -41,5 +41,14 @@ class DeviceEnvRiskMiddleware
         }
 
         return $next($request);
+    }
+
+    private function shouldSkip(Request $request): bool
+    {
+        return $request->is(
+            'api/user/behavior/report',
+            'api/payment/*/notify',
+            'api/payment/return',
+        );
     }
 }
