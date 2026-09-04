@@ -43,9 +43,11 @@ class AppsService extends Service
     {
         $appIds = collect($list)->pluck('id')->filter()->map(fn($id) => (int)$id)->values()->all();
         $listedTasks = $this->listedVersionTasksByAppIds($appIds);
+        $whiteListFilterMap = $this->userWhiteListFilterMap($appIds);
 
         foreach ($list as &$item) {
             $this->applyVersionPlanSnapshot($item, $listedTasks[(int)$item['id']] ?? []);
+            $item['user_white_list_filter'] = (int)($whiteListFilterMap[(int)$item['id']] ?? 0);
 
             // 域名到期警告
             $item['domain_expired_warning'] = false;
@@ -107,6 +109,22 @@ class AppsService extends Service
         }
 
         return $grouped;
+    }
+
+    private function userWhiteListFilterMap(array $appIds): array
+    {
+        $appIds = array_values(array_unique(array_filter(array_map('intval', $appIds))));
+        if (!$appIds) {
+            return [];
+        }
+
+        return AppConfig::query()
+            ->whereIn('app_id', $appIds)
+            ->where('channel', 'all')
+            ->where('key', AppConfig::USER_WHITE_LIST_FILTER_KEY)
+            ->get(['app_id', 'is_enable'])
+            ->mapWithKeys(fn($row) => [(int)$row['app_id'] => (int)$row['is_enable']])
+            ->all();
     }
 
     /**
