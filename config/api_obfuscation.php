@@ -61,6 +61,8 @@ return [
             'image_url' => [
                 'enabled' => false,
                 'domain' => null,
+                // 把 path_prefixes 命中的那一段换成按应用生成的别名，真实文件路径不变。
+                'path_alias_enabled' => false,
                 // Empty means scan all string fields recursively.
                 'fields' => [],
                 'path_prefixes' => ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/', 'storage/attach/', '/storage/attach/'],

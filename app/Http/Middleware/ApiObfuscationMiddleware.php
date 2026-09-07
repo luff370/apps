@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use App\Support\Services\ApiObfuscationProfileResolver;
+use App\Support\Services\ImagePathAliasService;
 
 class ApiObfuscationMiddleware
 {
@@ -237,27 +238,41 @@ class ApiObfuscationMiddleware
     {
         $globalEnabled = (bool) config('api_obfuscation.image_url_rewrite_enabled', true);
         $config = $profile['image_url'] ?? [];
-        $enabled = (bool) ($config['enabled'] ?? false);
-        if (!$globalEnabled || !$enabled) {
+        // 域名替换和路径别名是两个独立开关：前者只换 host，后者只把 storage/attach 换成按应用生成的别名段。
+        $domainEnabled = (bool) ($config['enabled'] ?? false);
+        $pathAliasEnabled = (bool) ($config['path_alias_enabled'] ?? false);
+        if (!$globalEnabled || (!$domainEnabled && !$pathAliasEnabled)) {
             return $payload;
         }
 
-        $domain = (string) ($config['domain'] ?? config('api_obfuscation.default_image_domain', ''));
-        if ($domain === '') {
-            $domain = rtrim((string) $request->getSchemeAndHttpHost(), '/');
+        $domain = '';
+        if ($domainEnabled) {
+            $domain = (string) ($config['domain'] ?? config('api_obfuscation.default_image_domain', ''));
+            if ($domain === '') {
+                $domain = rtrim((string) $request->getSchemeAndHttpHost(), '/');
+            }
         }
 
         $fields = $config['fields'] ?? [];
         $prefixes = $config['path_prefixes'] ?? ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/'];
 
-        return $this->rewriteImagesRecursively($payload, $domain, $fields, $prefixes);
+        $pathRewriter = null;
+        if ($pathAliasEnabled) {
+            $aliasService = new ImagePathAliasService();
+            $appId = (int) ($profile['app_id'] ?? 0);
+            $packageName = (string) ($profile['package_name'] ?? '');
+            $pathRewriter = fn (string $path, string $matchedPrefix): string
+                => $aliasService->replacePrefix($path, $matchedPrefix, $appId, $packageName);
+        }
+
+        return $this->rewriteImagesRecursively($payload, $domain, $fields, $prefixes, $pathRewriter);
     }
 
-    private function rewriteImagesRecursively(array $payload, string $domain, array $fields, array $prefixes): array
+    private function rewriteImagesRecursively(array $payload, string $domain, array $fields, array $prefixes, ?callable $pathRewriter = null): array
     {
         foreach ($payload as $key => $value) {
             if (is_array($value)) {
-                $payload[$key] = $this->rewriteImagesRecursively($value, $domain, $fields, $prefixes);
+                $payload[$key] = $this->rewriteImagesRecursively($value, $domain, $fields, $prefixes, $pathRewriter);
                 continue;
             }
 
@@ -270,7 +285,7 @@ class ApiObfuscationMiddleware
                 continue;
             }
 
-            $rewritten = $this->rewriteSingleImageUrl($value, $domain, $prefixes);
+            $rewritten = $this->rewriteSingleImageUrl($value, $domain, $prefixes, $pathRewriter);
             if ($rewritten !== null) {
                 $payload[$key] = $rewritten;
             }
@@ -279,37 +294,70 @@ class ApiObfuscationMiddleware
         return $payload;
     }
 
-    private function rewriteSingleImageUrl(string $value, string $domain, array $prefixes): ?string
+    private function rewriteSingleImageUrl(string $value, string $domain, array $prefixes, ?callable $pathRewriter = null): ?string
     {
         $normalized = str_replace('\\', '/', $value);
 
         if ($this->isAbsoluteUrl($normalized)) {
             $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
-            if ($this->matchesImagePrefix($path, $prefixes)) {
-                $query = (string) (parse_url($normalized, PHP_URL_QUERY) ?? '');
-                $target = rtrim($domain, '/') . '/' . ltrim($path, '/');
-                return $query !== '' ? $target . '?' . $query : $target;
+            $matched = $this->matchImagePrefix($path, $prefixes);
+            if ($matched === null) {
+                return null;
             }
 
+            $query = (string) (parse_url($normalized, PHP_URL_QUERY) ?? '');
+            if ($pathRewriter) {
+                $path = $pathRewriter($path, $matched);
+            }
+
+            // 域名替换关闭时保留原始 host，只改路径段。
+            $base = $domain !== '' ? rtrim($domain, '/') : $this->urlOrigin($normalized);
+            $target = $base . '/' . ltrim($path, '/');
+
+            return $query !== '' ? $target . '?' . $query : $target;
+        }
+
+        $matched = $this->matchImagePrefix($normalized, $prefixes);
+        if ($matched === null) {
             return null;
         }
 
-        if ($this->matchesImagePrefix($normalized, $prefixes)) {
-            return rtrim($domain, '/') . '/' . ltrim($normalized, '/');
-        }
+        $path = $pathRewriter ? $pathRewriter($normalized, $matched) : $normalized;
 
-        return null;
+        return $domain !== '' ? rtrim($domain, '/') . '/' . ltrim($path, '/') : $path;
     }
 
-    private function matchesImagePrefix(string $value, array $prefixes): bool
+    /**
+     * 返回命中的最长前缀，供路径别名替换时精确截断。
+     */
+    private function matchImagePrefix(string $value, array $prefixes): ?string
     {
+        $matched = null;
         foreach ($prefixes as $prefix) {
-            if (str_starts_with($value, (string) $prefix)) {
-                return true;
+            $prefix = (string) $prefix;
+            if ($prefix === '' || !str_starts_with($value, $prefix)) {
+                continue;
+            }
+            if ($matched === null || strlen($prefix) > strlen($matched)) {
+                $matched = $prefix;
             }
         }
 
-        return false;
+        return $matched;
+    }
+
+    private function urlOrigin(string $url): string
+    {
+        $host = (string) (parse_url($url, PHP_URL_HOST) ?? '');
+        if ($host === '') {
+            return '';
+        }
+
+        $scheme = (string) (parse_url($url, PHP_URL_SCHEME) ?? '');
+        $port = parse_url($url, PHP_URL_PORT);
+        $origin = ($scheme !== '' ? $scheme . ':' : '') . '//' . $host;
+
+        return $port ? $origin . ':' . $port : $origin;
     }
 
     private function isAbsoluteUrl(string $value): bool
