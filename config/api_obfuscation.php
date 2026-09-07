@@ -35,9 +35,7 @@ return [
         'default' => [
             'enabled' => false,
             'route_aliases' => [],
-            'request_key_map' => [],
             'response_key_map' => [],
-            'response_data_key_map' => [],
             'protocol' => [
                 'encrypt_request' => false,
                 'encrypt_response' => false,

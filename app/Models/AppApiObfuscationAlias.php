@@ -16,7 +16,6 @@ class AppApiObfuscationAlias extends Model
         'response_origin_params' => 'array',
         'request_key_map' => 'array',
         'response_key_map' => 'array',
-        'response_data_key_map' => 'array',
         'is_enable' => 'int',
     ];
 
@@ -28,7 +27,6 @@ class AppApiObfuscationAlias extends Model
         'response_origin_params',
         'request_key_map',
         'response_key_map',
-        'response_data_key_map',
         'is_enable',
         'remark',
     ];
