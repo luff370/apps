@@ -63,11 +63,11 @@ class ApiObfuscationMiddleware
         $routeAlias = (array) $request->attributes->get('api_obfuscation_route_alias', []);
 
         // 两层响应映射必须分开：
-        // 1) 接口别名的 response_key_map 只改 data 里面的字段；
+        // 1) 接口别名（及历史 response_data_key_map）只改 data 里面的字段；
         // 2) 应用配置里的 response_key_map 只改外层 status/msg/data。
-        $aliasResponseKeyMap = (array) ($routeAlias['response_key_map'] ?? []);
-        if (isset($payload['data']) && is_array($payload['data']) && !empty($aliasResponseKeyMap)) {
-            $payload['data'] = $this->remapKeys($payload['data'], $aliasResponseKeyMap);
+        $responseDataKeyMap = $this->responseDataKeyMap($routeAlias, $profile);
+        if (isset($payload['data']) && is_array($payload['data']) && !empty($responseDataKeyMap)) {
+            $payload['data'] = $this->remapKeys($payload['data'], $responseDataKeyMap);
         }
 
         $responseKeyMap = (array) ($profile['response_key_map'] ?? []);
@@ -367,12 +367,28 @@ class ApiObfuscationMiddleware
             || str_starts_with($value, 'data:');
     }
 
+    private function responseDataKeyMap(array $routeAlias, array $profile): array
+    {
+        foreach (['response_data_key_map', 'response_key_map'] as $field) {
+            $map = (array) ($routeAlias[$field] ?? []);
+            if (!empty($map)) {
+                return $map;
+            }
+        }
+
+        return (array) ($profile['response_data_key_map'] ?? []);
+    }
+
     private function resolveRequestKeyMap(Request $request, array $profile): array
     {
         $alias = (string) ($request->route()?->parameter('alias') ?? '');
         $routeAlias = (array) (($profile['route_aliases'][$alias] ?? []) ?: []);
+        $perAliasMap = (array) ($routeAlias['request_key_map'] ?? []);
+        if (!empty($perAliasMap)) {
+            return $perAliasMap;
+        }
 
-        return (array) ($routeAlias['request_key_map'] ?? []);
+        return (array) ($profile['request_key_map'] ?? []);
     }
 
     private function remapKeys(array $source, array $map, bool $deep = true): array

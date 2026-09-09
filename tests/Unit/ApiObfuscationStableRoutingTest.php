@@ -142,6 +142,7 @@ class ApiObfuscationStableRoutingTest extends TestCase
 
         $result = $wrap->invoke($middleware, $response, [
             'response_key_map' => ['status' => 's', 'msg' => 'm', 'data' => 'd'],
+            'response_data_key_map' => ['should_not' => 'apply'],
             'protocol' => [],
         ], $request);
 
@@ -163,6 +164,7 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $request->setRouteResolver(fn () => $route);
 
         $profile = [
+            'request_key_map' => ['page' => 'pg', 'limit' => 'sz'],
             'route_aliases' => [
                 'abc12345' => [
                     'path' => 'app/info',
@@ -179,7 +181,7 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $this->assertSame(['keywords' => 'hello'], $unmapped);
     }
 
-    public function test_empty_route_alias_request_map_is_not_filled_by_profile(): void
+    public function test_profile_request_map_is_used_when_route_alias_has_no_request_map(): void
     {
         $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
         $resolveRequestKeyMap = $this->method(ApiObfuscationMiddleware::class, 'resolveRequestKeyMap');
@@ -189,6 +191,7 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $request->setRouteResolver(fn () => $route);
 
         $profile = [
+            'request_key_map' => ['page' => 'pg'],
             'route_aliases' => [
                 'abc12345' => [
                     'path' => 'app/info',
@@ -199,7 +202,7 @@ class ApiObfuscationStableRoutingTest extends TestCase
         ];
 
         $map = $resolveRequestKeyMap->invoke($middleware, $request, $profile);
-        $this->assertSame([], $map);
+        $this->assertSame(['page' => 'pg'], $map);
     }
 
     private function newService(): AppApiObfuscationService

@@ -24,7 +24,7 @@ class ApiObfuscationController extends Controller
     public function saveProfile()
     {
         $data = $this->getMore([
-            ['app_id', 0], ['package_name', ''], ['enabled', 0], ['encrypt_request', 0], ['encrypt_response', 0], ['allow_plaintext_request', 1], ['image_url_enabled', 0], ['image_path_alias_enabled', 0], ['image_domain', ''], ['response_key_map', []], ['payload_field', 'payload'], ['sign_field', 'sign'], ['timestamp_field', 'ts'], ['nonce_field', 'nonce'], ['version_field', 'ver'], ['timestamp_window_seconds', 300], ['nonce_ttl_seconds', 300], ['cipher', 'AES-256-CBC'], ['crypto_key', ''], ['crypto_iv', ''], ['crypto_sign_key', ''], ['image_fields', ''], ['image_prefixes', ''],
+            ['app_id', 0], ['package_name', ''], ['enabled', 0], ['encrypt_request', 0], ['encrypt_response', 0], ['allow_plaintext_request', 1], ['image_url_enabled', 0], ['image_path_alias_enabled', 0], ['image_domain', ''], ['request_key_map', []], ['response_key_map', []], ['payload_field', 'payload'], ['sign_field', 'sign'], ['timestamp_field', 'ts'], ['nonce_field', 'nonce'], ['version_field', 'ver'], ['timestamp_window_seconds', 300], ['nonce_ttl_seconds', 300], ['cipher', 'AES-256-CBC'], ['crypto_key', ''], ['crypto_iv', ''], ['crypto_sign_key', ''], ['image_fields', ''], ['image_prefixes', ''],
         ]);
         return $this->success($this->obfuscationService->saveProfile($data), '保存成功');
     }
@@ -57,11 +57,23 @@ class ApiObfuscationController extends Controller
         return $this->success($data, '同步成功');
     }
 
+    public function syncAllAliasParams()
+    {
+        $data = $this->getMore([['app_id', 0], ['package_name', '']]);
+        return $this->success($this->obfuscationService->syncAllAliasParams($data), '同步成功');
+    }
+
     public function generateAliasParams()
     {
         $data = $this->getMore([['id', 0]]);
         if (empty($data['id'])) return $this->fail('请选择接口别名');
         return $this->success($this->obfuscationService->generateAliasParams($data));
+    }
+
+    public function generateAllAliasParams()
+    {
+        $data = $this->getMore([['app_id', 0], ['package_name', '']]);
+        return $this->success($this->obfuscationService->generateAllAliasParams($data), '生成成功');
     }
 
     public function deleteAlias($id)
@@ -78,7 +90,7 @@ class ApiObfuscationController extends Controller
 
     public function generateDefaults()
     {
-        $data = $this->getMore([['map_rule', 'short']]);
+        $data = $this->getMore([['map_rule', 'short'], ['app_id', 0], ['package_name', '']]);
         return $this->success($this->obfuscationService->generateDefaultProfileFields($data));
     }
 
