@@ -238,6 +238,7 @@ class ApiObfuscationMiddleware
         $globalEnabled = (bool) config('api_obfuscation.image_url_rewrite_enabled', true);
         $config = $profile['image_url'] ?? [];
         // 域名替换和路径别名是两个独立开关：前者只换 host，后者只把 storage/attach 换成按应用生成的别名段。
+        // 两个开关都关时不扫描响应。
         $domainEnabled = (bool) ($config['enabled'] ?? $profile['image_url_enabled'] ?? false);
         $pathAliasEnabled = (bool) ($config['path_alias_enabled'] ?? $profile['image_path_alias_enabled'] ?? false);
         if (!$globalEnabled || (!$domainEnabled && !$pathAliasEnabled)) {
@@ -290,16 +291,11 @@ class ApiObfuscationMiddleware
 
     private function rewriteSingleImageUrl(string $value, string $host, array $prefixes, ?callable $pathRewriter = null): ?string
     {
+        if (!str_starts_with($value, 'http://') && !str_starts_with($value, 'https://')) {
+            return null;
+        }
+
         $normalized = str_replace('\\', '/', $value);
-        if (str_starts_with($normalized, 'data:')) {
-            return null;
-        }
-
-        // 接口只返回完整地址，非 http/https（或 //）开头的字符串不处理。
-        if (!$this->isAbsoluteUrl($normalized)) {
-            return null;
-        }
-
         $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
         $matched = $this->matchImagePrefix($path, $prefixes);
         if ($matched === null) {
@@ -382,14 +378,6 @@ class ApiObfuscationMiddleware
         $origin = ($scheme !== '' ? $scheme . ':' : '') . '//' . $host;
 
         return $port ? $origin . ':' . $port : $origin;
-    }
-
-    private function isAbsoluteUrl(string $value): bool
-    {
-        return str_starts_with($value, 'http://')
-            || str_starts_with($value, 'https://')
-            || str_starts_with($value, '//')
-            || str_starts_with($value, 'data:');
     }
 
     private function responseDataKeyMap(array $routeAlias, array $profile): array
