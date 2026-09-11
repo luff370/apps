@@ -3,14 +3,16 @@
 namespace App\Support\Services;
 
 /**
- * 图片路径别名：算法与接口别名 stableUrlAlias 一致，
- * 由 应用ID + 包名 + 真实路径前缀 现场算出 8 位稳定值，不落库、不走缓存。
+ * 图片路径别名：算法与接口别名 stableUrlAlias 同源（HMAC-SHA256），
+ * 由 应用ID + 包名 + 真实路径前缀 现场算出 32 位稳定值，不落库、不走缓存。
  *
- * 只替换 storage/attach 这一段，后面的 年/月/文件名 原样保留，
- * 所以 nginx 只按形状就能还原出真实路径，新增应用不用改配置。
+ * SHA256 本身就是 32 字节，只是把哈希结果多取几位，不再额外计算。
+ * 只替换命中的路径前缀，后面的日期/文件名原样保留，
+ * nginx 按形状还原真实路径即可，新增应用不用改配置。
  */
 class ImagePathAliasService
 {
+    private const ALIAS_LENGTH = 32;
     public function make(int $appId, string $packageName, string $pathPrefix): string
     {
         return $this->stableUrlAlias($this->identity($appId, $packageName, $pathPrefix));
@@ -45,7 +47,7 @@ class ImagePathAliasService
         $hash = hash_hmac('sha256', 'url' . ($salt > 0 ? '|' . $salt : ''), $key, true);
         $chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
         $alias = '';
-        for ($i = 0; $i < 8; $i++) {
+        for ($i = 0; $i < self::ALIAS_LENGTH; $i++) {
             $alias .= $chars[ord($hash[$i]) % 36];
         }
 

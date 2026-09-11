@@ -26,7 +26,7 @@ class ImagePathAliasTest extends TestCase
         $this->assertNotSame($first, $otherApp);
         $this->assertNotSame($first, $otherPackage);
         $this->assertNotSame($first, $otherPrefix);
-        $this->assertMatchesRegularExpression('/^[a-z0-9]{8}$/', $first);
+        $this->assertMatchesRegularExpression('/^[a-z0-9]{32}$/', $first);
     }
 
     public function test_replace_prefix_keeps_date_and_file_tail(): void
@@ -61,7 +61,7 @@ class ImagePathAliasTest extends TestCase
 
         $this->assertNotSame($first['data']['image'], $second['data']['image']);
         $this->assertMatchesRegularExpression(
-            '#^http://storeimg\.appasd\.com/[a-z0-9]{8}/2026/03/RHW424Ze\.png$#',
+            '#^http://storeimg\.appasd\.com/[a-z0-9]{32}/2026/03/RHW424Ze\.png$#',
             $second['data']['image']
         );
     }
