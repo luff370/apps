@@ -70,6 +70,8 @@ class DomainService extends Service
         $payload = [
             'domain' => $domain,
             'subject' => $subject,
+            'icp_website' => trim((string) ($data['icp_website'] ?? '')),
+            'icp_number' => trim((string) ($data['icp_number'] ?? '')),
             'expire_at' => $this->formatDate($data['expire_at'] ?? '') ?: null,
             'status' => (int) ($data['status'] ?? 1) === 1 ? 1 : 0,
             'risk_level' => $this->normalizeRiskLevel($data['risk_level'] ?? AppDomain::RISK_LOW),

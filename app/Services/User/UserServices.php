@@ -617,7 +617,7 @@ class UserServices extends Service
         $f[] = Form::input('reg_ip', '注册IP', $user['reg_ip'])->disabled(true);
         $f[] = Form::input('reg_time', '注册时间', Carbon::parse($user['reg_time'])->toDateTimeString())->disabled(true);
         $f[] = Form::input('last_time', '最后登录时间', empty($user['last_time']) ? '' : Carbon::parse($user['last_time'])->toDateTimeString())->disabled(true);
-        $f[] = Form::radio('status', '用户状态', (int) $user['status'])->options([['value' => 1, 'label' => '开启'], ['value' => 0, 'label' => '锁定']]);
+        $f[] = Form::radio('status', '用户状态', (string) ((int) $user['status']))->options([['value' => '1', 'label' => '开启'], ['value' => '0', 'label' => '锁定']]);
         $f[] = Form::textarea('remark', '用户备注', $user['remark']);
 
         return create_form('编辑', $f, url('/admin/user/user/' . $id), 'PUT');

@@ -13,8 +13,8 @@ class RechargeStatisticsController extends Controller
      * 充值统计汇总卡片数据。
      *
      * 前端充值统计页顶部漏斗指标调用这个接口。
-     * registered_users 为注册人数，new_users / new_recharge_users 为新增充值人数，
-     * 另有活跃、下单、支付、试用、续费、取消等汇总。
+     * registered_users 为注册人数，new_users 为新增人数（与用户统计相同的 UUID 口径），
+     * new_recharge_users 为新增充值人数，另有活跃、下单、支付、试用、续费、取消等汇总。
      */
     public function summary(Request $request, OperationStatisticsService $service): JsonResponse
     {

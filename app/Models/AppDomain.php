@@ -8,6 +8,8 @@ namespace App\Models;
  * @property int $id
  * @property string $domain
  * @property string $subject
+ * @property string $icp_website
+ * @property string $icp_number
  * @property string|null $expire_at
  * @property int $status
  * @property int $risk_level
@@ -26,6 +28,8 @@ class AppDomain extends BaseModel
     protected $fillable = [
         'domain',
         'subject',
+        'icp_website',
+        'icp_number',
         'expire_at',
         'status',
         'risk_level',

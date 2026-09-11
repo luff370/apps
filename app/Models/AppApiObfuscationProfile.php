@@ -37,6 +37,7 @@ class AppApiObfuscationProfile extends Model
         'image_url_enabled',
         'image_path_alias_enabled',
         'image_domain',
+        'api_domain',
         'alias_rule',
         'request_key_map',
         'response_key_map',

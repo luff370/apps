@@ -61,6 +61,8 @@ class AppsController extends Controller
             ['uPush_app_secret', ''],
             ['jPush_app_key', ''],
             ['jPush_app_secret', ''],
+            ['umeng_app_key', ''],
+            ['umeng_app_secret', ''],
             ['ad_switch', 1],
             ['topon_app_id', ''],
             ['topon_app_key', ''],

@@ -90,6 +90,8 @@ class DomainController extends Controller
             ['id', 0],
             ['domain', ''],
             ['subject', ''],
+            ['icp_website', ''],
+            ['icp_number', ''],
             ['expire_at', ''],
             ['status', 1],
             ['risk_level', 1],

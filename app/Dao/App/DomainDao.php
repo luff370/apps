@@ -35,6 +35,8 @@ class DomainDao extends BaseDao
             $query->where(function (Builder $query) use ($keyword) {
                 $query->where('domain', 'like', '%' . $keyword . '%')
                     ->orWhere('subject', 'like', '%' . $keyword . '%')
+                    ->orWhere('icp_website', 'like', '%' . $keyword . '%')
+                    ->orWhere('icp_number', 'like', '%' . $keyword . '%')
                     ->orWhere('remark', 'like', '%' . $keyword . '%');
             });
         }

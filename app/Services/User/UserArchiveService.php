@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\Service;
 use App\Support\Services\FormBuilder as Form;
 use DateTimeInterface;
+use Illuminate\Support\Carbon;
 
 /**
  * Class UserArchiveService
@@ -26,6 +27,7 @@ class UserArchiveService extends Service
     public function tidyListData($list)
     {
         $apps = SystemApp::idToNameMap();
+        $marketChannels = SystemApp::marketChannelsMap();
         $rows = [];
         $needUserKeys = [];
         foreach ($list as $item) {
@@ -47,7 +49,7 @@ class UserArchiveService extends Service
                 $uuids[] = $uuid;
             }
             $users = User::query()
-                ->select(['id', 'account', 'nickname', 'uuid', 'app_id'])
+                ->select(['id', 'account', 'nickname', 'uuid', 'app_id', 'is_vip', 'vip_type', 'overdue_time'])
                 ->whereIn('uuid', array_unique($uuids))
                 ->whereIn('app_id', array_unique($appIds))
                 ->get();
@@ -59,6 +61,8 @@ class UserArchiveService extends Service
         foreach ($rows as &$row) {
             $row['app_name'] = $apps[$row['app_id']] ?? '';
             $row['app_version'] = $row['version'] ?? '';
+            $channel = $row['market_channel'] ?? '';
+            $row['market_channel'] = $marketChannels[$channel] ?? $channel;
             $row['birth_time'] = $row['birth_date'] ?? '';
             $row['calendar'] = $this->normalizeCalendar($row['calendar'] ?? '');
             $row['create_time'] = $row['created_at'] ?? '';
@@ -70,6 +74,7 @@ class UserArchiveService extends Service
                 }
             }
             $row['user_account'] = $row['user']['account'] ?? '';
+            $this->attachVipInfo($row);
         }
         unset($row);
 
@@ -95,7 +100,9 @@ class UserArchiveService extends Service
 
         $f = [];
         $f[] = Form::input('user_info', '用户', $this->formatUserText($row))->disabled(true);
+        $f[] = Form::input('vip_info', '会员状态', $this->formatVipText($row))->disabled(true);
         $f[] = Form::input('app_info', '应用', trim(($row['app_name'] ?? '') . ' ' . ($row['app_id'] ?? '')))->disabled(true);
+        $f[] = Form::input('market_channel', '应用渠道', $row['market_channel'] ?? '')->disabled(true);
         $f[] = Form::input('name', '姓名', $row['name'] ?? '')->required();
         $f[] = Form::radio('gender', '性别', $gender)->options([
             ['value' => '男', 'label' => '男'],
@@ -133,6 +140,52 @@ class UserArchiveService extends Service
             'birth_date' => $data['birth_date'] ?: null,
             'birth_place' => $data['birth_place'] ?? '',
         ]);
+    }
+
+    private function attachVipInfo(array &$row): void
+    {
+        $user = $row['user'] ?? [];
+        $hasUser = !empty($user['id']) || !empty($row['user_id']);
+        $isVip = !empty($user['is_vip']) || !empty($row['is_vip']);
+        $vipType = $user['vip_type'] ?? ($row['vip_type'] ?? 0);
+        $overdueTime = $user['overdue_time'] ?? ($row['overdue_time'] ?? '');
+
+        $row['is_vip'] = $isVip ? 1 : 0;
+        $row['vip_type'] = $vipType;
+        $row['vip_name'] = $isVip ? (User::vipTypeMap()[$vipType] ?? '会员用户') : ($hasUser ? '普通用户' : '');
+        $row['overdue_time'] = $isVip ? $this->formatOverdueTime($overdueTime) : '';
+    }
+
+    private function formatOverdueTime($value): string
+    {
+        if ($value === '' || $value === null || $value === 0 || $value === '0') {
+            return '';
+        }
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d');
+        }
+        try {
+            if (is_numeric($value) && (int) $value > 1000000000) {
+                return Carbon::createFromTimestamp((int) $value)->toDateString();
+            }
+
+            return Carbon::parse($value)->toDateString();
+        } catch (\Throwable $e) {
+            return (string) $value;
+        }
+    }
+
+    private function formatVipText(array $row): string
+    {
+        $text = $row['vip_name'] ?? '';
+        if ($text === '') {
+            $text = !empty($row['is_vip']) ? '会员用户' : '普通用户';
+        }
+        if (!empty($row['overdue_time'])) {
+            $text .= ' / 有效期 ' . $row['overdue_time'];
+        }
+
+        return $text;
     }
 
     private function formatUserText(array $row): string

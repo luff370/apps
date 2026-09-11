@@ -52,6 +52,8 @@ class UserProfile extends BaseModel
 
 	public function user()
 	{
-		return $this->belongsTo(User::class)->select(['id', 'account', 'nickname', 'uuid']);
+		return $this->belongsTo(User::class)->select([
+			'id', 'account', 'nickname', 'uuid', 'is_vip', 'vip_type', 'overdue_time',
+		]);
 	}
 }

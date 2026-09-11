@@ -335,6 +335,7 @@ class UserController extends Controller
             ['password', ''],
             ['overdue_time', ''],
         ]);
+        $data['status'] = ((int) $data['status']) ? '1' : '0';
         $data['overdue_time'] = strtotime($data['overdue_time']);
 
         if (!empty($data['phone'])) {
@@ -381,6 +382,26 @@ class UserController extends Controller
         }
 
         return $this->success($this->service->oneUserInfo($id, $data['type']));
+    }
+
+    /**
+     * 注销 / 恢复用户
+     */
+    public function setDel($id, $is_del)
+    {
+        $id = (int) $id;
+        if (!$id) {
+            return $this->fail(100100);
+        }
+
+        $isDel = (int) $is_del ? 1 : 0;
+        if (!$this->service->get($id)) {
+            return $this->fail(100026);
+        }
+
+        $this->service->update($id, ['is_del' => $isDel]);
+
+        return $this->success($isDel ? '注销成功' : '恢复成功');
     }
 
     /**

@@ -88,9 +88,20 @@ class FormOptions
 
     public static function merchants($firstOption = []): array
     {
-        $arr = Merchant::query()->pluck('name', 'id');
+        $result = [];
+        if (!empty($firstOption)) {
+            $result[] = $firstOption;
+        }
+        foreach (Merchant::query()->get(['id', 'name', 'contact_email', 'corporate_phone']) as $row) {
+            $result[] = [
+                'label' => $row->name,
+                'value' => $row->id,
+                'contact_email' => (string) ($row->contact_email ?? ''),
+                'corporate_phone' => (string) ($row->corporate_phone ?? ''),
+            ];
+        }
 
-        return self::toFormOptions($arr, $firstOption);
+        return $result;
     }
 
     public static function platforms($firstOption = []): array

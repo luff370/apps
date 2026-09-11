@@ -62,6 +62,7 @@ class OperationStatisticsService
         $paidOrderQuery = $this->paidMemberOrders($start, $end, $rechargeFilter);
         $activeUsers = $hasVersionFilter ? null : $this->activeUsers($start, $end, $rechargeFilter);
         $registeredUsers = $hasVersionFilter ? null : $this->newUsers($start, $end, $rechargeFilter);
+        $newUsers = $hasVersionFilter ? null : $this->newUuidUsers($start, $end, $rechargeFilter);
         $newRechargeUsers = $this->newRechargeUsers($start, $end, $rechargeFilter);
 
         $orderUsers = (clone $orderQuery)->distinct('user_id')->count('user_id');
@@ -81,7 +82,7 @@ class OperationStatisticsService
 
         return [
             'registered_users' => $hasVersionFilter ? '--' : $registeredUsers,
-            'new_users' => $newRechargeUsers,
+            'new_users' => $hasVersionFilter ? '--' : $newUsers,
             'new_recharge_users' => $newRechargeUsers,
             'active_users' => $hasVersionFilter ? '--' : $activeUsers,
             'active_index' => $hasVersionFilter ? '--' : $this->rate($activeUsers, max($registeredUsers, 1), false),
@@ -519,21 +520,38 @@ class OperationStatisticsService
 
     /**
      * 营收报表的用户维度行数据。
+     *
+     * 新增人数与用户统计一致：按 user_uuids 首次出现日期统计；活跃人数仍读日表合计行。
      */
     private function userStatsRows(Carbon $start, Carbon $end, array $appIds): array
     {
-        return UserStatistic::query()
-            ->selectRaw('date, app_id, SUM(new_users_count) as new_users, SUM(active_users_count) as active_users')
+        $rows = UserStatistic::query()
+            ->selectRaw('date, app_id, SUM(active_users_count) as active_users')
             ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->where('market_channel', '')
             ->when($appIds, fn (Builder $query) => $query->whereIn('app_id', $appIds))
             ->groupBy('date', 'app_id')
             ->get()
             ->mapWithKeys(fn ($row) => [$row->date->format('Y-m-d') . '_' . $row->app_id => [
-                'new_users' => (int)$row->new_users,
+                'new_users' => 0,
                 'active_users' => (int)$row->active_users,
             ]])
             ->toArray();
+
+        $newRows = UserUuid::query()
+            ->selectRaw('DATE(created_at) as date_value, app_id, COUNT(*) as new_users')
+            ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
+            ->when($appIds, fn (Builder $query) => $query->whereIn('app_id', $appIds))
+            ->groupBy('date_value', 'app_id')
+            ->get();
+
+        foreach ($newRows as $row) {
+            $key = $row->date_value . '_' . $row->app_id;
+            $rows[$key] ??= ['new_users' => 0, 'active_users' => 0];
+            $rows[$key]['new_users'] = (int)$row->new_users;
+        }
+
+        return $rows;
     }
 
     /**
@@ -914,13 +932,19 @@ class OperationStatisticsService
     }
 
     /**
-     * 新增人数：区间内首次出现的客户端 UUID。
+     * 新增人数：区间内首次出现的客户端 UUID，口径与用户统计一致。
      */
-    private function newUuidUsers(Carbon $start, Carbon $end, int $appId): int
+    private function newUuidUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
+        $filter = $this->normalizeUserFilter($filter);
+
         return (int) UserUuid::query()
             ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
-            ->when($appId > 0, fn (Builder $query) => $query->where('app_id', $appId))
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(
+                $filter['market_channel'] !== '',
+                fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
+            )
             ->count();
     }
 

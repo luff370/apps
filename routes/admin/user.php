@@ -35,6 +35,8 @@ Route::name('user')->prefix('user')->namespace('User')->group( function () {
     Route::put('update_other/{id}', 'UserController@update_other');
     //修改用户状态
     Route::put('set_status/:status/{id}', 'UserController@set_status');
+    // 注销 / 恢复用户
+    Route::put('set_del/{id}/{is_del}', 'UserController@setDel');
     //获取指定用户的信息
     Route::get('one_info/{id}', 'UserController@oneUserInfo');
 
