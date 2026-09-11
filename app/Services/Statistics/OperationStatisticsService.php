@@ -979,30 +979,17 @@ class OperationStatisticsService
     /**
      * 活跃用户数。
      *
-     * 优先读取 user_statistics 日表，日表无数据时回退到 user_access_log 去重统计。
-     * 未指定渠道时只读应用合计行（market_channel 为空）；指定渠道时按应用市场筛选。
+     * 只读 user_statistics 日表。未指定渠道时用应用合计行（market_channel 为空），指定渠道时按应用市场筛选。
+     * 不再回退 user_access_log：app_info 写入时 user_id 多为 0，按 user_id 去重没有意义。
      */
     private function activeUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
         $filter = $this->normalizeUserFilter($filter);
-        $stat = UserStatistic::query()
+
+        return (int) UserStatistic::query()
             ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->tap(fn (Builder $query) => $this->applyUserStatisticFilter($query, $filter))
             ->sum('active_users_count');
-
-        if ($stat > 0) {
-            return (int)$stat;
-        }
-
-        return DB::table('user_access_log')
-            ->when($filter['app_id'] > 0, fn ($query) => $query->where('app_id', $filter['app_id']))
-            ->when(
-                $filter['market_channel'] !== '',
-                fn ($query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
-            )
-            ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
-            ->distinct('user_id')
-            ->count('user_id');
     }
 
     /**

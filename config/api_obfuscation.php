@@ -11,6 +11,21 @@ return [
     'packet_version' => env('API_OBFUSCATION_PACKET_VERSION', '1'),
     'gateway_prefixes' => array_values(array_filter(array_map('trim', explode(',', env('API_OBFUSCATION_GATEWAY_PREFIXES', 'v55,v,gateway,client,service,open'))))),
     'default_gateway_prefix' => env('API_OBFUSCATION_DEFAULT_GATEWAY_PREFIX', 'gateway'),
+    // 应用级请求/响应外层映射未填写时使用的默认短映射，各应用共用。
+    'default_short_maps' => [
+        'request_key_map' => [
+            'page' => 'pg',
+            'limit' => 'sz',
+            'keywords' => 'kw',
+            'uuid' => 'ud',
+            'token' => 'tk',
+        ],
+        'response_key_map' => [
+            'status' => 's',
+            'msg' => 'm',
+            'data' => 'd',
+        ],
+    ],
     // Device-Env 是客户端环境探针头的独立配置，不负责生成或兜底接口 alias；
     // /api/{prefix}/{alias} -> 真实接口的映射仍完全来自后台混淆管理配置。
     'device_env' => [
@@ -63,7 +78,8 @@ return [
                 'domain' => null,
                 // 把 path_prefixes 命中的那一段换成按应用生成的别名，真实文件路径不变。
                 'path_alias_enabled' => false,
-                // Empty means scan all string fields recursively.
+                // 为空则递归扫描全部字符串字段，只按 path_prefixes 判断是否图片地址。
+                // 需要限制 JSON 键名时在此填写，例如 image、avatar，所有应用共用。
                 'fields' => [],
                 'path_prefixes' => ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/', 'storage/attach/', '/storage/attach/'],
             ],

@@ -252,8 +252,9 @@ class ApiObfuscationMiddleware
             }
         }
 
-        $fields = $config['fields'] ?? [];
-        $prefixes = $config['path_prefixes'] ?? ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/'];
+        $imageDefaults = (array) config('api_obfuscation.profiles.default.image_url', []);
+        $fields = (array) ($imageDefaults['fields'] ?? []);
+        $prefixes = (array) ($imageDefaults['path_prefixes'] ?? ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/', 'storage/attach/', '/storage/attach/']);
 
         $pathRewriter = null;
         if ($pathAliasEnabled) {

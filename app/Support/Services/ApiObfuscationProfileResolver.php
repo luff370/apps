@@ -43,8 +43,8 @@ class ApiObfuscationProfileResolver
             'app_id' => $merged['app_id'] ?? null,
             'package_name' => $merged['package_name'] ?? null,
             'route_aliases' => $merged['route_aliases'] ?? [],
-            'request_key_map' => $merged['request_key_map'] ?? [],
-            'response_key_map' => $merged['response_key_map'] ?? [],
+            'request_key_map' => $this->defaultKeyMap($merged['request_key_map'] ?? [], 'request_key_map'),
+            'response_key_map' => $this->defaultKeyMap($merged['response_key_map'] ?? [], 'response_key_map'),
             'response_data_key_map' => $merged['response_data_key_map'] ?? [],
             'protocol' => $merged['protocol'] ?? [],
             'security' => $merged['security'] ?? [],
@@ -118,5 +118,12 @@ class ApiObfuscationProfileResolver
         }
 
         return $aliases;
+    }
+
+    private function defaultKeyMap(mixed $map, string $configKey): array
+    {
+        $map = is_array($map) ? $map : [];
+
+        return $map !== [] ? $map : (array) config('api_obfuscation.default_short_maps.' . $configKey, []);
     }
 }
