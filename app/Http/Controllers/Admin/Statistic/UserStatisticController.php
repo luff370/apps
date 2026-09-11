@@ -10,17 +10,11 @@ use Illuminate\Http\Request;
 class UserStatisticController extends Controller
 {
     /**
-     * 用户统计汇总：新增用户（新增 UUID）、注册用户、注册率。
+     * 用户统计汇总：活跃用户、新增用户（新增 UUID）、注册用户、注册率。
      */
     public function getBasic(Request $request, UserStatisticsService $service): JsonResponse
     {
-        return $this->success($service->reportBasic($request->only([
-            'app_id',
-            'market_channel',
-            'data',
-            'start_date',
-            'end_date',
-        ])));
+        return $this->success($service->reportBasic($this->reportFilter($request)));
     }
 
     /**
@@ -28,13 +22,26 @@ class UserStatisticController extends Controller
      */
     public function getTrend(Request $request, UserStatisticsService $service): JsonResponse
     {
-        return $this->success($service->reportTrend($request->only([
+        return $this->success($service->reportTrend($this->reportFilter($request)));
+    }
+
+    /**
+     * 用户统计按应用列表：新增用户、活跃用户、注册用户、注册率。
+     */
+    public function getAppList(Request $request, UserStatisticsService $service): JsonResponse
+    {
+        return $this->success($service->reportByApp($this->reportFilter($request)));
+    }
+
+    private function reportFilter(Request $request): array
+    {
+        return $request->only([
             'app_id',
             'market_channel',
             'data',
             'start_date',
             'end_date',
-        ])));
+        ]);
     }
 
     public function getWechat(): JsonResponse

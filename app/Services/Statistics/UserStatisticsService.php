@@ -3,7 +3,6 @@
 namespace App\Services\Statistics;
 
 use App\Models\SystemApp;
-use App\Models\User;
 use App\Models\UserStatistic;
 use App\Models\UserUuid;
 use App\Services\Service;
@@ -194,15 +193,17 @@ class UserStatisticsService extends Service
     }
 
     /**
-     * 报表管理-用户统计汇总：新增用户=新增 UUID，注册用户=注册账号。
+     * 报表管理-用户统计汇总：活跃用户读日表，新增用户=新增 UUID，注册用户读日表。
      */
     public function reportBasic(array $filter): array
     {
         [$start, $end, $appId, $marketChannel] = $this->reportFilter($filter);
+        $activeUsers = $this->activeUsers($start, $end, $appId, $marketChannel);
         $newUsers = $this->newUuidUsers($start, $end, $appId, $marketChannel);
         $registeredUsers = $this->registeredUsers($start, $end, $appId, $marketChannel);
 
         return [
+            'active_users' => $activeUsers,
             'new_users' => $newUsers,
             'registered_users' => $registeredUsers,
             'register_rate' => $this->registerRate($registeredUsers, $newUsers),
@@ -240,6 +241,57 @@ class UserStatisticsService extends Service
                 ['name' => '注册率', 'data' => $rateValues],
             ],
         ];
+    }
+
+    /**
+     * 报表管理-用户统计按应用列表，筛选条件与汇总/趋势一致。
+     */
+    public function reportByApp(array $filter): array
+    {
+        [$start, $end, $appId, $marketChannel] = $this->reportFilter($filter);
+        $newByApp = $this->newUuidUsersByApp($start, $end, $appId, $marketChannel);
+        $registeredByApp = $this->registeredUsersByApp($start, $end, $appId, $marketChannel);
+        $activeByApp = $this->activeUsersByApp($start, $end, $appId, $marketChannel);
+
+        $appIds = array_values(array_unique(array_merge(
+            array_keys($newByApp),
+            array_keys($registeredByApp),
+            array_keys($activeByApp)
+        )));
+        if ($appId > 0) {
+            $appIds = [$appId];
+        }
+
+        $names = $appIds
+            ? SystemApp::query()->whereIn('id', $appIds)->pluck('name', 'id')
+            : collect();
+
+        $list = [];
+        foreach ($appIds as $id) {
+            $newUsers = (int)($newByApp[$id] ?? 0);
+            $registeredUsers = (int)($registeredByApp[$id] ?? 0);
+            $activeUsers = (int)($activeByApp[$id] ?? 0);
+            if ($newUsers === 0 && $registeredUsers === 0 && $activeUsers === 0 && $appId <= 0) {
+                continue;
+            }
+            $list[] = [
+                'app_id' => $id,
+                'app_name' => (string)($names->get($id) ?? $names->get((string)$id) ?? $id),
+                'new_users' => $newUsers,
+                'active_users' => $activeUsers,
+                'registered_users' => $registeredUsers,
+                'register_rate' => $this->registerRate($registeredUsers, $newUsers),
+            ];
+        }
+
+        usort($list, function (array $left, array $right) {
+            return $right['active_users'] <=> $left['active_users']
+                ?: $right['new_users'] <=> $left['new_users']
+                ?: $right['registered_users'] <=> $left['registered_users']
+                ?: $left['app_id'] <=> $right['app_id'];
+        });
+
+        return $list;
     }
 
     private function reportFilter(array $filter): array
@@ -285,6 +337,17 @@ class UserStatisticsService extends Service
             ->toArray();
     }
 
+    private function newUuidUsersByApp(Carbon $start, Carbon $end, int $appId, string $marketChannel): array
+    {
+        return $this->intKeyedCounts(
+            $this->newUuidQuery($start, $end, $appId, $marketChannel)
+                ->selectRaw('app_id, COUNT(*) as value')
+                ->groupBy('app_id')
+                ->pluck('value', 'app_id')
+                ->toArray()
+        );
+    }
+
     private function newUuidQuery(Carbon $start, Carbon $end, int $appId, string $marketChannel)
     {
         return UserUuid::query()
@@ -298,49 +361,61 @@ class UserStatisticsService extends Service
 
     private function registeredUsers(Carbon $start, Carbon $end, int $appId, string $marketChannel): int
     {
-        $stat = UserStatistic::query()
-            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->tap(fn ($query) => $this->applyUserStatisticChannel($query, $appId, $marketChannel))
-            ->sum('new_users_count');
+        return (int)$this->userStatisticQuery($start, $end, $appId, $marketChannel)->sum('new_users_count');
+    }
 
-        if ($stat > 0) {
-            return (int)$stat;
-        }
-
-        return (int)$this->registeredUserQuery($start, $end, $appId, $marketChannel)->count();
+    private function activeUsers(Carbon $start, Carbon $end, int $appId, string $marketChannel): int
+    {
+        return (int)$this->userStatisticQuery($start, $end, $appId, $marketChannel)->sum('active_users_count');
     }
 
     private function registeredUsersByDate(Carbon $start, Carbon $end, int $appId, string $marketChannel): array
     {
-        $rows = UserStatistic::query()
+        return $this->userStatisticQuery($start, $end, $appId, $marketChannel)
             ->selectRaw('date, SUM(new_users_count) as value')
-            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->tap(fn ($query) => $this->applyUserStatisticChannel($query, $appId, $marketChannel))
             ->groupBy('date')
             ->get()
             ->mapWithKeys(fn ($row) => [$row->date->format('Y-m-d') => (int)$row->value])
             ->toArray();
-
-        if ($rows) {
-            return $rows;
-        }
-
-        return $this->registeredUserQuery($start, $end, $appId, $marketChannel)
-            ->selectRaw('FROM_UNIXTIME(reg_time, "%Y-%m-%d") as date_value, COUNT(*) as value')
-            ->groupBy('date_value')
-            ->pluck('value', 'date_value')
-            ->toArray();
     }
 
-    private function registeredUserQuery(Carbon $start, Carbon $end, int $appId, string $marketChannel)
+    private function registeredUsersByApp(Carbon $start, Carbon $end, int $appId, string $marketChannel): array
     {
-        return User::query()
-            ->whereBetween('reg_time', [$start->timestamp, $end->timestamp])
-            ->when($appId > 0, fn ($query) => $query->where('app_id', $appId))
-            ->when(
-                $marketChannel !== '',
-                fn ($query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($marketChannel))
-            );
+        return $this->intKeyedCounts(
+            $this->userStatisticQuery($start, $end, $appId, $marketChannel)
+                ->selectRaw('app_id, SUM(new_users_count) as value')
+                ->groupBy('app_id')
+                ->pluck('value', 'app_id')
+                ->toArray()
+        );
+    }
+
+    private function activeUsersByApp(Carbon $start, Carbon $end, int $appId, string $marketChannel): array
+    {
+        return $this->intKeyedCounts(
+            $this->userStatisticQuery($start, $end, $appId, $marketChannel)
+                ->selectRaw('app_id, SUM(active_users_count) as value')
+                ->groupBy('app_id')
+                ->pluck('value', 'app_id')
+                ->toArray()
+        );
+    }
+
+    private function intKeyedCounts(array $rows): array
+    {
+        $result = [];
+        foreach ($rows as $key => $value) {
+            $result[(int)$key] = (int)$value;
+        }
+
+        return $result;
+    }
+
+    private function userStatisticQuery(Carbon $start, Carbon $end, int $appId, string $marketChannel)
+    {
+        return UserStatistic::query()
+            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+            ->tap(fn ($query) => $this->applyUserStatisticChannel($query, $appId, $marketChannel));
     }
 
     private function applyUserStatisticChannel($query, int $appId, string $marketChannel)

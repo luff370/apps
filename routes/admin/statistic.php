@@ -12,6 +12,9 @@ Route::name('statistic')->prefix('statistic')->namespace('Statistic')->group( fu
     //用户增长趋势
     Route::get('user/get_trend', 'UserStatisticController@getTrend');
 
+    //按应用列表
+    Route::get('user/get_app_list', 'UserStatisticController@getAppList');
+
     //微信用户
     Route::get('user/get_wechat', 'UserStatisticController@getWechat');
 
