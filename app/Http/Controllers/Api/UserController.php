@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Support\Utils\Token;
 use App\Models\UserFeedback;
 use Illuminate\Support\Carbon;
+use App\Services\User\UserArchiveService;
 use App\Services\User\UserServices;
 use App\Models\TrafficViolationContent;
 
@@ -150,9 +151,14 @@ class UserController extends Controller
     public function profile(Request $request)
     {
         $profile = $request->all();
-        $profile['user_id'] = 0;
-        $profile['uuid'] = $this->getUuid();
-        $profile['app_id'] = $this->getAppId();
+        $uuid = (string) $this->getUuid();
+        $appId = (int) $this->getAppId();
+        $archiveService = app(UserArchiveService::class);
+        $userId = $archiveService->resolveUserId($request, $uuid, $appId);
+
+        $profile['user_id'] = $userId;
+        $profile['uuid'] = $uuid;
+        $profile['app_id'] = $appId;
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
 
@@ -167,6 +173,10 @@ class UserController extends Controller
             } else {
                 return $this->fail("保存失败，请稍后重试");
             }
+        }
+
+        if ($userId > 0) {
+            $archiveService->bindUserId($userId, $uuid, $appId);
         }
 
         return $this->success();

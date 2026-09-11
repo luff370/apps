@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use App\Support\Utils\Token;
 use App\Support\Utils\Apple;
 use App\Services\AuthService;
+use App\Services\User\UserArchiveService;
 use App\Support\Services\AlipayService;
 use App\Http\Requests\Auth\AccountRegRequest;
 
@@ -51,6 +52,7 @@ class AuthController extends Controller
         ];
 
         $user = User::query()->create($userRegData);
+        $this->bindArchiveUser((int) $user['id']);
 
         // 生成token
         $token = Token::generate(['user_id' => $user['id'], 'login_way' => 'account', 'is_reg' => $user['is_reg']]);
@@ -73,6 +75,8 @@ class AuthController extends Controller
         if (md5($request->get('password')) != $user['password']) {
             return $this->fail('密码错误，请确认');
         }
+
+        $this->bindArchiveUser((int) $user['id']);
 
         // 生成token
         $token = Token::generate(['user_id' => $user['id'], 'login_way' => 'account', 'is_reg' => $user['is_reg']]);
@@ -109,6 +113,8 @@ class AuthController extends Controller
             ];
             $user = User::query()->create($userRegData);
         }
+
+        $this->bindArchiveUser((int) $user['id']);
 
         // 生成token
         $token = Token::generate(['user_id' => $user['id'], 'login_way' => 'uuid', 'is_reg' => $user['is_reg']]);
@@ -257,5 +263,14 @@ class AuthController extends Controller
         } catch (\Exception $e) {
             return $this->fail($e->getMessage());
         }
+    }
+
+    private function bindArchiveUser(int $userId): void
+    {
+        app(UserArchiveService::class)->bindUserId(
+            $userId,
+            (string) $this->getUuid(),
+            (int) $this->getAppId()
+        );
     }
 }

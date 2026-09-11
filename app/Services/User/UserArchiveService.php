@@ -6,9 +6,12 @@ use App\Dao\User\UserArchiveDao;
 use App\Exceptions\AdminException;
 use App\Models\SystemApp;
 use App\Models\User;
+use App\Models\UserProfile;
 use App\Services\Service;
 use App\Support\Services\FormBuilder as Form;
+use App\Support\Utils\Token;
 use DateTimeInterface;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
 /**
@@ -140,6 +143,58 @@ class UserArchiveService extends Service
             'birth_date' => $data['birth_date'] ?: null,
             'birth_place' => $data['birth_place'] ?? '',
         ]);
+    }
+
+    /**
+     * 把已登录用户 ID 写回同设备、尚未绑定的档案。
+     */
+    public function bindUserId(int $userId, string $uuid, int $appId): void
+    {
+        if ($userId <= 0 || $appId <= 0) {
+            return;
+        }
+
+        $uuids = array_values(array_filter(array_unique([$uuid])));
+        $userUuid = (string) User::query()->where('id', $userId)->value('uuid');
+        if ($userUuid !== '') {
+            $uuids[] = $userUuid;
+            $uuids = array_values(array_unique($uuids));
+        }
+        if (!$uuids) {
+            return;
+        }
+
+        UserProfile::query()
+            ->where('app_id', $appId)
+            ->whereIn('uuid', $uuids)
+            ->where(function ($query) {
+                $query->where('user_id', 0)->orWhereNull('user_id');
+            })
+            ->update(['user_id' => $userId]);
+    }
+
+    public function resolveUserId(Request $request, string $uuid, int $appId): int
+    {
+        $token = trim((string) $request->header('Token', ''));
+        if ($token !== '') {
+            try {
+                $userId = (int) (Token::verify($token)['user_id'] ?? 0);
+                if ($userId > 0) {
+                    return $userId;
+                }
+            } catch (\Throwable $e) {
+            }
+        }
+
+        if ($uuid === '' || $appId <= 0) {
+            return 0;
+        }
+
+        return (int) User::query()
+            ->where('app_id', $appId)
+            ->where('uuid', $uuid)
+            ->orderByDesc('id')
+            ->value('id');
     }
 
     private function attachVipInfo(array &$row): void

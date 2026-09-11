@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Support\Utils\Token;
 use App\Models\ThirdLoginUser;
 use App\Exceptions\AuthException;
+use App\Services\User\UserArchiveService;
 use Illuminate\Support\Facades\DB;
 
 class AuthService extends Service
@@ -36,6 +37,7 @@ class AuthService extends Service
             ->where('third_user_id', $thirdInfo['third_user_id'])
             ->first();
         if ($thirdUser) {
+            $this->bindArchiveUser((int) $thirdUser['user']['id'], (string) $uuid, (int) $appId);
             // 生成token
             return Token::generate(['user_id' => $thirdUser['user']['id'], 'login_type' => $type, 'is_reg' => 1]);
         }
@@ -83,11 +85,18 @@ class AuthService extends Service
             $userInfo->save();
             DB::commit();
 
+            $this->bindArchiveUser((int) $userInfo['id'], (string) $uuid, (int) $appId);
+
             return Token::generate(['user_id' => $userInfo['id'], 'login_type' => $type, 'is_reg' => 1]);
         } catch (\Exception $exception) {
             DB::rollBack();
             logger()->error($exception->getMessage());
             throw new AuthException('登录失败，请重试');
         }
+    }
+
+    private function bindArchiveUser(int $userId, string $uuid, int $appId): void
+    {
+        app(UserArchiveService::class)->bindUserId($userId, $uuid, $appId);
     }
 }
