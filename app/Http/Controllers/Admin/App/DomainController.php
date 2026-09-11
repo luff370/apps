@@ -31,6 +31,14 @@ class DomainController extends Controller
     }
 
     /**
+     * 首页域名到期提醒
+     */
+    public function expiryNotices()
+    {
+        return $this->success($this->service->expiryNotices());
+    }
+
+    /**
      * 保存新建
      */
     public function store()

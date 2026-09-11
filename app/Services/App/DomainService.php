@@ -99,6 +99,64 @@ class DomainService extends Service
         return $level;
     }
 
+    /**
+     * 首页滚动提醒：已过期 + 近一个月内到期
+     */
+    public function expiryNotices(): array
+    {
+        $soonUntil = Carbon::today()->addMonth()->toDateString();
+        $rows = $this->dao->newQuery()
+            ->whereNotNull('expire_at')
+            ->whereDate('expire_at', '<=', $soonUntil)
+            ->orderBy('expire_at')
+            ->orderBy('id')
+            ->get()
+            ->toArray();
+
+        $list = [];
+        foreach ($this->tidyListData($rows) as $row) {
+            if (!(int) ($row['is_expired'] ?? 0) && !(int) ($row['is_expire_soon'] ?? 0)) {
+                continue;
+            }
+            $expireAt = (string) ($row['expire_at'] ?? '');
+            $days = $this->expireDays($expireAt);
+            $list[] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'domain' => (string) ($row['domain'] ?? ''),
+                'subject' => (string) ($row['subject'] ?? ''),
+                'expire_at' => $expireAt,
+                'is_expired' => (int) ($row['is_expired'] ?? 0),
+                'is_expire_soon' => (int) ($row['is_expire_soon'] ?? 0),
+                'days' => $days,
+            ];
+        }
+
+        usort($list, function ($a, $b) {
+            if ((int) $a['is_expired'] !== (int) $b['is_expired']) {
+                return (int) $b['is_expired'] <=> (int) $a['is_expired'];
+            }
+
+            return strcmp((string) $a['expire_at'], (string) $b['expire_at']);
+        });
+
+        return ['list' => $list, 'count' => count($list)];
+    }
+
+    public function expireDays(string $expireAt): ?int
+    {
+        if ($expireAt === '' || $expireAt === '-') {
+            return null;
+        }
+
+        try {
+            $expireDay = Carbon::parse($expireAt)->startOfDay();
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return (int) Carbon::today()->diffInDays($expireDay, false);
+    }
+
     private function expireStatus($expireAt): array
     {
         $status = ['is_expired' => 0, 'is_expire_soon' => 0];

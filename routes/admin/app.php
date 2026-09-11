@@ -68,6 +68,7 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::put('merchant/set_field_value/{id}/{value}/{field}', 'MerchantController::class@setFieldValue');
 
     // 域名管理
+    Route::get('domain/expiry_notices', 'DomainController@expiryNotices');
     Route::put('domain/set_field_value/{id}/{value}/{field}', 'DomainController@setFieldValue');
     Route::resource('domain', 'DomainController');
 
