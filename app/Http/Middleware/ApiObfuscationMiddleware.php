@@ -295,32 +295,26 @@ class ApiObfuscationMiddleware
             return null;
         }
 
-        if ($this->isAbsoluteUrl($normalized)) {
-            $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
-            $matched = $this->matchImagePrefix($path, $prefixes);
-            if ($matched === null) {
-                return null;
-            }
-
-            $query = (string) (parse_url($normalized, PHP_URL_QUERY) ?? '');
-            if ($pathRewriter) {
-                $path = $pathRewriter($path, $matched);
-            }
-
-            $origin = $host !== '' ? $this->replaceUrlHost($normalized, $host) : $this->urlOrigin($normalized);
-            $target = rtrim($origin, '/') . '/' . ltrim($path, '/');
-
-            return $query !== '' ? $target . '?' . $query : $target;
+        // 接口只返回完整地址，非 http/https（或 //）开头的字符串不处理。
+        if (!$this->isAbsoluteUrl($normalized)) {
+            return null;
         }
 
-        $matched = $this->matchImagePrefix($normalized, $prefixes);
+        $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
+        $matched = $this->matchImagePrefix($path, $prefixes);
         if ($matched === null) {
             return null;
         }
 
-        $path = $pathRewriter ? $pathRewriter($normalized, $matched) : $normalized;
+        $query = (string) (parse_url($normalized, PHP_URL_QUERY) ?? '');
+        if ($pathRewriter) {
+            $path = $pathRewriter($path, $matched);
+        }
 
-        return $host !== '' ? '//' . $host . '/' . ltrim($path, '/') : $path;
+        $origin = $host !== '' ? $this->replaceUrlHost($normalized, $host) : $this->urlOrigin($normalized);
+        $target = rtrim($origin, '/') . '/' . ltrim($path, '/');
+
+        return $query !== '' ? $target . '?' . $query : $target;
     }
 
     /**
