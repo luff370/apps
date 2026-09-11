@@ -78,10 +78,8 @@ return [
                 'domain' => null,
                 // 把 path_prefixes 命中的那一段换成按应用生成的别名，真实文件路径不变。
                 'path_alias_enabled' => false,
-                // 为空则递归扫描全部字符串字段，只按 path_prefixes 判断是否图片地址。
-                // 需要限制 JSON 键名时在此填写，例如 image、avatar，所有应用共用。
-                'fields' => [],
-                'path_prefixes' => ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/', 'storage/attach/', '/storage/attach/'],
+                // 命中 path_prefixes 的字符串都会替换，不按 JSON 字段名过滤。
+                'path_prefixes' => ['storage/attach/', '/storage/attach/'],
             ],
         ],
 

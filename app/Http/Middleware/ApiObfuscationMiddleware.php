@@ -238,22 +238,21 @@ class ApiObfuscationMiddleware
         $globalEnabled = (bool) config('api_obfuscation.image_url_rewrite_enabled', true);
         $config = $profile['image_url'] ?? [];
         // 域名替换和路径别名是两个独立开关：前者只换 host，后者只把 storage/attach 换成按应用生成的别名段。
-        $domainEnabled = (bool) ($config['enabled'] ?? false);
-        $pathAliasEnabled = (bool) ($config['path_alias_enabled'] ?? false);
+        $domainEnabled = (bool) ($config['enabled'] ?? $profile['image_url_enabled'] ?? false);
+        $pathAliasEnabled = (bool) ($config['path_alias_enabled'] ?? $profile['image_path_alias_enabled'] ?? false);
         if (!$globalEnabled || (!$domainEnabled && !$pathAliasEnabled)) {
             return $payload;
         }
 
-        $domain = '';
+        $host = '';
         if ($domainEnabled) {
-            $domain = (string) ($config['domain'] ?? config('api_obfuscation.default_image_domain', ''));
-            if ($domain === '') {
-                $domain = rtrim((string) $request->getSchemeAndHttpHost(), '/');
+            $host = $this->imageRewriteHost((string) ($profile['image_domain'] ?? $config['domain'] ?? config('api_obfuscation.default_image_domain', '')));
+            if ($host === '') {
+                $host = (string) $request->getHost();
             }
         }
 
         $imageDefaults = (array) config('api_obfuscation.profiles.default.image_url', []);
-        $fields = (array) ($imageDefaults['fields'] ?? []);
         $prefixes = (array) ($imageDefaults['path_prefixes'] ?? ['attach/', '/attach/', 'uploads/attach/', '/uploads/attach/', 'storage/attach/', '/storage/attach/']);
 
         $pathRewriter = null;
@@ -265,14 +264,14 @@ class ApiObfuscationMiddleware
                 => $aliasService->replacePrefix($path, $matchedPrefix, $appId, $packageName);
         }
 
-        return $this->rewriteImagesRecursively($payload, $domain, $fields, $prefixes, $pathRewriter);
+        return $this->rewriteImagesRecursively($payload, $host, $prefixes, $pathRewriter);
     }
 
-    private function rewriteImagesRecursively(array $payload, string $domain, array $fields, array $prefixes, ?callable $pathRewriter = null): array
+    private function rewriteImagesRecursively(array $payload, string $host, array $prefixes, ?callable $pathRewriter = null): array
     {
         foreach ($payload as $key => $value) {
             if (is_array($value)) {
-                $payload[$key] = $this->rewriteImagesRecursively($value, $domain, $fields, $prefixes, $pathRewriter);
+                $payload[$key] = $this->rewriteImagesRecursively($value, $host, $prefixes, $pathRewriter);
                 continue;
             }
 
@@ -280,12 +279,7 @@ class ApiObfuscationMiddleware
                 continue;
             }
 
-            $shouldCheck = empty($fields) || in_array((string) $key, $fields, true);
-            if (!$shouldCheck) {
-                continue;
-            }
-
-            $rewritten = $this->rewriteSingleImageUrl($value, $domain, $prefixes, $pathRewriter);
+            $rewritten = $this->rewriteSingleImageUrl($value, $host, $prefixes, $pathRewriter);
             if ($rewritten !== null) {
                 $payload[$key] = $rewritten;
             }
@@ -294,9 +288,12 @@ class ApiObfuscationMiddleware
         return $payload;
     }
 
-    private function rewriteSingleImageUrl(string $value, string $domain, array $prefixes, ?callable $pathRewriter = null): ?string
+    private function rewriteSingleImageUrl(string $value, string $host, array $prefixes, ?callable $pathRewriter = null): ?string
     {
         $normalized = str_replace('\\', '/', $value);
+        if (str_starts_with($normalized, 'data:')) {
+            return null;
+        }
 
         if ($this->isAbsoluteUrl($normalized)) {
             $path = (string) (parse_url($normalized, PHP_URL_PATH) ?? '');
@@ -310,9 +307,8 @@ class ApiObfuscationMiddleware
                 $path = $pathRewriter($path, $matched);
             }
 
-            // 域名替换关闭时保留原始 host，只改路径段。
-            $base = $domain !== '' ? rtrim($domain, '/') : $this->urlOrigin($normalized);
-            $target = $base . '/' . ltrim($path, '/');
+            $origin = $host !== '' ? $this->replaceUrlHost($normalized, $host) : $this->urlOrigin($normalized);
+            $target = rtrim($origin, '/') . '/' . ltrim($path, '/');
 
             return $query !== '' ? $target . '?' . $query : $target;
         }
@@ -324,7 +320,41 @@ class ApiObfuscationMiddleware
 
         $path = $pathRewriter ? $pathRewriter($normalized, $matched) : $normalized;
 
-        return $domain !== '' ? rtrim($domain, '/') . '/' . ltrim($path, '/') : $path;
+        return $host !== '' ? '//' . $host . '/' . ltrim($path, '/') : $path;
+    }
+
+    /**
+     * 配置里的图片域名只取 host，http/https、多余路径都不参与替换。
+     */
+    private function imageRewriteHost(string $domain): string
+    {
+        $domain = trim($domain);
+        if ($domain === '') {
+            return '';
+        }
+        $domain = preg_replace('#^https?://#i', '', $domain) ?? $domain;
+        $domain = preg_replace('#^//#', '', $domain) ?? $domain;
+        $domain = trim($domain, '/');
+        if ($domain === '') {
+            return '';
+        }
+        $host = explode('/', $domain, 2)[0];
+
+        return strtolower($host);
+    }
+
+    /**
+     * 只替换 host（及可选端口），保留原 URL 的 http / https / 协议相对写法。
+     */
+    private function replaceUrlHost(string $url, string $host): string
+    {
+        if (str_starts_with($url, '//')) {
+            return '//' . $host;
+        }
+
+        $scheme = (string) (parse_url($url, PHP_URL_SCHEME) ?? '');
+
+        return ($scheme !== '' ? $scheme . ':' : '') . '//' . $host;
     }
 
     /**

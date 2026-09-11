@@ -79,6 +79,52 @@ class ImagePathAliasTest extends TestCase
         );
     }
 
+    public function test_domain_replace_ignores_scheme_in_config(): void
+    {
+        $httpConfig = $this->rewrite([
+            'enabled' => true,
+            'domain' => 'https://cdn.example.com',
+        ]);
+        $bareConfig = $this->rewrite([
+            'enabled' => true,
+            'domain' => 'cdn.example.com/',
+        ]);
+
+        $this->assertSame(
+            'http://cdn.example.com/storage/attach/2026/03/RHW424Ze.png',
+            $httpConfig['data']['image']
+        );
+        $this->assertSame(
+            'http://cdn.example.com/storage/attach/2026/03/RHW424Ze.png',
+            $bareConfig['data']['image']
+        );
+    }
+
+    public function test_image_urls_are_rewritten_without_field_name_filter(): void
+    {
+        $payload = $this->rewrite([
+            'enabled' => true,
+            'domain' => 'cdn.example.com',
+        ], 10036, 'com.example.app', [
+            'status' => 200,
+            'data' => [
+                'head_img' => self::IMAGE_URL,
+                'list' => [
+                    ['cover_url' => self::IMAGE_URL],
+                ],
+            ],
+        ]);
+
+        $this->assertSame(
+            'http://cdn.example.com/storage/attach/2026/03/RHW424Ze.png',
+            $payload['data']['head_img']
+        );
+        $this->assertSame(
+            'http://cdn.example.com/storage/attach/2026/03/RHW424Ze.png',
+            $payload['data']['list'][0]['cover_url']
+        );
+    }
+
     public function test_both_switches_replace_domain_and_prefix(): void
     {
         $alias = (new ImagePathAliasService())->make(10036, 'com.example.app', '/storage/attach/');
@@ -109,7 +155,7 @@ class ImagePathAliasTest extends TestCase
         $this->assertSame('http://storeimg.appasd.com/other/2026/03/x.png', $payload['data']['other']);
     }
 
-    private function rewrite(array $imageConfig, int $appId = 10036, string $packageName = 'com.example.app'): array
+    private function rewrite(array $imageConfig, int $appId = 10036, string $packageName = 'com.example.app', ?array $payload = null): array
     {
         $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
         $method = (new ReflectionClass(ApiObfuscationMiddleware::class))->getMethod('rewriteImageUrls');
@@ -122,12 +168,10 @@ class ImagePathAliasTest extends TestCase
                 'enabled' => false,
                 'domain' => '',
                 'path_alias_enabled' => false,
-                'fields' => [],
-                'path_prefixes' => ['attach/', '/attach/', 'storage/attach/', '/storage/attach/'],
             ], $imageConfig),
         ];
 
-        $payload = [
+        $payload ??= [
             'status' => 200,
             'data' => [
                 'image' => self::IMAGE_URL,

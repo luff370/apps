@@ -54,7 +54,7 @@ class AppApiObfuscationService extends Service
         if ($requestMap === []) $requestMap = $shortMaps['request_key_map'];
         if ($responseMap === []) $responseMap = $shortMaps['response_key_map'];
         $imageUrl = (array) config('api_obfuscation.profiles.default.image_url', []);
-        $save = ['enabled'=>intval($d['enabled']??0),'encrypt_request'=>intval($d['encrypt_request']??0),'encrypt_response'=>intval($d['encrypt_response']??0),'allow_plaintext_request'=>intval($d['allow_plaintext_request']??1),'image_url_enabled'=>intval($d['image_url_enabled']??0),'image_path_alias_enabled'=>intval($d['image_path_alias_enabled']??0),'image_domain'=>$imageDomain,'api_domain'=>$apiDomain,'request_key_map'=>$requestMap,'response_key_map'=>$responseMap,'protocol'=>['encrypt_request'=>(bool)($d['encrypt_request']??0),'encrypt_response'=>(bool)($d['encrypt_response']??0),'allow_plaintext_request'=>(bool)($d['allow_plaintext_request']??1),'payload_field'=>(string)($d['payload_field']??'payload'),'sign_field'=>(string)($d['sign_field']??'sign'),'timestamp_field'=>(string)($d['timestamp_field']??'ts'),'nonce_field'=>(string)($d['nonce_field']??'nonce'),'version_field'=>(string)($d['version_field']??'ver')],'security'=>['timestamp_window_seconds'=>intval($d['timestamp_window_seconds']??300),'nonce_ttl_seconds'=>intval($d['nonce_ttl_seconds']??300)],'crypto'=>['cipher'=>(string)($d['cipher']??'AES-256-CBC'),'key'=>(string)($d['crypto_key']??''),'iv'=>(string)($d['crypto_iv']??''),'sign_key'=>(string)($d['crypto_sign_key']??'')],'image_url'=>['enabled'=>(bool)($d['image_url_enabled']??0),'path_alias_enabled'=>(bool)($d['image_path_alias_enabled']??0),'domain'=>$imageDomain,'fields'=>(array)($imageUrl['fields']??[]),'path_prefixes'=>(array)($imageUrl['path_prefixes']??[])]];
+        $save = ['enabled'=>intval($d['enabled']??0),'encrypt_request'=>intval($d['encrypt_request']??0),'encrypt_response'=>intval($d['encrypt_response']??0),'allow_plaintext_request'=>intval($d['allow_plaintext_request']??1),'image_url_enabled'=>intval($d['image_url_enabled']??0),'image_path_alias_enabled'=>intval($d['image_path_alias_enabled']??0),'image_domain'=>$imageDomain,'api_domain'=>$apiDomain,'request_key_map'=>$requestMap,'response_key_map'=>$responseMap,'protocol'=>['encrypt_request'=>(bool)($d['encrypt_request']??0),'encrypt_response'=>(bool)($d['encrypt_response']??0),'allow_plaintext_request'=>(bool)($d['allow_plaintext_request']??1),'payload_field'=>(string)($d['payload_field']??'payload'),'sign_field'=>(string)($d['sign_field']??'sign'),'timestamp_field'=>(string)($d['timestamp_field']??'ts'),'nonce_field'=>(string)($d['nonce_field']??'nonce'),'version_field'=>(string)($d['version_field']??'ver')],'security'=>['timestamp_window_seconds'=>intval($d['timestamp_window_seconds']??300),'nonce_ttl_seconds'=>intval($d['nonce_ttl_seconds']??300)],'crypto'=>['cipher'=>(string)($d['cipher']??'AES-256-CBC'),'key'=>(string)($d['crypto_key']??''),'iv'=>(string)($d['crypto_iv']??''),'sign_key'=>(string)($d['crypto_sign_key']??'')],'image_url'=>['enabled'=>(bool)($d['image_url_enabled']??0),'path_alias_enabled'=>(bool)($d['image_path_alias_enabled']??0),'domain'=>$imageDomain,'path_prefixes'=>(array)($imageUrl['path_prefixes']??[])]];
         $p ? $this->dao->update($p['id'], $save) : $this->dao->save(array_merge(['app_id'=>$appId,'package_name'=>$pkg], $save));
         $p = $this->findProfile($appId, $pkg); if ($p) $this->refreshRouteAliases((int)$p['id']); return $this->getProfile($appId, $pkg);
     }
@@ -222,7 +222,7 @@ class AppApiObfuscationService extends Service
             return [];
         }
         $rows = $this->aliasDao->search(['profile_id' => $p['id'], 'is_enable' => 1])->with('apiInterface')->get()->toArray();
-        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'api_domain'=>$this->profileApiDomain($profile,$merchant),'image_domain'=>$this->profileImageDomain($profile,$merchant),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'items'=>array_map(fn($x)=>$this->formatExportAliasItem($x),$rows)];
+        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'api_domain'=>$this->exportApiDomain($this->profileApiDomain($profile,$merchant)),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'items'=>array_map(fn($x)=>$this->formatExportAliasItem($x),$rows)];
     }
 
     public function buildRouteAliasesByProfile(int $pid): array { $a=[]; foreach($this->aliasDao->search(['profile_id'=>$pid,'is_enable'=>1])->with('apiInterface')->get() as $r) if($r->apiInterface&&intval($r->apiInterface['is_enable']??0)===1&&$r['alias']) $a[$r['alias']]=['path'=>ltrim((string)$r->apiInterface['path'],'/'),'method'=>strtoupper((string)$r->apiInterface['method'])]; return $a; }
@@ -232,7 +232,9 @@ class AppApiObfuscationService extends Service
         $profile=$p->toArray(); $profile['route_aliases']=$this->buildRouteAliasesByProfile((int)$profile['id']);
         $merchant=$this->merchantForProfile($profile); $profile=$this->withDefaultKeyMaps($profile); $profile['image_domain']=$this->profileImageDomain($profile,$merchant); $profile['api_domain']=$this->profileApiDomain($profile,$merchant);
         $this->assertRequiredDomains($profile, 'export');
-        return ['app_id'=>(int)$profile['app_id'],'package_name'=>(string)$profile['package_name'],'api_domain'=>$profile['api_domain'],'image_domain'=>$profile['image_domain'],'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'enabled'=>(bool)($profile['enabled']??0),'route_aliases'=>$profile['route_aliases']??[],'request_key_map'=>$profile['request_key_map']??[],'response_key_map'=>$profile['response_key_map']??[],'response_data_key_map'=>$profile['response_data_key_map']??[],'protocol'=>$profile['protocol']??[],'security'=>$profile['security']??[],'crypto'=>$profile['crypto']??[],'image_url'=>array_merge((array)($profile['image_url']??[]),['domain'=>$profile['image_domain']])];
+        $imageUrl = (array) ($profile['image_url'] ?? []);
+        unset($imageUrl['domain']);
+        return ['app_id'=>(int)$profile['app_id'],'package_name'=>(string)$profile['package_name'],'api_domain'=>$this->exportApiDomain($profile['api_domain']),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'enabled'=>(bool)($profile['enabled']??0),'route_aliases'=>$profile['route_aliases']??[],'request_key_map'=>$profile['request_key_map']??[],'response_key_map'=>$profile['response_key_map']??[],'response_data_key_map'=>$profile['response_data_key_map']??[],'protocol'=>$profile['protocol']??[],'security'=>$profile['security']??[],'crypto'=>$profile['crypto']??[],'image_url'=>$imageUrl];
     }
     private function findProfile(int $appId,string $pkg){return $this->dao->search(['app_id'=>$appId,'package_name'=>$pkg])->first();}
     private function appWithMerchant(int $appId):array{return $appId>0?($this->appsDao->newQuery()->with('merchant')->find($appId)?->toArray()??[]):[];}
@@ -254,8 +256,8 @@ class AppApiObfuscationService extends Service
             $profile['response_key_map'] = $defaults['response_key_map'];
         }
         $imageUrl = (array) ($profile['image_url'] ?? []);
+        unset($imageUrl['fields']);
         $imageDefaults = (array) config('api_obfuscation.profiles.default.image_url', []);
-        $imageUrl['fields'] = (array) ($imageDefaults['fields'] ?? []);
         $imageUrl['path_prefixes'] = (array) ($imageDefaults['path_prefixes'] ?? []);
         $profile['image_url'] = $imageUrl;
 
@@ -292,6 +294,18 @@ class AppApiObfuscationService extends Service
         if ($imageEnabled && trim((string) ($profile['image_domain'] ?? '')) === '') {
             throw new AdminException('开启图片域名替换时请填写图片域名' . $suffix);
         }
+    }
+    private function exportApiDomain(string $domain): string
+    {
+        $domain = trim($domain);
+        if ($domain === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $domain) || str_starts_with($domain, '//')) {
+            return $domain;
+        }
+
+        return 'https://' . $domain;
     }
     private function persistDomain(string $submitted, string $merchantDefault): string
     {
