@@ -62,15 +62,14 @@ class ClientRequestContext
 
     public static function platform(?Request $request = null): ?string
     {
-        $request = self::request($request);
-        $header = self::trimmedHeader($request, 'Platform');
+        $value = self::headerThenProbe('Platform', 'platform', $request);
 
-        return $header === null ? null : strtolower($header);
+        return $value === null ? null : strtolower($value);
     }
 
     public static function token(?Request $request = null): ?string
     {
-        return self::trimmedHeader(self::request($request), 'Token');
+        return self::headerThenProbe('Token', 'token', $request);
     }
 
     public static function headerThenProbe(string $header, string $probeKey, ?Request $request = null): ?string

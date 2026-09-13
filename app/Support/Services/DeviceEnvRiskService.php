@@ -113,6 +113,8 @@ class DeviceEnvRiskService
         'av' => 'app_version',
         'uu' => 'uuid',
         'dn' => 'device_sn',
+        'tk' => 'token',
+        // platform 沿用探针短键 pf。
 
         // 密文内部协议元数据；nc 只用于防重放，落库前会移除明文。
         'ts' => 'ts',
@@ -158,6 +160,13 @@ class DeviceEnvRiskService
                 'validation' => $validation,
             ]);
         } catch (RuntimeException $e) {
+            logger()->warning('Device-Env 解析失败：' . $e->getMessage(), [
+                'path' => $request->path(),
+                'method' => $request->method(),
+                'package_name' => $packageName,
+                'app_id' => $appId,
+            ]);
+
             return $this->context('error', [], [
                 'error' => $e->getMessage(),
                 'package_name' => $packageName,

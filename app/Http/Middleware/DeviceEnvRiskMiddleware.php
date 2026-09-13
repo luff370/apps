@@ -25,7 +25,7 @@ class DeviceEnvRiskMiddleware
          * 1. inspect() 读取并解密 Device-Env，生成统一的风险上下文；
          * 2. 风险上下文挂到 Request attributes，业务控制器无需重复解密；
          * 3. record() 将成功和失败结果写入审计表；
-         * 4. 应用 ID、设备 Uuid 缺失时拒绝请求。
+         * 4. 应用 ID、应用版本、市场渠道缺失时拒绝请求。Uuid 校验暂缓，上线观察后再打开。
          *
          * 混淆网关会把外层请求内部转发到真实路由。外层已经消费 nonce 并注入上下文时，
          * 内层必须直接复用，否则同一次 HTTP 请求会被第二次解析并判定为重放。
@@ -61,9 +61,16 @@ class DeviceEnvRiskMiddleware
         if (ClientRequestContext::appId($request) === null) {
             return '缺少应用信息';
         }
-        /*if (ClientRequestContext::uuid($request) === null) {
-            return '缺少设备标识';
-        }*/
+        if (ClientRequestContext::appVersion($request) === null) {
+            return '缺少应用版本';
+        }
+        if (ClientRequestContext::marketChannel($request) === null) {
+            return '缺少市场渠道';
+        }
+        // Uuid 校验暂缓，上线观察后再打开。
+        // if (ClientRequestContext::uuid($request) === null) {
+        //     return '缺少设备标识';
+        // }
 
         return null;
     }
