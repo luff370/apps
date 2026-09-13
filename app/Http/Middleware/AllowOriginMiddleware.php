@@ -34,7 +34,7 @@ class AllowOriginMiddleware
     private function withCorsHeaders($response, string $origin, Request $request)
     {
         $requestHeaders = $request->headers->get('Access-Control-Request-Headers');
-        $allowHeaders = $requestHeaders ?: 'Origin, Content-Type, Cookie, X-CSRF-TOKEN, Accept, Authorization, X-XSRF-TOKEN, Form-type, Authori-zation';
+        $allowHeaders = $requestHeaders ?: 'Origin, Content-Type, Cookie, X-CSRF-TOKEN, Accept, X-XSRF-TOKEN, Form-type, Authori-zation, Token, Package-Name, Device-Env';
 
         $response->headers->set('Access-Control-Allow-Origin', $origin ?: '*');
         $response->headers->set('Access-Control-Allow-Headers', $allowHeaders);

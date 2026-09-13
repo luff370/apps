@@ -130,9 +130,9 @@ class AuthController extends Controller
      */
     public function loginByFacebook(Request $request)
     {
-        $uuid = $request->header('Uuid');
-        $platform = $request->header('Platform');
-        $appId = $request->header('App-Id');
+        $uuid = $this->getUuid();
+        $platform = $this->getPlatform();
+        $appId = $this->getAppId();
 
         $access_token = $request->get('access_token');
         if (!$access_token) {
@@ -189,9 +189,9 @@ class AuthController extends Controller
     public function loginByGoogle(Request $request)
     {
         $params = $request->all();
-        $uuid = $request->header('Uuid');
-        $platform = $request->header('Platform');
-        $appId = $request->header('App-Id');
+        $uuid = $this->getUuid();
+        $platform = $this->getPlatform();
+        $appId = $this->getAppId();
 
         if (empty($params['id'])) {
             return $this->failed('google 登录失败，用户ID不能为空');
@@ -215,9 +215,9 @@ class AuthController extends Controller
      */
     public function loginByApple(Request $request)
     {
-        $uuid = $request->header('Uuid');
-        $platform = $request->header('Platform');
-        $appId = $request->header('App-Id');
+        $uuid = $this->getUuid();
+        $platform = $this->getPlatform();
+        $appId = $this->getAppId();
         $openid = $request->get('userID', '');
         $verifyToken = $request->get('verifyToken', '');
         $packageName = $this->getAppPackageName();

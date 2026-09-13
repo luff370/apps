@@ -107,6 +107,13 @@ class DeviceEnvRiskService
         'tpm' => 'touch_pressure_avg_milli',
         'ist' => 'imu_samples_during_touch',
 
+        // 客户端身份字段：新版本放进 Device-Env，老版本仍走独立 Header。
+        'ov' => 'os_version',
+        'mc' => 'market_channel',
+        'av' => 'app_version',
+        'uu' => 'uuid',
+        'dn' => 'device_sn',
+
         // 密文内部协议元数据；nc 只用于防重放，落库前会移除明文。
         'ts' => 'ts',
         'nc' => 'nc',
@@ -119,8 +126,9 @@ class DeviceEnvRiskService
         // 1. 业务接口别名、请求/响应字段映射仍由后台 api_obfuscation profile 管理；
         // 2. Device-Env 是每次请求携带的环境探针密文，只在这里解析成风控上下文。
         $sealed = trim((string) $request->header('Device-Env', ''));
-        $packageName = trim((string) $request->header('Package-Name', ''));
-        $appId = trim((string) $request->header('App-Id', ''));
+        $packageName = (string) (ClientRequestContext::packageName($request) ?? '');
+        // 密钥仍用 Package-Name + App-Id；新客户端不传 App-Id 时按包名映射。
+        $appId = (string) (ClientRequestContext::appId($request) ?? '');
 
         if ($sealed === '') {
             // 首版策略：缺失或解析失败不直接阻断业务，只打标为 missing/error。
@@ -137,8 +145,7 @@ class DeviceEnvRiskService
                 throw new RuntimeException('missing identity headers');
             }
 
-            // 密钥派生必须使用请求头里的 Package-Name + App-Id，不能写死单个 App 的密钥。
-            // 这样多个 App 共享同一套网关时，Device-Env 仍能按应用隔离。
+            // 密钥派生使用 Package-Name + App-Id（Header 或包名映射），按应用隔离。
             $probe = $this->decrypt($sealed, $packageName, $appId);
             $this->assertReplayAllowed($probe, $packageName, $appId);
 

@@ -2,14 +2,16 @@
 
 namespace App\Support\Traits;
 
+use App\Support\Services\ClientRequestContext;
+
 trait CommonArgsTrait
 {
     /**
-     * 应用ID
+     * 应用ID。老客户端走 App-Id Header，新客户端用包名映射。
      */
     public function getAppId(): string|null
     {
-        return request()->header('App-Id');
+        return ClientRequestContext::appId();
     }
 
     /**
@@ -17,7 +19,7 @@ trait CommonArgsTrait
      */
     public function getUuid(): string|null
     {
-        return request()->header('Uuid');
+        return ClientRequestContext::uuid();
     }
 
     /**
@@ -25,7 +27,7 @@ trait CommonArgsTrait
      */
     public function getAppVersion(): string|null
     {
-        return request()->header('App-Version');
+        return ClientRequestContext::appVersion();
     }
 
     /**
@@ -37,7 +39,7 @@ trait CommonArgsTrait
             return 'ios';
         }
 
-        return strtolower(request()->header('Platform'));
+        return ClientRequestContext::platform();
     }
 
     /**
@@ -45,7 +47,7 @@ trait CommonArgsTrait
      */
     public function getOsVersion(): string|null
     {
-        return request()->header('OS-Version');
+        return ClientRequestContext::osVersion();
     }
 
     /**
@@ -53,7 +55,7 @@ trait CommonArgsTrait
      */
     public function getAppPackageName(): string|null
     {
-        return request()->header('Package-Name');
+        return ClientRequestContext::packageName();
     }
 
     /**
@@ -61,7 +63,7 @@ trait CommonArgsTrait
      */
     public function getMarketChannel(): string|null
     {
-        return strtolower(request()->header('Market-Channel'));
+        return ClientRequestContext::marketChannel();
     }
 
     /**
@@ -85,7 +87,7 @@ trait CommonArgsTrait
      */
     public function getToken(): string|null
     {
-        return request()->header('Token');
+        return ClientRequestContext::token();
     }
 
     /**
@@ -93,12 +95,7 @@ trait CommonArgsTrait
      */
     public function getDevice(): string|null
     {
-        $device = request()->header('Device-Sn');
-        if (empty($device)) {
-            $device = $this->getUuid();
-        }
-
-        return $device;
+        return ClientRequestContext::deviceSn();
     }
 
     /**

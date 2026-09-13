@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Illuminate\Http\Request;
 use App\Support\Utils\Token;
 use App\Support\Traits\ApiResponse;
+use App\Support\Services\ClientRequestContext;
 use Symfony\Component\HttpFoundation\Response as FoundationResponse;
 
 class TokenAuth
@@ -16,7 +17,7 @@ class TokenAuth
      */
     public function handle(Request $request, \Closure $next)
     {
-        $token = $request->header('Token');
+        $token = ClientRequestContext::token($request);
         logger()->info('-----token----' . $token, $request->all());
         if (empty($token)) {
             return $this->failed('登录失效,无有效token参数', FoundationResponse::HTTP_UNAUTHORIZED);

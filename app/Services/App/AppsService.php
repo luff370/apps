@@ -9,6 +9,7 @@ use App\Models\AppConfig;
 use App\Models\AppVersionPlanTask;
 use App\Models\Merchant;
 use App\Services\Service;
+use App\Support\Services\AppPackageMap;
 use App\Support\Services\FormBuilder;
 use App\Support\Services\FormOptions;
 use Carbon\Carbon;
@@ -242,20 +243,26 @@ class AppsService extends Service
     public function save($data)
     {
         if (!empty($data['id'])) {
+            $oldPackage = (string) ($this->dao->value(['id' => $data['id']], 'package_name') ?? '');
             $this->dao->delCacheById($data['id']);
+            $result = $this->update($data['id'], $data);
+            if ($oldPackage !== (string) ($data['package_name'] ?? '')) {
+                AppPackageMap::rebuild();
+            }
 
-            return $this->update($data['id'], $data);
+            return $result;
         }
-        // 复制应用配置信息
-        // $this->systemConfigTabServices()->syncFromOtherAppConfig(10001, intval($info['id']));
 
-        return DB::transaction(function () use ($data) {
+        $app = DB::transaction(function () use ($data) {
             $app = $this->dao->newQuery()->create($data);
             $this->createAgreementsFromMerchantTemplates($app);
             $this->createDefaultUserWhiteListFilter((int)$app['id']);
 
             return $app;
         });
+        AppPackageMap::rebuild();
+
+        return $app;
     }
 
     /**
@@ -323,6 +330,14 @@ class AppsService extends Service
         }
 
         AppConfig::query()->create(AppConfig::defaultUserWhiteListFilterAttributes($appId));
+    }
+
+    public function softDel($id, string $key = null): int
+    {
+        $result = $this->dao->softDel($id, $key);
+        AppPackageMap::rebuild();
+
+        return $result;
     }
 
     /**
