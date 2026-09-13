@@ -141,9 +141,63 @@ class UserArchiveService extends Service
             'name' => $data['name'] ?? '',
             'gender' => $data['gender'] ?? '',
             'calendar' => $this->normalizeCalendar($data['calendar'] ?? ''),
-            'birth_date' => $data['birth_date'] ?: null,
+            'birth_date' => $this->normalizeBirthDate($data['birth_date'] ?? ''),
             'birth_place' => $data['birth_place'] ?? '',
         ]);
+    }
+
+    /**
+     * 兼容旧端把历法写进出生时间的格式，例如：农历 1980/01/26 12:00。
+     */
+    public function prepareClientProfile(array $profile): array
+    {
+        $birthDate = trim((string) ($profile['birth_date'] ?? ''));
+        if (preg_match('/^(农历|公历|阴历|阳历|lunar|solar)\s+/iu', $birthDate, $matches)) {
+            if (trim((string) ($profile['calendar'] ?? '')) === '') {
+                $profile['calendar'] = $matches[1];
+            }
+        }
+
+        $profile['calendar'] = $this->normalizeCalendar($profile['calendar'] ?? '');
+        $profile['birth_date'] = $this->normalizeBirthDate($birthDate);
+
+        return $profile;
+    }
+
+    public function normalizeBirthDate($value): ?string
+    {
+        if ($value instanceof DateTimeInterface) {
+            return $value->format('Y-m-d H:i:s');
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        $raw = preg_replace('/^(农历|公历|阴历|阳历|lunar|solar)\s*/iu', '', $raw) ?? $raw;
+        $raw = trim(str_replace(['年', '月', '日'], ['-', '-', ' '], $raw));
+        $raw = str_replace('/', '-', $raw);
+        $raw = preg_replace('/\s+/', ' ', $raw) ?? $raw;
+
+        try {
+            return Carbon::parse($raw)->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+        }
+
+        if (preg_match('/(\d{4})-(\d{1,2})-(\d{1,2})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/', $raw, $matches)) {
+            return sprintf(
+                '%04d-%02d-%02d %02d:%02d:%02d',
+                (int) $matches[1],
+                (int) $matches[2],
+                (int) $matches[3],
+                (int) ($matches[4] ?? 0),
+                (int) ($matches[5] ?? 0),
+                (int) ($matches[6] ?? 0)
+            );
+        }
+
+        return null;
     }
 
     /**

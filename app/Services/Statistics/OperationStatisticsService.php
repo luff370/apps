@@ -167,7 +167,8 @@ class OperationStatisticsService
      */
     public function revenueReport(array $filter): array
     {
-        [$start, $end] = $this->dateRange($filter);
+        // 允许查今天，和用户统计、充值统计同一天范围时新增人数才能对上。
+        [$start, $end] = $this->dateRange($filter, true);
         $appKeyword = trim((string)($filter['app_keyword'] ?? ''));
         $appIds = $this->filteredAppIds($appKeyword);
         $platformFilter = $this->csvFilter($filter['ad_platform'] ?? '');
@@ -246,11 +247,17 @@ class OperationStatisticsService
         $count = count($rows);
         $page = max(1, (int)($filter['page'] ?? 1));
         $limit = max(1, (int)($filter['limit'] ?? 20));
+        $summary = $this->revenueSummary($rows);
+        $userFilter = $appIds ? ['app_ids' => $appIds] : 0;
+        // 新增/活跃不跟广告状态走，直接用和用户统计相同的口径。
+        $summary['new_users'] = $this->newUuidUsers($start, $end, $userFilter);
+        $summary['active_users'] = $this->activeUsers($start, $end, $userFilter);
+        $summary['app_arpu'] = $summary['active_users'] ? $this->money($summary['total_revenue'] / $summary['active_users']) : 0;
 
         return [
             'list' => array_slice($rows, ($page - 1) * $limit, $limit),
             'count' => $count,
-            'summary' => $this->revenueSummary($rows),
+            'summary' => $summary,
             'platform_summary' => $this->platformSummary($rows),
         ];
     }
@@ -546,7 +553,10 @@ class OperationStatisticsService
             ->get();
 
         foreach ($newRows as $row) {
-            $key = $row->date_value . '_' . $row->app_id;
+            $dateValue = $row->date_value instanceof \DateTimeInterface
+                ? Carbon::instance($row->date_value)->format('Y-m-d')
+                : Carbon::parse((string)$row->date_value)->format('Y-m-d');
+            $key = $dateValue . '_' . (int)$row->app_id;
             $rows[$key] ??= ['new_users' => 0, 'active_users' => 0];
             $rows[$key]['new_users'] = (int)$row->new_users;
         }
@@ -772,8 +782,8 @@ class OperationStatisticsService
     private function emptyRevenueSummary(): array
     {
         return [
-            'new_users' => 0,
             'active_users' => 0,
+            'new_users' => 0,
             'ad_revenue' => 0,
             'recharge_revenue' => 0,
             'total_revenue' => 0,
@@ -893,6 +903,7 @@ class OperationStatisticsService
 
         return $query
             ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(!empty($filter['app_ids']), fn (Builder $query) => $query->whereIn('app_id', $filter['app_ids']))
             ->when(
                 $marketChannel !== '',
                 fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($marketChannel)),
@@ -905,11 +916,12 @@ class OperationStatisticsService
         if (is_array($filter)) {
             return [
                 'app_id' => (int)($filter['app_id'] ?? 0),
+                'app_ids' => array_values(array_filter(array_map('intval', $filter['app_ids'] ?? []))),
                 'market_channel' => trim((string)($filter['market_channel'] ?? '')),
             ];
         }
 
-        return ['app_id' => $filter, 'market_channel' => ''];
+        return ['app_id' => $filter, 'app_ids' => [], 'market_channel' => ''];
     }
 
     private function applyRechargeFilter(Builder $query, array $filter): Builder
@@ -941,6 +953,7 @@ class OperationStatisticsService
         return (int) UserUuid::query()
             ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
             ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(!empty($filter['app_ids']), fn (Builder $query) => $query->whereIn('app_id', $filter['app_ids']))
             ->when(
                 $filter['market_channel'] !== '',
                 fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
@@ -949,30 +962,20 @@ class OperationStatisticsService
     }
 
     /**
-     * 注册人数。
-     *
-     * 优先读取 user_statistics 日表，日表无数据时回退到用户注册时间实时统计。
-     * 未指定渠道时只读应用合计行（market_channel 为空）；指定渠道时按应用市场筛选。
+     * 注册人数：按 users.reg_time 现查，口径与用户统计一致。
      */
     private function newUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
         $filter = $this->normalizeUserFilter($filter);
-        $stat = UserStatistic::query()
-            ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
-            ->tap(fn (Builder $query) => $this->applyUserStatisticFilter($query, $filter))
-            ->sum('new_users_count');
 
-        if ($stat > 0) {
-            return (int)$stat;
-        }
-
-        return User::query()
+        return (int) User::query()
+            ->whereBetween('reg_time', [$start->copy()->startOfDay()->timestamp, $end->copy()->endOfDay()->timestamp])
             ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(!empty($filter['app_ids']), fn (Builder $query) => $query->whereIn('app_id', $filter['app_ids']))
             ->when(
                 $filter['market_channel'] !== '',
                 fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
             )
-            ->whereBetween('reg_time', [$start->copy()->startOfDay()->timestamp, $end->copy()->endOfDay()->timestamp])
             ->count();
     }
 
@@ -1250,7 +1253,7 @@ class OperationStatisticsService
     /**
      * 解析筛选日期范围。
      *
-     * 营收报表默认不允许查询今天，因为广告平台收益通常次日才稳定；充值统计允许查今天。
+     * $allowToday 为 false 时把结束日期截到昨天（广告收益常用）；用户相关报表传 true，与用户统计同一天范围。
      */
     private function dateRange(array $filter, bool $allowToday = false): array
     {
