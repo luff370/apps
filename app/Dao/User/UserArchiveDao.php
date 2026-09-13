@@ -47,8 +47,8 @@ class UserArchiveDao extends BaseDao
             });
         }
 
-        if (isset($where['is_login']) && $where['is_login'] !== '' && $where['is_login'] !== null) {
-            if ((int) $where['is_login'] === 1) {
+        if (array_key_exists('is_login', $where) && $where['is_login'] !== '' && $where['is_login'] !== null) {
+            if ((string) $where['is_login'] === '1') {
                 $query->where('user_id', '>', 0);
             } else {
                 $query->where(function (Builder $query) {
