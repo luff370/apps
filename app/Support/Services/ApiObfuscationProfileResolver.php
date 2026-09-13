@@ -14,8 +14,8 @@ class ApiObfuscationProfileResolver
         $profiles = config('api_obfuscation.profiles', []);
         $default = $profiles['default'] ?? [];
 
-        $appId = (string) $request->header('App-Id', '');
-        $packageName = (string) $request->header('Package-Name', '');
+        $appId = (string) (ClientRequestContext::appId($request) ?? '');
+        $packageName = (string) (ClientRequestContext::packageName($request) ?? '');
 
         $dbProfile = $this->resolveFromDatabase($appId, $packageName);
         if (!empty($dbProfile)) {

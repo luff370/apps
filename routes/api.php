@@ -13,198 +13,157 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-// 应用基础信息
-Route::post('app/info', 'CommonController@appInfo');
-// 应用版本更新
-Route::get('app/update', 'CommonController@appUpdate');
-// 获取配置数据
-Route::post('common/get_group_data/{name}', 'CommonController@getGroupData');
-// 提现成功用户展示
-Route::post('common/withdrawal_users_show', 'CommonController@withdrawalUsersShow');
-// 用户设备token上传
-Route::post('common/upload_device_token', 'CommonController@saveDeviceToken');
-// 文件上传
-Route::middleware(['token_auth'])->post('common/upload', 'CommonController@fileUpload');
+$deviceEnv = ['device_env_risk'];
 
-// 支付相关
+// 支付回调、同步跳转：来自微信/支付宝/苹果，不解密 Device-Env。
 Route::prefix('payment')->group(function (\Illuminate\Routing\Router $route) {
-    // 支付通知
     $route->post('/wechat/{id}/notify', 'PayCallbackController@wechatNotify');
     $route->post('/alipay/{id}/notify', 'PayCallbackController@alipayNotify');
     $route->post('/apple/notify', 'PayCallbackController@appleNotify');
-    // 支付返回跳转
     $route->get('/return', 'PaymentController@payReturn');
-    // 获取当前应用下已开启的支付通道
-    $route->post('channels', 'PaymentController@availableChannels');
-    // 支付测试
-    $route->post('/test', 'PaymentController@test');
-    // 支付状态
-    $route->post('order/status', 'PaymentController@orderStatus');
-
-    // 订单支付，同步验证
-    $route->middleware(['token_auth'])->group(function (\Illuminate\Routing\Router $route) {
-        // 订单支付
-        $route->post('order', 'PaymentController@orderPay');
-
-        // 支付验证
-        $route->post('/apple/verify', 'PayCallbackController@applePayVerify');
-        $route->post('/google/verify', 'PayCallbackController@googlePayVerify');
-    });
 });
 
-Route::group(['prefix' => 'auth'], function (\Illuminate\Routing\Router $route) {
-    // 唯一标识uuid登录
-    $route->post('login_by_uuid', 'AuthController@loginByUuid');
-    $route->post('reg_by_account', 'AuthController@regByAccount');
-    $route->post('login_by_account', 'AuthController@loginByAccount');
-    $route->post('login_by_facebook', 'AuthController@loginByFacebook');
-    $route->post('login_by_google', 'AuthController@loginByGoogle');
-    $route->post('login_by_apple', 'AuthController@loginByApple');
+// 用户行为上报是独立 JSON 协议，不读取 Device-Env。
+Route::middleware(['token_auth'])->post('user/behavior/report', 'UserBehaviorController@report');
 
-    $route->post('alipay', 'AuthController@alipayAuth');
-});
+// 阅读任务完成回调来自渠道，不解密 Device-Env。
+Route::any('read_task/completed/{ch}', 'ReadTaskController@completedTaskCallback');
 
-Route::prefix('user')->middleware(['token_auth'])->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 用户详情接口
-        $route->post('info', 'UserController@info');
-        // 意见反馈
-        $route->post('feedback', 'UserController@feedback');
-        // 意见反馈记录
-        $route->post('feedback/list', 'UserController@feedbackList');
-        // 退出账号
-        $route->post('logout', 'UserController@logout');
-        // 注销账号
-        $route->post('sign_out', 'UserController@singOut');
-        // 用户设备信息更新
-        $route->post('save_device_info', 'UserController@deviceInfoUpdate');
-        // 用户行为与同 payload 的设备环境上报
-        $route->post('behavior/report', 'UserBehaviorController@report');
+Route::middleware($deviceEnv)->group(function () {
+    // 应用基础信息
+    Route::post('app/info', 'CommonController@appInfo');
+    // 应用版本更新
+    Route::get('app/update', 'CommonController@appUpdate');
+    // 获取配置数据
+    Route::post('common/get_group_data/{name}', 'CommonController@getGroupData');
+    // 提现成功用户展示
+    Route::post('common/withdrawal_users_show', 'CommonController@withdrawalUsersShow');
+    // 用户设备token上传
+    Route::post('common/upload_device_token', 'CommonController@saveDeviceToken');
+    // 文件上传
+    Route::middleware(['token_auth'])->post('common/upload', 'CommonController@fileUpload');
 
-        // 用户提现操作
-        Route::prefix('withdrawal')->group(
-            function (\Illuminate\Routing\Router $route) {
-                // 用户提现记录
-                $route->post('products', 'UserWithdrawalController@products');
-                // 用户提现记录
-                $route->post('records', 'UserWithdrawalController@list');
-                // 用户提现申请
-                $route->post('application', 'UserWithdrawalController@application');
-            }
-        );
-    });
-// 未登录用户相关接口
-Route::prefix('user')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 用户档案信息保存
-        $route->post('profile', 'UserController@profile');
-    });
+    Route::prefix('payment')->group(function (\Illuminate\Routing\Router $route) {
+        // 获取当前应用下已开启的支付通道
+        $route->post('channels', 'PaymentController@availableChannels');
+        // 支付测试
+        $route->post('/test', 'PaymentController@test');
+        // 支付状态
+        $route->post('order/status', 'PaymentController@orderStatus');
 
-Route::post('coin/packages', 'UserWithdrawalController@products');
-
-Route::prefix('content')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 内容分类列表
-        $route->post('cate', 'ContentController@cate');
-        // 内容列表
-        $route->post('list', 'ContentController@list');
-        // 分类文章列表
-        $route->post('listByCate', 'ContentController@listByCate');
-        // 内容详情
-        $route->post('detail', 'ContentController@detail');
-        // 搜索热词
-        $route->post('hot_words', 'ContentController@hotWords');
-    });
-
-Route::prefix('favorites')->middleware(['token_auth'])->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 内容列表
-        $route->post('list', 'FavoritesController@list');
-        // 收藏
-        $route->post('collect', 'FavoritesController@collect');
-        // 取消收藏
-        $route->post('cancel', 'FavoritesController@cancel');
-    });
-
-Route::prefix('member')->middleware(['token_auth'])->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 会员权益信息
-        $route->post('info', 'MemberController@info');
-        // 会员列表
-        $route->post('list', 'MemberController@list');
-        // 购买、订阅
-        $route->post('order', 'MemberController@order');
-    });
-
-Route::prefix('task')->middleware(['token_auth'])->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 获取任务状态
-        $route->post('status', 'TaskController@getStatus');
-        // 完成任务
-        $route->post('completed', 'TaskController@completed');
-    });
-
-Route::prefix('ad')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 广告列表
-        $route->post('list', 'AdvertisementController@list');
-        // 广告请求上报
-        $route->post('stat', 'AdvertisementController@stat');
-    });
-
-Route::prefix('chatAI')->middleware(['token_auth'])->group(
-    function (\Illuminate\Routing\Router $route) {
-        // Chat AI 对话
-        $route->post('dialogue', 'ChatAiController@task');
-        // 对话内容评价
-        $route->post('content/evaluate', 'ChatAiController@evaluate');
-        // 图生图
-        $route->post('imageToImage', 'ChatAiController@imageToImage');
-        // 获取生成的图片
-        $route->post('getImages', 'ChatAiController@getImages');
-        // 图像识别
-        $route->post('imageRecognize', 'ChatAiController@imageRecognize');
-    });
-
-// 违章举报内容
-Route::prefix('trafficViolation')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 违章曝光列表
-        $route->post('list', 'TrafficViolationController@list');
-        // 违章曝光详情
-        $route->post('details', 'TrafficViolationController@details');
-        // 交通标志
-        $route->post('signs', 'TrafficViolationController@signs');
-
-        Route::middleware(['token_auth'])->group(function (\Illuminate\Routing\Router $route) {
-            $route->post('save', 'TrafficViolationController@save');
-            $route->post('user/records', 'TrafficViolationController@userRecords');
-            $route->post('user/details', 'TrafficViolationController@userDetails');
-            $route->post('user/getRewards', 'TrafficViolationController@getRewards');
+        // 订单支付，同步验证
+        $route->middleware(['token_auth'])->group(function (\Illuminate\Routing\Router $route) {
+            $route->post('order', 'PaymentController@orderPay');
+            $route->post('/apple/verify', 'PayCallbackController@applePayVerify');
+            $route->post('/google/verify', 'PayCallbackController@googlePayVerify');
         });
     });
 
-
-Route::prefix('read_task')->group(
-    function (\Illuminate\Routing\Router $route) {
-        // 获取任务状态
-        $route->post('get', 'ReadTaskController@getReadTask');
-        // 完成任务回调
-        $route->any('completed/{ch}', 'ReadTaskController@completedTaskCallback');
+    Route::group(['prefix' => 'auth'], function (\Illuminate\Routing\Router $route) {
+        $route->post('login_by_uuid', 'AuthController@loginByUuid');
+        $route->post('reg_by_account', 'AuthController@regByAccount');
+        $route->post('login_by_account', 'AuthController@loginByAccount');
+        $route->post('login_by_facebook', 'AuthController@loginByFacebook');
+        $route->post('login_by_google', 'AuthController@loginByGoogle');
+        $route->post('login_by_apple', 'AuthController@loginByApple');
+        $route->post('alipay', 'AuthController@alipayAuth');
     });
 
+    Route::prefix('user')->middleware(['token_auth'])->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('info', 'UserController@info');
+            $route->post('feedback', 'UserController@feedback');
+            $route->post('feedback/list', 'UserController@feedbackList');
+            $route->post('logout', 'UserController@logout');
+            $route->post('sign_out', 'UserController@singOut');
+            $route->post('save_device_info', 'UserController@deviceInfoUpdate');
 
-// 混淆网关入口。旧版 /api/open/{alias} 与新版 /api/open/atlasriver/{alias} 靠路径段数区分，
-// 不使用 {params?}，避免旧路由把 gatewaySuffix 误当成 alias。
-foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
-    $p = trim($gatewayPrefix, '/');
+            Route::prefix('withdrawal')->group(
+                function (\Illuminate\Routing\Router $route) {
+                    $route->post('products', 'UserWithdrawalController@products');
+                    $route->post('records', 'UserWithdrawalController@list');
+                    $route->post('application', 'UserWithdrawalController@application');
+                }
+            );
+        });
 
-    // 新版：/api/open/atlasriver/{alias}（固定 3 段）
-    Route::any("{$p}/{gatewaySuffix}/{alias}", 'ObfuscatedGatewayController@dispatchDynamic')
-        ->where('gatewaySuffix', '[a-z]{6,63}')
-        ->where('alias', '[a-z0-9]{8}');
+    Route::prefix('user')->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('profile', 'UserController@profile');
+        });
 
-    // 旧版兼容：/api/open/{alias}（固定 2 段，alias 最短 4 位以兼容 hash4 等历史规则）
-    Route::any("{$p}/{alias}", 'ObfuscatedGatewayController@dispatch')
-        ->where('alias', '[a-z0-9]{4,32}');
-}
+    Route::post('coin/packages', 'UserWithdrawalController@products');
+
+    Route::prefix('content')->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('cate', 'ContentController@cate');
+            $route->post('list', 'ContentController@list');
+            $route->post('listByCate', 'ContentController@listByCate');
+            $route->post('detail', 'ContentController@detail');
+            $route->post('hot_words', 'ContentController@hotWords');
+        });
+
+    Route::prefix('favorites')->middleware(['token_auth'])->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('list', 'FavoritesController@list');
+            $route->post('collect', 'FavoritesController@collect');
+            $route->post('cancel', 'FavoritesController@cancel');
+        });
+
+    Route::prefix('member')->middleware(['token_auth'])->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('info', 'MemberController@info');
+            $route->post('list', 'MemberController@list');
+            $route->post('order', 'MemberController@order');
+        });
+
+    Route::prefix('task')->middleware(['token_auth'])->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('status', 'TaskController@getStatus');
+            $route->post('completed', 'TaskController@completed');
+        });
+
+    Route::prefix('ad')->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('list', 'AdvertisementController@list');
+            $route->post('stat', 'AdvertisementController@stat');
+        });
+
+    Route::prefix('chatAI')->middleware(['token_auth'])->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('dialogue', 'ChatAiController@task');
+            $route->post('content/evaluate', 'ChatAiController@evaluate');
+            $route->post('imageToImage', 'ChatAiController@imageToImage');
+            $route->post('getImages', 'ChatAiController@getImages');
+            $route->post('imageRecognize', 'ChatAiController@imageRecognize');
+        });
+
+    Route::prefix('trafficViolation')->group(
+        function (\Illuminate\Routing\Router $route) {
+            $route->post('list', 'TrafficViolationController@list');
+            $route->post('details', 'TrafficViolationController@details');
+            $route->post('signs', 'TrafficViolationController@signs');
+
+            Route::middleware(['token_auth'])->group(function (\Illuminate\Routing\Router $route) {
+                $route->post('save', 'TrafficViolationController@save');
+                $route->post('user/records', 'TrafficViolationController@userRecords');
+                $route->post('user/details', 'TrafficViolationController@userDetails');
+                $route->post('user/getRewards', 'TrafficViolationController@getRewards');
+            });
+        });
+
+    Route::post('read_task/get', 'ReadTaskController@getReadTask');
+
+    // 混淆网关入口。旧版 /api/open/{alias} 与新版 /api/open/atlasriver/{alias} 靠路径段数区分，
+    // 不使用 {params?}，避免旧路由把 gatewaySuffix 误当成 alias。
+    foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
+        $p = trim($gatewayPrefix, '/');
+
+        Route::any("{$p}/{gatewaySuffix}/{alias}", 'ObfuscatedGatewayController@dispatchDynamic')
+            ->where('gatewaySuffix', '[a-z]{6,63}')
+            ->where('alias', '[a-z0-9]{8}');
+
+        Route::any("{$p}/{alias}", 'ObfuscatedGatewayController@dispatch')
+            ->where('alias', '[a-z0-9]{4,32}');
+    }
+});

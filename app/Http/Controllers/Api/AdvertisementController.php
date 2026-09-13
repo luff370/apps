@@ -34,7 +34,7 @@ class AdvertisementController extends Controller
         }
 
         $userId = 0;
-        $token = (string)$request->header('Token', '');
+        $token = (string)($this->getToken() ?? '');
         if ($token !== '') {
             try {
                 $tokenData = Token::verify($token);

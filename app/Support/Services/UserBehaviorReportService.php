@@ -36,17 +36,17 @@ class UserBehaviorReportService
 
         $deviceEnvironment = $payload['device_environment'] ?? [];
         $adExtension = $payload['ad_extension'] ?? [];
-        $appId = $request->header('App-Id', $request->input('app_id', 0));
+        $appId = ClientRequestContext::appId($request) ?? $request->input('app_id', 0);
 
         return UserBehaviorReport::query()->create([
             'user_id' => (int) $request->authUserId(),
             'app_id' => is_numeric($appId) ? (int) $appId : 0,
-            'uuid' => (string) $request->header('Uuid', ''),
-            'device_sn' => (string) $request->header('Device-Sn', $request->header('Uuid', '')),
-            'package_name' => (string) $request->header('Package-Name', ''),
-            'platform' => (string) $request->header('Platform', ''),
-            'app_version' => (string) $request->header('App-Version', ''),
-            'market_channel' => (string) $request->header('Market-Channel', ''),
+            'uuid' => (string) (ClientRequestContext::uuid($request) ?? ''),
+            'device_sn' => (string) (ClientRequestContext::deviceSn($request) ?? ''),
+            'package_name' => (string) (ClientRequestContext::packageName($request) ?? ''),
+            'platform' => (string) (ClientRequestContext::platform($request) ?? ''),
+            'app_version' => (string) (ClientRequestContext::appVersion($request) ?? ''),
+            'market_channel' => (string) (ClientRequestContext::marketChannel($request) ?? ''),
             'ip' => (string) $request->ip(),
             'behavior' => $behavior,
             'device_environment' => $deviceEnvironment,

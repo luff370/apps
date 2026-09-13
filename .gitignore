@@ -21,3 +21,4 @@ yarn-error.log
 .DS_Store
 jpush.log
 dump.rdb
+/config/app_package_map.php

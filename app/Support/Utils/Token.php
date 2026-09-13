@@ -4,6 +4,7 @@ namespace App\Support\Utils;
 
 use App\Models\User;
 use App\Exceptions\AuthException;
+use App\Support\Services\ClientRequestContext;
 
 class Token
 {
@@ -39,7 +40,7 @@ class Token
     {
         $jsonData = cache(self::cacheKey($token));
         if (empty($jsonData)) {
-            $uuid = request()->header('Uuid');
+            $uuid = ClientRequestContext::uuid();
             if (!empty($uuid)) {
                 $user = User::query()->select(['id', 'is_reg'])->where('uuid', $uuid)->first();
                 if (!empty($user)) {
@@ -74,7 +75,7 @@ class Token
      */
     public static function signOut(): bool
     {
-        $token = request()->header('Token');
+        $token = ClientRequestContext::token();
         if ($token) {
             cache()->delete(self::cacheKey($token));
         }

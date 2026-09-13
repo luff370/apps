@@ -47,6 +47,30 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertContains('monkey', $context['reasons']);
     }
 
+    public function test_it_decrypts_without_app_id_header_using_package_map(): void
+    {
+        config(['app_package_map' => ['com.he.dahu' => 10048]]);
+
+        $sealed = $this->seal([
+            'pv' => 5,
+            'uu' => 'device-uuid',
+            'ts' => time(),
+            'nc' => 'nonce-package-map',
+            'ver' => '1',
+        ]);
+
+        $request = Request::create('/api/app/info', 'POST', [], [], [], [
+            'HTTP_PACKAGE_NAME' => 'com.he.dahu',
+            'HTTP_DEVICE_ENV' => $sealed,
+        ]);
+
+        $context = $this->service->inspect($request);
+
+        $this->assertSame('ok', $context['status']);
+        $this->assertSame('10048', $context['app_id']);
+        $this->assertSame('device-uuid', $context['probe']['uuid']);
+    }
+
     public function test_it_rejects_replayed_nonce(): void
     {
         $sealed = $this->seal([

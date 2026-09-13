@@ -8,6 +8,7 @@ use App\Models\SystemApp;
 use App\Models\User;
 use App\Models\UserProfile;
 use App\Services\Service;
+use App\Support\Services\ClientRequestContext;
 use App\Support\Services\FormBuilder as Form;
 use App\Support\Utils\Token;
 use DateTimeInterface;
@@ -175,7 +176,7 @@ class UserArchiveService extends Service
 
     public function resolveUserId(Request $request, string $uuid, int $appId): int
     {
-        $token = trim((string) $request->header('Token', ''));
+        $token = trim((string) (ClientRequestContext::token($request) ?? ''));
         if ($token !== '') {
             try {
                 $userId = (int) (Token::verify($token)['user_id'] ?? 0);

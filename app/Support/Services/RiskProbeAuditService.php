@@ -66,10 +66,10 @@ class RiskProbeAuditService
                 'click_sample_count' => $this->sampleCount($probe, 'click_sample_count'),
                 'swipe_sample_count' => $this->sampleCount($probe, 'swipe_sample_count'),
                 'client_ip' => $request->ip(),
-                'app_version' => $request->header('App-Version'),
-                'market_channel' => $request->header('Market-Channel'),
-                'user_uuid' => $request->header('Uuid'),
-                'device_sn' => $this->deviceSn($request),
+                'app_version' => ClientRequestContext::appVersion($request),
+                'market_channel' => ClientRequestContext::marketChannel($request),
+                'user_uuid' => ClientRequestContext::uuid($request),
+                'device_sn' => ClientRequestContext::deviceSn($request),
             ]);
         } catch (Throwable $e) {
             // 风控审计不可用不能拖垮业务接口。
@@ -81,17 +81,6 @@ class RiskProbeAuditService
     {
         unset($probe['nc']);
         return $probe;
-    }
-
-    private function deviceSn(Request $request): ?string
-    {
-        // 大量 API 未登录，因此优先使用 Device-Sn 聚合；旧客户端没有该头时回退 Uuid。
-        $deviceSn = trim((string) $request->header('Device-Sn', ''));
-        if ($deviceSn === '') {
-            $deviceSn = trim((string) $request->header('Uuid', ''));
-        }
-
-        return $deviceSn !== '' ? $deviceSn : null;
     }
 
     private function behavior(array $probe): array

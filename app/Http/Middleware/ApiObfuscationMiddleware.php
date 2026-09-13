@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
 use App\Support\Services\ApiObfuscationProfileResolver;
+use App\Support\Services\ClientRequestContext;
 use App\Support\Services\ImagePathAliasService;
 
 class ApiObfuscationMiddleware
@@ -176,7 +177,8 @@ class ApiObfuscationMiddleware
     {
         $ttl = (int) ($profile['security']['nonce_ttl_seconds'] ?? config('api_obfuscation.nonce_ttl_seconds', 300));
         $prefix = (string) config('api_obfuscation.nonce_cache_prefix', 'api_obf_nonce:');
-        $appId = (string) $request->header('App-Id', 'default');
+        $appId = ClientRequestContext::appId($request)
+            ?: (string) $request->header('Package-Name', 'default');
         $cacheKey = $prefix . $appId . ':' . sha1($nonce);
 
         return Cache::add($cacheKey, 1, $ttl);
