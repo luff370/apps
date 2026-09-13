@@ -161,6 +161,7 @@ class UserController extends Controller
         $profile['app_id'] = $appId;
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
+        $profile = $archiveService->prepareClientProfile($profile);
 
         try {
             UserProfile::query()->create($profile);

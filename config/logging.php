@@ -54,7 +54,7 @@ return [
     'channels' => [
         'stack' => [
             'driver' => 'stack',
-            'channels' => ['single'],
+            'channels' => ['daily'],
             'ignore_exceptions' => false,
         ],
 
@@ -140,7 +140,7 @@ return [
         'trigger' => env('QUERY_LOG_TRIGGER'),
 
         // Log Channel
-        'channel' => 'stack',
+        'channel' => 'daily',
     ],
 
 ];
