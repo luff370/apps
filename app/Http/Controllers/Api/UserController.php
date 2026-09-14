@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
-use App\Models\UserProfile;
 use Illuminate\Http\Request;
 use App\Support\Utils\Token;
 use App\Models\UserFeedback;
@@ -161,19 +160,13 @@ class UserController extends Controller
         $profile['app_id'] = $appId;
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
-        $profile = $archiveService->prepareClientProfile($profile);
 
         try {
-            UserProfile::query()->create($profile);
+            $archiveService->saveClientProfile($profile);
         } catch (\Exception $exception) {
             logger()->error('用户档案信息保存失败---' . $exception->getMessage(), $profile);
 
-            $count = UserProfile::query()->where('uuid', $profile['uuid'])->count();
-            if ($count > 0) {
-                return $this->success("保存成功");
-            } else {
-                return $this->fail("保存失败，请稍后重试");
-            }
+            return $this->fail("保存失败，请稍后重试");
         }
 
         if ($userId > 0) {
