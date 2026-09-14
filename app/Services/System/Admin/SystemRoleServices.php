@@ -120,17 +120,17 @@ class SystemRoleServices extends Service
         });
 
         // 权限菜单未添加时放行
-        if (!in_array($rule, $allAuth[$method])) {
+        if (!isset($allAuth[$method]) || !in_array($rule, $allAuth[$method], true)) {
             return true;
         }
 
         // 获取管理员的接口权限列表，存在时放行
         $auth = $this->getRolesByAuth($request->adminInfo()['roles'], 2);
-        if (in_array($rule, $auth[$method])) {
+        if (isset($auth[$method]) && in_array($rule, $auth[$method], true)) {
             return true;
-        } else {
-            throw new AuthException(110000);
         }
+
+        throw new AuthException(110000);
     }
 
     /**
