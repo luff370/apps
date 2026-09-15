@@ -12,7 +12,6 @@ use App\Support\Services\ClientRequestContext;
 use App\Support\Services\FormBuilder as Form;
 use App\Support\Utils\Token;
 use DateTimeInterface;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -166,7 +165,7 @@ class UserArchiveService extends Service
     }
 
     /**
-     * 客户端保存档案：先插入；uuid + app_id 已存在则覆盖。
+     * 客户端保存档案：uuid + app_id 不存在则插入，已存在则覆盖。
      * 日期会兼容旧端「农历 1980/01/26 12:00」这类写法。
      */
     public function saveClientProfile(array $profile): void
@@ -185,20 +184,20 @@ class UserArchiveService extends Service
             'birth_place' => (string) ($profile['birth_place'] ?? ''),
         ];
 
-        try {
-            UserProfile::query()->create($payload);
-        } catch (UniqueConstraintViolationException $e) {
-            $update = $payload;
-            unset($update['uuid'], $update['app_id']);
-            if ($update['user_id'] <= 0) {
-                unset($update['user_id']);
-            }
-
-            UserProfile::query()
-                ->where('uuid', $payload['uuid'])
-                ->where('app_id', $payload['app_id'])
-                ->update($update);
+        $update = [
+            'market_channel',
+            'version',
+            'name',
+            'gender',
+            'calendar',
+            'birth_date',
+            'birth_place',
+        ];
+        if ($payload['user_id'] > 0) {
+            $update[] = 'user_id';
         }
+
+        UserProfile::query()->upsert([$payload], ['uuid', 'app_id'], $update);
     }
 
     public function normalizeBirthDate($value): ?string
