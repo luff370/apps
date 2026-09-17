@@ -78,6 +78,8 @@ class UserArchiveService extends Service
                 }
             }
             $row['user_account'] = $row['user']['account'] ?? '';
+            $row['save_to_archive'] = $this->normalizeSaveToArchive($row['save_to_archive'] ?? 0);
+            $row['save_to_archive_text'] = $row['save_to_archive'] ? '是' : '否';
             $this->attachVipInfo($row);
         }
         unset($row);
@@ -171,6 +173,7 @@ class UserArchiveService extends Service
     public function saveClientProfile(array $profile): void
     {
         $profile = $this->prepareClientProfile($profile);
+        $hasSaveToArchive = array_key_exists('save_to_archive', $profile);
         $payload = [
             'user_id' => (int) ($profile['user_id'] ?? 0),
             'uuid' => (string) ($profile['uuid'] ?? ''),
@@ -182,6 +185,9 @@ class UserArchiveService extends Service
             'calendar' => (string) ($profile['calendar'] ?? ''),
             'birth_date' => $profile['birth_date'] ?? null,
             'birth_place' => (string) ($profile['birth_place'] ?? ''),
+            'save_to_archive' => $hasSaveToArchive
+                ? $this->normalizeSaveToArchive($profile['save_to_archive'])
+                : 0,
         ];
 
         $update = [
@@ -193,6 +199,9 @@ class UserArchiveService extends Service
             'birth_date',
             'birth_place',
         ];
+        if ($hasSaveToArchive) {
+            $update[] = 'save_to_archive';
+        }
         if ($payload['user_id'] > 0) {
             $update[] = 'user_id';
         }
@@ -356,6 +365,18 @@ class UserArchiveService extends Service
         }
 
         return (string) ($gender ?: '男');
+    }
+
+    private function normalizeSaveToArchive($value): int
+    {
+        if ($value === true || $value === 1 || $value === '1') {
+            return 1;
+        }
+        if (is_string($value) && in_array(strtolower(trim($value)), ['true', 'yes', 'on'], true)) {
+            return 1;
+        }
+
+        return 0;
     }
 
     private function normalizeCalendar($calendar): string

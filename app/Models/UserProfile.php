@@ -34,7 +34,8 @@ class UserProfile extends BaseModel
 	protected $casts = [
 		'user_id' => 'int',
 		'app_id' => 'int',
-		'birth_date' => 'datetime'
+		'birth_date' => 'datetime',
+		'save_to_archive' => 'int',
 	];
 
 	protected $fillable = [
@@ -47,7 +48,8 @@ class UserProfile extends BaseModel
 		'gender',
 		'calendar',
 		'birth_date',
-		'birth_place'
+		'birth_place',
+		'save_to_archive',
 	];
 
 	public function user()
