@@ -8,6 +8,7 @@ use App\Dao\App\AppsDao;
 use App\Dao\System\SystemApiInterfaceDao;
 use App\Exceptions\AdminException;
 use App\Services\Service;
+use App\Support\Services\DeviceEnvHeaderAliasService;
 
 class AppApiObfuscationService extends Service
 {
@@ -222,7 +223,7 @@ class AppApiObfuscationService extends Service
             return [];
         }
         $rows = $this->aliasDao->search(['profile_id' => $p['id'], 'is_enable' => 1])->with('apiInterface')->get()->toArray();
-        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'api_domain'=>$this->exportApiDomain($this->profileApiDomain($profile,$merchant)),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'items'=>array_map(fn($x)=>$this->formatExportAliasItem($x),$rows)];
+        return ['app_id'=>(int)$p['app_id'],'package_name'=>(string)$p['package_name'],'api_domain'=>$this->exportApiDomain($this->profileApiDomain($profile,$merchant)),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'device_env_header'=>$this->deviceEnvHeaderAlias($profile),'items'=>array_map(fn($x)=>$this->formatExportAliasItem($x),$rows)];
     }
 
     public function buildRouteAliasesByProfile(int $pid): array { $a=[]; foreach($this->aliasDao->search(['profile_id'=>$pid,'is_enable'=>1])->with('apiInterface')->get() as $r) if($r->apiInterface&&intval($r->apiInterface['is_enable']??0)===1&&$r['alias']) $a[$r['alias']]=['path'=>ltrim((string)$r->apiInterface['path'],'/'),'method'=>strtoupper((string)$r->apiInterface['method'])]; return $a; }
@@ -234,7 +235,11 @@ class AppApiObfuscationService extends Service
         $this->assertRequiredDomains($profile, 'export');
         $imageUrl = (array) ($profile['image_url'] ?? []);
         unset($imageUrl['domain']);
-        return ['app_id'=>(int)$profile['app_id'],'package_name'=>(string)$profile['package_name'],'api_domain'=>$this->exportApiDomain($profile['api_domain']),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'enabled'=>(bool)($profile['enabled']??0),'route_aliases'=>$profile['route_aliases']??[],'request_key_map'=>$profile['request_key_map']??[],'response_key_map'=>$profile['response_key_map']??[],'response_data_key_map'=>$profile['response_data_key_map']??[],'protocol'=>$profile['protocol']??[],'security'=>$profile['security']??[],'crypto'=>$profile['crypto']??[],'image_url'=>$imageUrl];
+        return ['app_id'=>(int)$profile['app_id'],'package_name'=>(string)$profile['package_name'],'api_domain'=>$this->exportApiDomain($profile['api_domain']),'gateway_prefix'=>$this->gatewayPrefixForProfile($profile),'gateway_prefixes'=>$this->gatewayPrefixes($profile),'device_env_header'=>$this->deviceEnvHeaderAlias($profile),'enabled'=>(bool)($profile['enabled']??0),'route_aliases'=>$profile['route_aliases']??[],'request_key_map'=>$profile['request_key_map']??[],'response_key_map'=>$profile['response_key_map']??[],'response_data_key_map'=>$profile['response_data_key_map']??[],'protocol'=>$profile['protocol']??[],'security'=>$profile['security']??[],'crypto'=>$profile['crypto']??[],'image_url'=>$imageUrl];
+    }
+    private function deviceEnvHeaderAlias(array $profile): string
+    {
+        return (new DeviceEnvHeaderAliasService())->make((int) ($profile['app_id'] ?? 0), (string) ($profile['package_name'] ?? ''));
     }
     private function findProfile(int $appId,string $pkg){return $this->dao->search(['app_id'=>$appId,'package_name'=>$pkg])->first();}
     private function appWithMerchant(int $appId):array{return $appId>0?($this->appsDao->newQuery()->with('merchant')->find($appId)?->toArray()??[]):[];}

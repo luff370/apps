@@ -127,10 +127,10 @@ class DeviceEnvRiskService
         // Device-Env 与业务接口混淆是两套机制：
         // 1. 业务接口别名、请求/响应字段映射仍由后台 api_obfuscation profile 管理；
         // 2. Device-Env 是每次请求携带的环境探针密文，只在这里解析成风控上下文。
-        $sealed = trim((string) $request->header('Device-Env', ''));
         $packageName = (string) (ClientRequestContext::packageName($request) ?? '');
         // 密钥仍用 Package-Name + App-Id；新客户端不传 App-Id 时按包名映射。
         $appId = (string) (ClientRequestContext::appId($request) ?? '');
+        $sealed = $this->sealedHeader($request, $packageName, $appId);
 
         if ($sealed === '') {
             // 首版策略：缺失或解析失败不直接阻断业务，只打标为 missing/error。
@@ -206,6 +206,21 @@ class DeviceEnvRiskService
         }
 
         return $data;
+    }
+
+    private function sealedHeader(Request $request, string $packageName, string $appId): string
+    {
+        $origin = trim((string) $request->header(DeviceEnvHeaderAliasService::ORIGIN_HEADER, ''));
+        if ($origin !== '') {
+            return $origin;
+        }
+        if ($packageName === '' || $appId === '' || !is_numeric($appId)) {
+            return '';
+        }
+
+        $alias = (new DeviceEnvHeaderAliasService())->make((int) $appId, $packageName);
+
+        return trim((string) $request->header($alias, ''));
     }
 
     private function decrypt(string $sealed, string $packageName, string $appId): array

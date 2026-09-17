@@ -47,6 +47,28 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertContains('monkey', $context['reasons']);
     }
 
+    public function test_it_decrypts_aliased_device_env_header(): void
+    {
+        $sealed = $this->seal([
+            'pv' => 5,
+            'ts' => time(),
+            'nc' => 'nonce-alias-header',
+            'ver' => '1',
+        ]);
+        $alias = (new \App\Support\Services\DeviceEnvHeaderAliasService())->make(10048, 'com.he.dahu');
+
+        $request = Request::create('/api/app/info', 'POST', [], [], [], [
+            'HTTP_APP_ID' => '10048',
+            'HTTP_PACKAGE_NAME' => 'com.he.dahu',
+            'HTTP_' . strtoupper($alias) => $sealed,
+        ]);
+
+        $context = $this->service->inspect($request);
+
+        $this->assertSame('ok', $context['status']);
+        $this->assertSame(5, $context['probe']['probe_v']);
+    }
+
     public function test_it_decrypts_without_app_id_header_using_package_map(): void
     {
         config(['app_package_map' => ['com.he.dahu' => 10048]]);

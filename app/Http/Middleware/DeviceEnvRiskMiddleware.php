@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Support\Services\ClientRequestContext;
+use App\Support\Services\DeviceEnvHeaderAliasService;
 use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\RiskProbeAuditService;
 
@@ -45,7 +46,8 @@ class DeviceEnvRiskMiddleware
                 'package_name' => ClientRequestContext::packageName($request),
                 'has_app_id_header' => $request->headers->has('App-Id'),
                 'has_uuid_header' => $request->headers->has('Uuid'),
-                'has_device_env' => $request->headers->has('Device-Env'),
+                'has_device_env' => $request->headers->has('Device-Env')
+                    || $this->hasAliasedDeviceEnv($request),
                 'device_env_status' => $context['status'] ?? null,
                 'device_env_error' => $context['error'] ?? null,
             ]);
@@ -72,5 +74,17 @@ class DeviceEnvRiskMiddleware
         }
 
         return null;
+    }
+
+    private function hasAliasedDeviceEnv(Request $request): bool
+    {
+        $packageName = (string) (ClientRequestContext::packageName($request) ?? '');
+        $appId = (string) (ClientRequestContext::appId($request) ?? '');
+        if ($packageName === '' || $appId === '' || !is_numeric($appId)) {
+            return false;
+        }
+        $alias = (new DeviceEnvHeaderAliasService())->make((int) $appId, $packageName);
+
+        return $request->headers->has($alias);
     }
 }
