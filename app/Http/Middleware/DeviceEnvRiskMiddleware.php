@@ -69,9 +69,9 @@ class DeviceEnvRiskMiddleware
         if (ClientRequestContext::marketChannel($request) === null) {
             return '缺少市场渠道';
         }
-        if (ClientRequestContext::uuid($request) === null) {
-            return '缺少设备标识UUID';
-        }
+        // if (ClientRequestContext::uuid($request) === null) {
+        //     return '缺少设备标识UUID';
+        // }
 
         return null;
     }
