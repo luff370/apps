@@ -57,6 +57,10 @@ class UserArchiveDao extends BaseDao
             }
         }
 
+        if (isset($where['save_to_archive']) && $where['save_to_archive'] !== '') {
+            $query->where('save_to_archive', (int) $where['save_to_archive'] === 1 ? 1 : 0);
+        }
+
         return $query;
     }
 }

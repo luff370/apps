@@ -25,6 +25,7 @@ class UserArchiveController extends Controller
             ['app_version', ''],
             ['keyword', ''],
             ['is_login', ''],
+            ['save_to_archive', ''],
             ['time', ''],
         ]);
         $data = $this->service->getAllByPage($filter, ['*'], ['id' => 'desc'], ['user']);
