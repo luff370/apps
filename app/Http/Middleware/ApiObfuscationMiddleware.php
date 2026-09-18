@@ -40,7 +40,8 @@ class ApiObfuscationMiddleware
         $requestKeyMap = $this->resolveRequestKeyMap($request, $profile);
         if (!empty($requestKeyMap)) {
             // 映射表是「真实字段 => 别名」；客户端提交别名，需反查回真实字段。
-            $request->merge($this->unmapKeys($request->all(), $requestKeyMap));
+            // 直接替换参数袋，不要 merge：否则别名字段还留在 json()/request 里。
+            $this->replaceRequestInput($request, $requestKeyMap);
         }
 
         $response = $next($request);
@@ -399,11 +400,9 @@ class ApiObfuscationMiddleware
         $alias = (string) ($request->route()?->parameter('alias') ?? '');
         $routeAlias = (array) (($profile['route_aliases'][$alias] ?? []) ?: []);
         $perAliasMap = (array) ($routeAlias['request_key_map'] ?? []);
-        if (!empty($perAliasMap)) {
-            return $perAliasMap;
-        }
+        $profileMap = (array) ($profile['request_key_map'] ?? []);
 
-        return (array) ($profile['request_key_map'] ?? []);
+        return array_merge($profileMap, $perAliasMap);
     }
 
     private function remapKeys(array $source, array $map, bool $deep = true): array
@@ -419,6 +418,13 @@ class ApiObfuscationMiddleware
         }
 
         return $target;
+    }
+
+    private function replaceRequestInput(Request $request, array $requestKeyMap): void
+    {
+        $input = $request->isJson() ? $request->json() : $request->request;
+        $input->replace($this->unmapKeys($input->all(), $requestKeyMap));
+        $request->query->replace($this->unmapKeys($request->query->all(), $requestKeyMap));
     }
 
     private function unmapKeys(array $source, array $map): array

@@ -175,10 +175,30 @@ class ApiObfuscationStableRoutingTest extends TestCase
         ];
 
         $map = $resolveRequestKeyMap->invoke($middleware, $request, $profile);
-        $this->assertSame(['keywords' => 'kw'], $map);
+        $this->assertSame(['page' => 'pg', 'limit' => 'sz', 'keywords' => 'kw'], $map);
 
-        $unmapped = $unmapKeys->invoke($middleware, ['kw' => 'hello'], ['keywords' => 'kw']);
-        $this->assertSame(['keywords' => 'hello'], $unmapped);
+        $unmapped = $unmapKeys->invoke($middleware, ['kw' => 'hello', 'pg' => 1], $map);
+        $this->assertSame(['keywords' => 'hello', 'page' => 1], $unmapped);
+    }
+
+    public function test_json_gateway_forward_uses_unmapped_request_body(): void
+    {
+        $controller = (new ReflectionClass(ObfuscatedGatewayController::class))->newInstanceWithoutConstructor();
+        $createForwardRequest = $this->method(ObfuscatedGatewayController::class, 'createForwardRequest');
+
+        $body = json_encode(['pabc12' => 'user01', 'pdef34' => '123456', 'pdef34_confirmation' => '123456']);
+        $request = Request::create('/api/open/abc12345', 'POST', [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_CONTENT_TYPE' => 'application/json',
+        ], $body);
+        $request->merge(['account' => 'user01', 'password' => '123456', 'password_confirmation' => '123456']);
+
+        $forward = $createForwardRequest->invoke($controller, $request, 'auth/account/register', 'POST');
+
+        $this->assertSame('user01', $forward->input('account'));
+        $this->assertSame('123456', $forward->input('password'));
+        $this->assertSame('123456', $forward->input('password_confirmation'));
+        $this->assertStringContainsString('pabc12', (string) $forward->getContent());
     }
 
     public function test_profile_request_map_is_used_when_route_alias_has_no_request_map(): void

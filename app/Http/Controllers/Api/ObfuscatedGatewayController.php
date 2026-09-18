@@ -56,15 +56,7 @@ class ObfuscatedGatewayController extends Controller
             'response_key_map' => (array) ($aliasRoute['response_key_map'] ?? []),
             'response_data_key_map' => (array) ($aliasRoute['response_data_key_map'] ?? $aliasRoute['response_key_map'] ?? []),
         ]);
-        $forwardRequest = Request::create(
-            '/api/' . $targetPath,
-            $targetMethod,
-            $request->all(),
-            $request->cookies->all(),
-            $request->allFiles(),
-            $request->server->all(),
-            $request->getContent()
-        );
+        $forwardRequest = $this->createForwardRequest($request, $targetPath, $targetMethod);
         $forwardRequest->headers->replace($request->headers->all());
         $forwardRequest->headers->set('X-Obfuscated-Gateway', '1');
         // 外层 /api/{prefix}/{alias} 已经消费过 Device-Env nonce。
@@ -74,6 +66,36 @@ class ObfuscatedGatewayController extends Controller
         }
 
         return $this->kernel->handle($forwardRequest);
+    }
+
+    // 内层 FormRequest / $request->input() 读的是参数袋，不是原始 body。
+    // 外层中间件已经把别名写进 json()/request，这里原样拷到新 Request，避免再拼一份 JSON。
+    private function createForwardRequest(Request $request, string $targetPath, string $targetMethod): Request
+    {
+        $forwardRequest = Request::create(
+            '/api/' . $targetPath,
+            $targetMethod,
+            $request->request->all(),
+            $request->cookies->all(),
+            $request->allFiles(),
+            $request->server->all(),
+            $request->getContent()
+        );
+        $forwardRequest->query->replace($request->query->all());
+        if ($this->usesJsonInput($request)) {
+            $forwardRequest->json()->replace($request->json()->all());
+        }
+
+        return $forwardRequest;
+    }
+
+    private function usesJsonInput(Request $request): bool
+    {
+        if ($request->isJson()) {
+            return true;
+        }
+
+        return str_contains(strtolower((string) $request->header('Content-Type', '')), 'json');
     }
 
     private function isAllowedGatewayPrefix(Request $request, array $profile): bool
