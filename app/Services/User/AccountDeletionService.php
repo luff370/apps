@@ -48,19 +48,14 @@ class AccountDeletionService extends Service
     public function pageData(SystemApp $app): array
     {
         $merchant = $app->merchant;
-        $developer = (string) $app->name;
         $contactEmail = (string) ($app->contact_email ?? '');
-        if ($merchant) {
-            $developer = (string) ($merchant->corporate ?: $merchant->name ?: $app->name);
-            if ($contactEmail === '') {
-                $contactEmail = (string) ($merchant->contact_email ?? '');
-            }
+        if ($merchant && $contactEmail === '') {
+            $contactEmail = (string) ($merchant->contact_email ?? '');
         }
 
         return [
             'app' => $app,
             'app_name' => (string) $app->name,
-            'developer_name' => $developer,
             'contact_email' => $contactEmail,
             'package_name' => (string) ($app->package_name ?? ''),
             'logo' => (string) ($app->logo ?? ''),
@@ -170,11 +165,14 @@ class AccountDeletionService extends Service
 
     public function tidyListData($list)
     {
-        $apps = SystemApp::idToNameMap();
+        $apps = SystemApp::query()->where('is_del', 0)->get(['id', 'name', 'package_name'])->keyBy('id');
         $statusMap = UserDeletionRequest::statusMap();
         foreach ($list as &$item) {
-            $item['app_name'] = $apps[$item['app_id']] ?? '';
+            $app = $apps[$item['app_id']] ?? null;
+            $item['app_name'] = $app['name'] ?? '';
+            $item['package_name'] = $app['package_name'] ?? '';
             $item['status_text'] = $statusMap[$item['status']] ?? '';
+            $item['user_account'] = data_get($item, 'user.account', '');
             $item['create_time_text'] = !empty($item['create_time']) ? date('Y-m-d H:i:s', (int) $item['create_time']) : '';
             $item['processed_at_text'] = !empty($item['processed_at']) ? date('Y-m-d H:i:s', (int) $item['processed_at']) : '';
         }

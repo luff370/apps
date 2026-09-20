@@ -152,6 +152,7 @@ class SystemMenusSeeder extends Seeder
                     ['menu_name' => '访问日志', 'sort' => 6, 'menu_path' => '/admin/user/access_log', 'unique_auth' => 'admin-user-access-log'],
                     ['menu_name' => '意见反馈', 'sort' => 4, 'menu_path' => '/admin/user/feedback', 'unique_auth' => 'user-feedback'],
                     ['menu_name' => '档案管理', 'sort' => 2, 'menu_path' => '/admin/user/archive', 'unique_auth' => 'user-archive'],
+                    ['menu_name' => '账号删除申请', 'sort' => 3, 'menu_path' => '/admin/user/deletion_request', 'unique_auth' => 'user-deletion-request'],
                 ],
             ],
             [

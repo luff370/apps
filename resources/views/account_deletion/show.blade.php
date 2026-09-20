@@ -117,10 +117,6 @@
             <div>
                 <h1 data-lang="en">Delete your {{ $app_name }} account</h1>
                 <h1 data-lang="zh">删除 {{ $app_name }} 账号</h1>
-                <p class="sub">
-                    <span data-lang="en">App: {{ $app_name }} · Developer: {{ $developer_name }}</span>
-                    <span data-lang="zh">应用：{{ $app_name }} · 开发者：{{ $developer_name }}</span>
-                </p>
             </div>
         </div>
     </div>
@@ -184,7 +180,7 @@
         <h2 data-lang="en">Data that will be deleted</h2>
         <h2 data-lang="zh">将会删除的数据</h2>
         <div data-lang="en">
-            <p>After we confirm your request, {{ $app_name }} (developer: {{ $developer_name }}) will delete or anonymize:</p>
+            <p>After we confirm your request, {{ $app_name }} will delete or anonymize:</p>
             <ol>
                 <li>Account credentials and profile: login account, email, phone number, nickname, avatar, and third-party login bindings (Google / Apple / Facebook, etc.).</li>
                 <li>Device identifiers stored with the account, such as device UUID and device tokens.</li>
@@ -193,7 +189,7 @@
             <p>Deletion of personal data is completed within 7 days after the request is matched. The account cannot be used to sign in afterwards.</p>
         </div>
         <div data-lang="zh">
-            <p>在确认申请后，{{ $app_name }}（开发者：{{ $developer_name }}）将删除或匿名化以下数据：</p>
+            <p>在确认申请后，{{ $app_name }} 将删除或匿名化以下数据：</p>
             <ol>
                 <li>账号凭证与资料：登录账号、邮箱、手机号、昵称、头像，以及第三方登录绑定（Google / Apple / Facebook 等）。</li>
                 <li>与账号关联的设备标识，如设备 UUID、设备推送 token。</li>
