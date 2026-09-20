@@ -9,6 +9,7 @@ use App\Models\UserFeedback;
 use Illuminate\Support\Carbon;
 use App\Services\User\UserArchiveService;
 use App\Services\User\UserServices;
+use App\Services\User\AccountDeletionService;
 use App\Models\TrafficViolationContent;
 
 class UserController extends Controller
@@ -193,11 +194,12 @@ class UserController extends Controller
      *
      * @throws \Psr\SimpleCache\InvalidArgumentException
      */
-    public function singOut()
+    public function singOut(AccountDeletionService $deletionService)
     {
-        $userId = authUserId();
-
-        User::query()->where('id', $userId)->update(['is_del' => 1]);
+        $user = User::query()->find(authUserId());
+        if ($user) {
+            $deletionService->deleteAccount($user);
+        }
         Token::signOut();
 
         return $this->success();

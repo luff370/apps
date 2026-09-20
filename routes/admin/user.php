@@ -169,6 +169,10 @@ Route::name('user')->prefix('user')->namespace('User')->group( function () {
     // 用户访问记录
     Route::get('access_log', 'UserAccessLogController@index');
 
+    // 账号删除申请（Google Play / 网页注销）
+    Route::get('deletion_request', 'UserDeletionRequestController@index');
+    Route::put('deletion_request/{id}/process', 'UserDeletionRequestController@process');
+
     // 用户意见反馈
     Route::resource('feedback', 'UserFeedbackController');
     Route::put('feedback/set_field_value/{id}/{value}/{field}', 'UserFeedbackController::class@setFieldValue');

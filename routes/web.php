@@ -13,6 +13,14 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+Route::get('/account-deletion/{app}', 'AccountDeletionController@show')
+    ->where('app', '[A-Za-z0-9._\-]+')
+    ->name('account-deletion.show');
+Route::post('/account-deletion/{app}', 'AccountDeletionController@store')
+    ->middleware('throttle:10,1')
+    ->where('app', '[A-Za-z0-9._\-]+')
+    ->name('account-deletion.store');
+
 Route::get('/article/{id}', 'CommonController@article');
 
 Route::get('/agreement/{type}/{app_id}/{platform}', 'CommonController@appAgreement');

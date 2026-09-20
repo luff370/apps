@@ -42,7 +42,7 @@ class Token
         if (empty($jsonData)) {
             $uuid = ClientRequestContext::uuid();
             if (!empty($uuid)) {
-                $user = User::query()->select(['id', 'is_reg'])->where('uuid', $uuid)->first();
+                $user = User::query()->select(['id', 'is_reg'])->where('uuid', $uuid)->where('is_del', 0)->first();
                 if (!empty($user)) {
                     self::generate(['user_id' => $user['id'], 'login_way' => 'account', 'is_reg' => $user['is_reg']], $token);
                     $jsonData = cache(self::cacheKey($token));

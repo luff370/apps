@@ -49,6 +49,7 @@ class AppsService extends Service
         foreach ($list as &$item) {
             $this->applyVersionPlanSnapshot($item, $listedTasks[(int)$item['id']] ?? []);
             $item['user_white_list_filter'] = (int)($whiteListFilterMap[(int)$item['id']] ?? 0);
+            $item['account_deletion_url'] = url('account-deletion/' . $item['id']);
 
             // 域名到期警告
             $item['domain_expired_warning'] = false;
@@ -76,6 +77,7 @@ class AppsService extends Service
         if ($row) {
             $listedTasks = $this->listedVersionTasksByAppIds([(int)$row['id']]);
             $this->applyVersionPlanSnapshot($row, $listedTasks[(int)$row['id']] ?? []);
+            $row['account_deletion_url'] = url('account-deletion/' . $row['id']);
         }
 
         return $row;
