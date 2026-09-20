@@ -19,26 +19,30 @@ class AccountDeletionService extends Service
         $this->dao = $dao;
     }
 
-    public function publicUrl(int $appId, ?string $packageName = null): string
+    public function publicUrl(string $packageName): string
     {
-        $key = $packageName !== null && $packageName !== '' ? $packageName : (string) $appId;
+        $packageName = trim($packageName);
+        if ($packageName === '') {
+            return '';
+        }
 
-        return url('account-deletion/' . $key);
+        return url('account-deletion/' . $packageName);
     }
 
-    public function resolveApp(string $appKey): ?SystemApp
+    public function resolveApp(string $packageName): ?SystemApp
     {
-        $appKey = trim($appKey);
-        if ($appKey === '') {
+        $packageName = trim($packageName);
+        if ($packageName === '') {
             return null;
         }
 
-        $query = SystemApp::query()->where('is_del', 0)->with(['merchant']);
-        if (ctype_digit($appKey)) {
-            return $query->where('id', (int) $appKey)->first();
-        }
-
-        return $query->where('package_name', $appKey)->first();
+        return SystemApp::query()
+            ->where('is_del', 0)
+            ->where('package_name', $packageName)
+            ->with(['merchant'])
+            ->orderByDesc('is_enable')
+            ->orderBy('id')
+            ->first();
     }
 
     public function pageData(SystemApp $app): array
@@ -132,14 +136,15 @@ class AccountDeletionService extends Service
         ];
     }
 
-    public function findUser(int $appId, string $identifier, bool $includeDeleted = false): ?User
+    public function findUser(int|array $appIds, string $identifier, bool $includeDeleted = false): ?User
     {
         $identifier = trim($identifier);
-        if ($identifier === '' || $appId <= 0) {
+        $appIds = $this->normalizeAppIds($appIds);
+        if ($identifier === '' || !$appIds) {
             return null;
         }
 
-        $query = User::query()->where('app_id', $appId);
+        $query = User::query()->whereIn('app_id', $appIds);
         if (!$includeDeleted) {
             $query->where('is_del', 0);
         }
@@ -160,7 +165,7 @@ class AccountDeletionService extends Service
             return $matched;
         }
 
-        return $this->findUserByThirdEmail($appId, $identifier, $includeDeleted);
+        return $this->findUserByThirdEmail($appIds, $identifier, $includeDeleted);
     }
 
     public function tidyListData($list)
@@ -194,7 +199,7 @@ class AccountDeletionService extends Service
         }
 
         if ($userId > 0) {
-            $user = User::query()->where('app_id', $app->id)->where('id', $userId)->first();
+            $user = User::query()->whereIn('app_id', $this->appIdsFor($app))->where('id', $userId)->first();
             if (!$user) {
                 throw new AdminException('未找到该用户');
             }
@@ -212,9 +217,10 @@ class AccountDeletionService extends Service
 
     private function fulfill(UserDeletionRequest $request, SystemApp $app, string $remark = ''): void
     {
-        $user = $this->findUser((int) $app->id, (string) $request->identifier, false);
+        $appIds = $this->appIdsFor($app);
+        $user = $this->findUser($appIds, (string) $request->identifier, false);
         if (!$user && $request->email !== '') {
-            $user = $this->findUser((int) $app->id, (string) $request->email, false);
+            $user = $this->findUser($appIds, (string) $request->email, false);
         }
 
         if ($user) {
@@ -223,9 +229,9 @@ class AccountDeletionService extends Service
             return;
         }
 
-        $deleted = $this->findUser((int) $app->id, (string) $request->identifier, true);
+        $deleted = $this->findUser($appIds, (string) $request->identifier, true);
         if (!$deleted && $request->email !== '') {
-            $deleted = $this->findUser((int) $app->id, (string) $request->email, true);
+            $deleted = $this->findUser($appIds, (string) $request->email, true);
         }
         if ($deleted && (int) $deleted->is_del === 1) {
             $request->update([
@@ -255,7 +261,7 @@ class AccountDeletionService extends Service
         ]);
     }
 
-    private function findUserByThirdEmail(int $appId, string $identifier, bool $includeDeleted): ?User
+    private function findUserByThirdEmail(array $appIds, string $identifier, bool $includeDeleted): ?User
     {
         if (!filter_var($identifier, FILTER_VALIDATE_EMAIL) || !Schema::hasTable('third_login_users')) {
             return null;
@@ -271,12 +277,33 @@ class AccountDeletionService extends Service
             return null;
         }
 
-        $query = User::query()->where('app_id', $appId)->whereIn('id', $userIds);
+        $query = User::query()->whereIn('app_id', $appIds)->whereIn('id', $userIds);
         if (!$includeDeleted) {
             $query->where('is_del', 0);
         }
 
         return $query->orderByDesc('id')->first();
+    }
+
+    private function appIdsFor(SystemApp $app): array
+    {
+        $packageName = trim((string) $app->package_name);
+        if ($packageName === '') {
+            return $this->normalizeAppIds((int) $app->id);
+        }
+
+        $ids = SystemApp::query()
+            ->where('is_del', 0)
+            ->where('package_name', $packageName)
+            ->pluck('id')
+            ->all();
+
+        return $this->normalizeAppIds($ids ?: [(int) $app->id]);
+    }
+
+    private function normalizeAppIds(int|array $appIds): array
+    {
+        return array_values(array_unique(array_filter(array_map('intval', (array) $appIds))));
     }
 
     private function forgetThirdLogin(int $userId): void

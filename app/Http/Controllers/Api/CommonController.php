@@ -31,7 +31,7 @@ class CommonController extends Controller
         // 隐私政策
         $data['privacy_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'privacy', $this->getMarketChannel());
         // Google Play 账号删除申请页
-        $data['account_deletion'] = url('account-deletion/' . $this->getAppId());
+        $data['account_deletion'] = url('account-deletion/' . $this->getAppPackageName());
 
         // 应用基础配置(后期应用已废弃此配置项)
         $sysConfig = SystemConfigService::getAppConfigs($this->getAppId());

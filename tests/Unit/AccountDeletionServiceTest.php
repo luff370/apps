@@ -8,12 +8,12 @@ use Tests\TestCase;
 
 class AccountDeletionServiceTest extends TestCase
 {
-    public function test_public_url_uses_app_id_or_package_name(): void
+    public function test_public_url_uses_package_name(): void
     {
         $service = app(AccountDeletionService::class);
 
-        $this->assertStringEndsWith('/account-deletion/10036', $service->publicUrl(10036));
-        $this->assertStringEndsWith('/account-deletion/com.example.app', $service->publicUrl(10036, 'com.example.app'));
+        $this->assertSame('', $service->publicUrl(''));
+        $this->assertStringEndsWith('/account-deletion/com.example.app', $service->publicUrl('com.example.app'));
     }
 
     public function test_anonymize_payload_removes_identity_fields(): void
