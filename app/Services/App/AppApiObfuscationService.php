@@ -126,16 +126,6 @@ class AppApiObfuscationService extends Service
         return $this->aliasDetail($id);
     }
 
-    public function syncAllAliasParams(array $d): array
-    {
-        $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return['updated'=>0];
-        $updated=0;
-        foreach($this->aliasDao->search(['profile_id'=>$p['id']])->orderBy('id')->get() as $row){
-            if($this->syncAliasParams((int)$row['id'])) $updated++;
-        }
-        return ['updated'=>$updated];
-    }
-
     public function generateAliasParams(array $d): array
     {
         $row=$this->aliasDao->get((int)($d['id']??0),['*'],['apiInterface']); if(!$row)return[];

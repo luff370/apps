@@ -57,12 +57,6 @@ class ApiObfuscationController extends Controller
         return $this->success($data, '同步成功');
     }
 
-    public function syncAllAliasParams()
-    {
-        $data = $this->getMore([['app_id', 0], ['package_name', '']]);
-        return $this->success($this->obfuscationService->syncAllAliasParams($data), '同步成功');
-    }
-
     public function generateAliasParams()
     {
         $data = $this->getMore([['id', 0]]);

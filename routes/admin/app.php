@@ -82,7 +82,6 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::post('obfuscation/aliases/params', 'ApiObfuscationController@updateAliasParams');
     Route::post('obfuscation/aliases/params/generate', 'ApiObfuscationController@generateAliasParams');
     Route::post('obfuscation/aliases/params/generate_all', 'ApiObfuscationController@generateAllAliasParams');
-    Route::post('obfuscation/aliases/sync_params', 'ApiObfuscationController@syncAllAliasParams');
     Route::post('obfuscation/aliases/{id}/sync_params', 'ApiObfuscationController@syncAliasParams');
     Route::delete('obfuscation/aliases/{id}', 'ApiObfuscationController@deleteAlias');
     Route::post('obfuscation/aliases/generate', 'ApiObfuscationController@generateAliases');
