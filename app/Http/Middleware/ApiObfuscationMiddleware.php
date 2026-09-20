@@ -68,8 +68,10 @@ class ApiObfuscationMiddleware
         // 1) 接口别名（及历史 response_data_key_map）只改 data 里面的字段；
         // 2) 应用配置里的 response_key_map 只改外层 status/msg/data。
         $responseDataKeyMap = $this->responseDataKeyMap($routeAlias, $profile);
-        if (isset($payload['data']) && is_array($payload['data']) && !empty($responseDataKeyMap)) {
-            $payload['data'] = $this->remapKeys($payload['data'], $responseDataKeyMap);
+        if (!empty($responseDataKeyMap)) {
+            // 接口别名映射业务字段：data 对象、data 列表、result 列表都走深度 remap。
+            // 外层 status/msg/data 不在这份 map 里，随后由 profile.response_key_map 单独处理。
+            $payload = $this->remapKeys($payload, $responseDataKeyMap, true);
         }
 
         $responseKeyMap = (array) ($profile['response_key_map'] ?? []);

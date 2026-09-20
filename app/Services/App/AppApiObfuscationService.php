@@ -131,8 +131,17 @@ class AppApiObfuscationService extends Service
         $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return['updated'=>0];
         $updated=0;
         foreach($this->aliasDao->search(['profile_id'=>$p['id']])->orderBy('id')->get() as $row){
-            if($this->syncAliasParams((int)$row['id'])) $updated++;
+            if(!$this->syncAliasParams((int)$row['id'])) continue;
+            $maps=$this->generateAliasParams(['id'=>(int)$row['id']]);
+            if($maps!==[]){
+                $this->aliasDao->update((int)$row['id'],[
+                    'request_key_map'=>(array)($maps['request_key_map']??[]),
+                    'response_key_map'=>(array)($maps['response_key_map']??[]),
+                ]);
+            }
+            $updated++;
         }
+        $this->refreshRouteAliases((int)$p['id']);
         return ['updated'=>$updated];
     }
 
@@ -140,8 +149,9 @@ class AppApiObfuscationService extends Service
     {
         $row=$this->aliasDao->get((int)($d['id']??0),['*'],['apiInterface']); if(!$row)return[];
         $profile=$this->dao->get((int)$row['profile_id']); $profileArr=$profile?$profile->toArray():[];
-        $requestOrigin=$this->paramsFromAliasRow($row->toArray(),'request');
-        $responseOrigin=$this->paramsFromAliasRow($row->toArray(),'response');
+        // 生成别名时优先用公共 API 最新参数，避免 origin 快照还是旧的外层 status/msg/data。
+        $requestOrigin=$this->latestParamsForGeneration($row->toArray(),'request');
+        $responseOrigin=$this->latestParamsForGeneration($row->toArray(),'response');
         return [
             'request_key_map'=>$this->stableParamsMap($requestOrigin,$profileArr,'request'),
             'response_key_map'=>$this->stableParamsMap($responseOrigin,$profileArr,'response'),
@@ -153,11 +163,13 @@ class AppApiObfuscationService extends Service
         $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return['updated'=>0];
         $updated=0;
         foreach($this->aliasDao->search(['profile_id'=>$p['id']])->orderBy('id')->get() as $row){
+            $this->syncAliasParams((int)$row['id']);
             $maps=$this->generateAliasParams(['id'=>(int)$row['id']]);
-            $requestMap=(array)($maps['request_key_map']??[]);
-            $responseMap=(array)($maps['response_key_map']??[]);
-            if(!$requestMap&&!$responseMap) continue;
-            $this->aliasDao->update((int)$row['id'],['request_key_map'=>$requestMap,'response_key_map'=>$responseMap]);
+            if($maps===[]) continue;
+            $this->aliasDao->update((int)$row['id'],[
+                'request_key_map'=>(array)($maps['request_key_map']??[]),
+                'response_key_map'=>(array)($maps['response_key_map']??[]),
+            ]);
             $updated++;
         }
         $this->refreshRouteAliases((int)$p['id']);
@@ -175,7 +187,7 @@ class AppApiObfuscationService extends Service
         // response.origin 使用；旧数据没有快照时会在 paramsFromAliasRow 中回退读取公共 API，保证旧别名不受影响。
         $p=$this->ensureProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); $overwrite=intval($d['overwrite']??0)===1; $used=[]; $updated=0;
         if($overwrite)$this->aliasDao->search(['profile_id'=>$p['id']])->update(['is_enable'=>0]);
-        foreach($this->interfaceDao->search(['is_enable'=>1])->orderBy('path')->orderBy('method')->orderBy('id')->get() as $i){ $old=$this->aliasDao->search(['profile_id'=>$p['id'],'interface_id'=>$i['id']])->first(); $identity=$this->aliasIdentity($p->toArray(),strtoupper((string)$i['method']),(string)$i['path']); if(!$overwrite&&$old&&!empty($old['alias'])){$used[$old['alias']]=$identity;continue;} $alias=$this->makeAlias($p->toArray(),strtoupper((string)$i['method']),(string)$i['path'],$used); $save=array_merge(['profile_id'=>(int)$p['id'],'interface_id'=>(int)$i['id'],'alias'=>$alias,'is_enable'=>1],$this->originSnapshot($i->toArray()),$this->generateMapsForInterface($i->toArray(),(string)($d['map_rule']??'short'))); $old?$this->aliasDao->update($old['id'],$save):$this->aliasDao->save($save); $updated++; }
+        foreach($this->interfaceDao->search(['is_enable'=>1])->orderBy('path')->orderBy('method')->orderBy('id')->get() as $i){ $old=$this->aliasDao->search(['profile_id'=>$p['id'],'interface_id'=>$i['id']])->first(); $identity=$this->aliasIdentity($p->toArray(),strtoupper((string)$i['method']),(string)$i['path']); if(!$overwrite&&$old&&!empty($old['alias'])){$used[$old['alias']]=$identity;continue;} $alias=$this->makeAlias($p->toArray(),strtoupper((string)$i['method']),(string)$i['path'],$used); $save=array_merge(['profile_id'=>(int)$p['id'],'interface_id'=>(int)$i['id'],'alias'=>$alias,'is_enable'=>1],$this->originSnapshot($i->toArray()),$this->generateMapsForInterface($i->toArray(),(string)($d['map_rule']??'short'),$p->toArray())); $old?$this->aliasDao->update($old['id'],$save):$this->aliasDao->save($save); $updated++; }
         $this->refreshRouteAliases((int)$p['id']); return ['updated'=>$updated];
     }
 
@@ -332,6 +344,7 @@ class AppApiObfuscationService extends Service
     // 优先使用别名行自己的 origin 快照；旧版数据没有快照时，回退到关联公共 API 的 request_params/response_params。
     // 这保证“只加新字段、未重新生成别名”的应用仍能预览和导出，不会破坏既有别名。
     private function paramsFromAliasRow(array $row,string $type):array{$field=$type==='request'?'request_origin_params':'response_origin_params';$fallback=$type==='request'?'request_params':'response_params';return (array)($row[$field]??$row['api_interface'][$fallback]??$row[$fallback]??[]);}
+    private function latestParamsForGeneration(array $row,string $type):array{$fallback=$type==='request'?'request_params':'response_params';$live=(array)($row['api_interface'][$fallback]??[]);return $live!==[]?$live:$this->paramsFromAliasRow($row,$type);}
     // 接口别名的响应映射做兼容兜底：
     // - 新数据只写 response_key_map；
     // - 旧数据如果只存了 response_data_key_map，也临时当作响应映射使用；
@@ -339,17 +352,41 @@ class AppApiObfuscationService extends Service
     private function effectiveResponseAliasMap(array $row):array{return $this->decodeMap($row['response_key_map']??[])?:$this->decodeMap($row['response_data_key_map']??[]);}
     // 导出时带上示例参数和映射表。origin / alias 已经是快照转换后的结果，不再重复输出 snapshot 字段。
     private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$reqOrigin=$this->paramsFromAliasRow($row,'request');$resOrigin=$this->paramsFromAliasRow($row,'response');$req=$this->example($reqOrigin);$res=$this->example($resOrigin);$requestMap=(array)($r['request_key_map']??[]);$responseMap=(array)($r['response_key_map']??[]);return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,$requestMap),'request_key_map'=>$requestMap],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,$responseMap),'response_key_map'=>$responseMap]];}
-    private function generateMapsForInterface(array $i,string $rule):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule),'response_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule)];}
+    private function generateMapsForInterface(array $i,string $rule,array $profile=[]):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule,$profile,'request'),'response_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule,$profile,'response')];}
     // 参数别名也按应用身份稳定生成：应用ID + 包名 + 参数作用域 + 原字段名。
     // 同一应用同一原始参数反复点击“生成别名”结果一致，不同应用会生成各自独立的一套参数别名。
-    private function stableParamsMap(array $params,array $profile,string $scope):array{$map=[];$used=[];$n=0;foreach($this->paramKeys($params) as $key){$n++;$alias=$this->stableParamAlias($profile,$scope,$key,$n,$used);$map[$key]=$alias;}return$map;}
+    private function stableParamsMap(array $params,array $profile,string $scope):array{$map=[];$used=[];$n=0;foreach($this->paramKeysForScope($params,$profile,$scope) as $key){$n++;$alias=$this->stableParamAlias($profile,$scope,$key,$n,$used);$map[$key]=$alias;}return$map;}
     private function stableParamAlias(array $profile,string $scope,string $key,int $index,array &$used):string{$identity=(string)($profile['app_id']??'').'|'.(string)($profile['package_name']??'').'|'.$scope.'|'.$key.'|'.$index;$try=0;do{$hash=hash('sha256',$identity.'|'.$try);$alias='p'.substr($hash,0,5);$try++;}while(isset($used[$alias])&&$try<20);$used[$alias]=true;return$alias;}
-    private function paramsMap(array $ps,string $rule):array{$m=[];$n=0;foreach($this->paramKeys($ps) as $k){$n++;$m[$k]=$rule==='mix'?$this->alphaNumFromHash($k.$n,5):(($rule==='biz'?'field':substr(preg_replace('/[^a-z0-9]/i','',$k),0,1)).$n);}return$m;}
-    private function example(array $ps):array{$r=[];$hasDefinition=false;foreach($ps as $p){if(!is_array($p))continue;$k=(string)($p['key']??$p['name']??'');if($k!==''){$hasDefinition=true;$r[$k]=$p['example']??'';}}return$hasDefinition?$r:$ps;}
+    private function paramsMap(array $ps,string $rule,array $profile=[],string $scope='request'):array{$m=[];$n=0;foreach($this->paramKeysForScope($ps,$profile,$scope) as $k){$n++;$m[$k]=$rule==='mix'?$this->alphaNumFromHash($k.$n,5):(($rule==='biz'?'field':substr(preg_replace('/[^a-z0-9]/i','',$k),0,1)).$n);}return$m;}
+    private function example(array $ps):array{$r=[];$hasDefinition=false;foreach($ps as $p){if(!is_array($p)||!$this->looksLikeParamDefinition($p))continue;$k=(string)($p['key']??$p['name']??'');if($k!==''){$hasDefinition=true;$r[$k]=$p['example']??'';}}return$hasDefinition?$r:$ps;}
     // 公共 API 参数既可能是标准定义：[{key:"page", type:"int"}]，
     // 也可能直接保存了真实 JSON 示例：[{"type":2,"channels":[{"ad_id":"..."}]}]。
-    // 生成别名时统一抽取字段名：定义数组优先取 key/name；真实 JSON 则递归读取对象字段，忽略 0/1 这类数组下标。
-    private function paramKeys(array $params):array{$keys=[];$walk=function($value)use(&$walk,&$keys){if(!is_array($value))return;$schemaKey=(string)($value['key']??$value['name']??'');if($schemaKey!==''){$keys[$schemaKey]=true;return;}foreach($value as $k=>$v){if(!is_int($k)&&$k!=='')$keys[(string)$k]=true;if(is_array($v))$walk($v);}};$walk($params);return array_keys($keys);}
+    // 生成别名时统一抽取字段名：定义数组优先取 key/name，并继续读取 items/properties 等嵌套定义；
+    // 真实 JSON 则递归读取对象字段，忽略 0/1 这类数组下标。
+    private function paramKeys(array $params):array{$keys=[];$walk=function($value)use(&$walk,&$keys){if(!is_array($value))return;if($this->looksLikeParamDefinition($value)){$schemaKey=(string)($value['key']??$value['name']??'');if($schemaKey!==''){$keys[$schemaKey]=true;foreach(['items','properties','children','fields'] as $nestedField){if(isset($value[$nestedField])&&is_array($value[$nestedField]))$walk($value[$nestedField]);}return;}}foreach($value as $k=>$v){if(!is_int($k)&&$k!=='')$keys[(string)$k]=true;if(is_array($v))$walk($v);}};$walk($params);return array_keys($keys);}
+    private function looksLikeParamDefinition(array $value):bool
+    {
+        if ((string) ($value['key'] ?? '') !== '') {
+            return true;
+        }
+        $schemaOnly = ['name', 'type', 'example', 'items', 'properties', 'children', 'fields', 'required', 'remark', 'desc', 'description', 'title', 'default', 'rule'];
+        if ($value === []) {
+            return false;
+        }
+        foreach (array_keys($value) as $k) {
+            if (!in_array((string) $k, $schemaOnly, true)) {
+                return false;
+            }
+        }
+
+        return isset($value['name']) || isset($value['items']) || isset($value['properties']) || isset($value['children']) || isset($value['fields']);
+    }
+    // 接口级响应别名只处理业务字段；status/msg/data 等公共外层字段由 profile.response_key_map 统一映射。
+    private function paramKeysForScope(array $params,array $profile,string $scope):array{return $scope==='response'?$this->responseParamKeysForAlias($params,$profile):$this->paramKeys($params);}
+    private function responseParamKeysForAlias(array $params,array $profile):array{$keys=$this->paramKeys($params);$outer=$this->outerResponseKeys($profile,$params);return array_values(array_filter($keys,fn($key)=>!in_array($key,$outer,true)));}
+    private function outerResponseKeys(array $profile,array $params):array{$outer=array_keys(array_merge($this->decodeMap($profile['response_key_map']??[]),['status','msg','message','code','data','result','error']));$example=$this->example($params);if($this->looksLikeResponseEnvelope($example)){$outer=array_merge($outer,array_keys($example));}return array_values(array_unique(array_filter($outer,fn($key)=>$key!=='')));}
+    private function looksLikeResponseEnvelope(array $example):bool{if($example===[]||array_is_list($example))return false;$keys=array_keys($example);$envelopeKeys=['status','msg','message','code','data','result','error'];if(count(array_intersect($keys,$envelopeKeys))===0)return false;foreach($example as $value){if(is_array($value)&&(array_is_list($value)||$this->hasAssociativeFields($value)))return true;}return false;}
+    private function hasAssociativeFields(array $value):bool{foreach(array_keys($value) as $key){if(!is_int($key))return true;}return false;}
     private function applyMap(array $d,array $m):array{$r=[];foreach($d as $k=>$v){$mappedKey=is_int($k)?$k:($m[$k]??$k);$r[$mappedKey]=is_array($v)?$this->applyMap($v,$m):$v;}return$r;}
     private function decodeJson(string $j):array{$d=json_decode(trim($j),true);return is_array($d)?$d:[];}
     private function gatewayPrefixes(array $profile):array{$prefixes=config('api_obfuscation.gateway_prefixes',['gateway']);return array_map(fn($v)=>$this->formatGatewayPrefix((string)$v,$profile),array_values(array_filter($prefixes)));}
