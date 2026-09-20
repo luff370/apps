@@ -131,17 +131,8 @@ class AppApiObfuscationService extends Service
         $p=$this->findProfile((int)($d['app_id']??0),(string)($d['package_name']??'')); if(!$p)return['updated'=>0];
         $updated=0;
         foreach($this->aliasDao->search(['profile_id'=>$p['id']])->orderBy('id')->get() as $row){
-            if(!$this->syncAliasParams((int)$row['id'])) continue;
-            $maps=$this->generateAliasParams(['id'=>(int)$row['id']]);
-            if($maps!==[]){
-                $this->aliasDao->update((int)$row['id'],[
-                    'request_key_map'=>(array)($maps['request_key_map']??[]),
-                    'response_key_map'=>(array)($maps['response_key_map']??[]),
-                ]);
-            }
-            $updated++;
+            if($this->syncAliasParams((int)$row['id'])) $updated++;
         }
-        $this->refreshRouteAliases((int)$p['id']);
         return ['updated'=>$updated];
     }
 
@@ -353,10 +344,10 @@ class AppApiObfuscationService extends Service
     // 导出时带上示例参数和映射表。origin / alias 已经是快照转换后的结果，不再重复输出 snapshot 字段。
     private function formatExportAliasItem(array $row):array{$r=$this->formatAliasRow($row);$reqOrigin=$this->paramsFromAliasRow($row,'request');$resOrigin=$this->paramsFromAliasRow($row,'response');$req=$this->example($reqOrigin);$res=$this->example($resOrigin);$requestMap=(array)($r['request_key_map']??[]);$responseMap=(array)($r['response_key_map']??[]);return ['alias'=>(string)($r['alias']??''),'path'=>(string)($r['path']??''),'method'=>(string)($r['method']??''),'request'=>['origin_params'=>$req,'alias_params'=>$this->applyMap($req,$requestMap),'request_key_map'=>$requestMap],'response'=>['origin'=>$res,'alias'=>$this->applyMap($res,$responseMap),'response_key_map'=>$responseMap]];}
     private function generateMapsForInterface(array $i,string $rule,array $profile=[]):array{return ['request_key_map'=>$this->paramsMap((array)($i['request_params']??[]),$rule,$profile,'request'),'response_key_map'=>$this->paramsMap((array)($i['response_params']??[]),$rule,$profile,'response')];}
-    // 参数别名也按应用身份稳定生成：应用ID + 包名 + 参数作用域 + 原字段名。
-    // 同一应用同一原始参数反复点击“生成别名”结果一致，不同应用会生成各自独立的一套参数别名。
-    private function stableParamsMap(array $params,array $profile,string $scope):array{$map=[];$used=[];$n=0;foreach($this->paramKeysForScope($params,$profile,$scope) as $key){$n++;$alias=$this->stableParamAlias($profile,$scope,$key,$n,$used);$map[$key]=$alias;}return$map;}
-    private function stableParamAlias(array $profile,string $scope,string $key,int $index,array &$used):string{$identity=(string)($profile['app_id']??'').'|'.(string)($profile['package_name']??'').'|'.$scope.'|'.$key.'|'.$index;$try=0;do{$hash=hash('sha256',$identity.'|'.$try);$alias='p'.substr($hash,0,5);$try++;}while(isset($used[$alias])&&$try<20);$used[$alias]=true;return$alias;}
+    // 参数别名按应用身份 + 原字段名稳定生成，不依赖 JSON 字段顺序。
+    // 同一应用同一原始字段反复点击“生成别名”结果一致；前面插入新字段也不会改已有字段的别名。
+    private function stableParamsMap(array $params,array $profile,string $scope):array{$map=[];$used=[];foreach($this->paramKeysForScope($params,$profile,$scope) as $key){$alias=$this->stableParamAlias($profile,$scope,$key,$used);$map[$key]=$alias;}return$map;}
+    private function stableParamAlias(array $profile,string $scope,string $key,array &$used):string{$identity=(string)($profile['app_id']??'').'|'.(string)($profile['package_name']??'').'|'.$scope.'|'.$key;$try=0;do{$hash=hash('sha256',$identity.'|'.$try);$alias='p'.substr($hash,0,5);$try++;}while(isset($used[$alias])&&$try<20);$used[$alias]=true;return$alias;}
     private function paramsMap(array $ps,string $rule,array $profile=[],string $scope='request'):array{$m=[];$n=0;foreach($this->paramKeysForScope($ps,$profile,$scope) as $k){$n++;$m[$k]=$rule==='mix'?$this->alphaNumFromHash($k.$n,5):(($rule==='biz'?'field':substr(preg_replace('/[^a-z0-9]/i','',$k),0,1)).$n);}return$m;}
     private function example(array $ps):array{$r=[];$hasDefinition=false;foreach($ps as $p){if(!is_array($p)||!$this->looksLikeParamDefinition($p))continue;$k=(string)($p['key']??$p['name']??'');if($k!==''){$hasDefinition=true;$r[$k]=$p['example']??'';}}return$hasDefinition?$r:$ps;}
     // 公共 API 参数既可能是标准定义：[{key:"page", type:"int"}]，

@@ -107,6 +107,26 @@ class ApiObfuscationResponseAliasTest extends TestCase
         $this->assertSame(['id', 'name'], $keys);
     }
 
+    public function test_param_alias_is_stable_when_json_field_order_changes(): void
+    {
+        $service = $this->newService();
+        $method = $this->method(AppApiObfuscationService::class, 'stableParamsMap');
+        $profile = ['app_id' => 10002, 'package_name' => 'com.demo.app', 'response_key_map' => ['status' => 's', 'msg' => 'm', 'data' => 'd']];
+
+        $first = $method->invoke($service, [
+            'result' => [['id' => 1, 'name' => 'a', 'price' => 1]],
+        ], $profile, 'response');
+        $reordered = $method->invoke($service, [
+            'result' => [['price' => 1, 'extra' => 'x', 'name' => 'a', 'id' => 1]],
+        ], $profile, 'response');
+
+        $this->assertSame($first['id'], $reordered['id']);
+        $this->assertSame($first['name'], $reordered['name']);
+        $this->assertSame($first['price'], $reordered['price']);
+        $this->assertArrayHasKey('extra', $reordered);
+        $this->assertArrayNotHasKey('extra', $first);
+    }
+
     public function test_list_response_item_fields_are_remapped_in_gateway_response(): void
     {
         $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
