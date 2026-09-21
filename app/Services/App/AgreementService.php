@@ -18,7 +18,7 @@ class AgreementService extends Service
     /**
      * StoreBrandServices constructor.
      */
-    public function __construct(AgreementDao $dao, private AgreementUrlAliasService $agreementUrlAlias)
+    public function __construct(AgreementDao $dao, private AgreementUrlAliasService $agreementUrlAlias, private AppApiObfuscationService $obfuscationService)
     {
         $this->dao = $dao;
     }
@@ -36,13 +36,20 @@ class AgreementService extends Service
     {
         $typesMap = AppAgreement::typesMap();
         $channelsMap = SystemApp::marketChannelsMap();
+        $roots = [];
         foreach ($list as &$item) {
+            $appId = (int) $item['app_id'];
+            $packageName = (string) ($item['app']['package_name'] ?? '');
+            $rootKey = $appId . '|' . $packageName;
+            if (!array_key_exists($rootKey, $roots)) {
+                $roots[$rootKey] = $this->obfuscationService->effectiveApiDomainRoot($appId, $packageName);
+            }
             $item['url'] = $this->agreementUrlAlias->url(
-                (int) $item['app_id'],
-                (string) ($item['app']['package_name'] ?? ''),
+                $appId,
+                $packageName,
                 (string) $item['type'],
                 (string) $item['platform'],
-                $item['app']['merchant']['domain'] ?? null
+                $roots[$rootKey] !== '' ? $roots[$rootKey] : null
             );
             $item['type_name'] = $typesMap[$item['type']] ?? '';
             $item['platform'] = $channelsMap[$item['platform']] ?? '全部';

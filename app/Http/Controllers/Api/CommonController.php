@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\AppVersion;
 use App\Services\App\AppsService;
+use App\Services\App\AppApiObfuscationService;
 use Ramsey\Uuid\Uuid;
 use App\Models\DeviceToken;
 use Illuminate\Http\Request;
@@ -20,16 +21,18 @@ use App\Support\Services\AgreementUrlAliasService;
 
 class CommonController extends Controller
 {
-    public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService, AgreementUrlAliasService $agreementUrlAlias)
+    public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService, AgreementUrlAliasService $agreementUrlAlias, AppApiObfuscationService $obfuscationService)
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);
 
+        $agreementRoot = $obfuscationService->effectiveApiDomainRoot($this->getAppId(), $this->getAppPackageName());
+        $agreementRoot = $agreementRoot !== '' ? $agreementRoot : null;
         // 用户数
         $data['active_users'] = 34099;
         // 用户协议
-        $data['user_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'user', $this->getMarketChannel());
+        $data['user_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'user', $this->getMarketChannel(), $agreementRoot);
         // 隐私政策
-        $data['privacy_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'privacy', $this->getMarketChannel());
+        $data['privacy_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'privacy', $this->getMarketChannel(), $agreementRoot);
         // Google Play 账号删除申请页
         $data['account_deletion'] = url('account-deletion/' . $this->getAppPackageName());
 

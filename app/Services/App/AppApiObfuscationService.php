@@ -29,6 +29,26 @@ class AppApiObfuscationService extends Service
         return ['list'=>$list,'count'=>$count];
     }
 
+    /**
+     * 协议访问链接使用的接口域名根地址。
+     * 优先取该应用 API 混淆配置的接口域名；未配置时按商户接口域名，再按 api.{商户域名} 生成，并补全 https://。
+     */
+    public function effectiveApiDomainRoot(int $appId, string $packageName = ''): string
+    {
+        $app = $this->appWithMerchant($appId);
+        $merchant = (array) ($app['merchant'] ?? []);
+        if ($packageName === '') {
+            $packageName = (string) ($app['package_name'] ?? '');
+        }
+        $profile = $this->findProfile($appId, $packageName);
+        $domain = $this->profileApiDomain($profile ? $profile->toArray() : [], $merchant);
+        if ($domain === '') {
+            $domain = $this->generatedApiDomainFromMerchant($merchant);
+        }
+
+        return $this->exportApiDomain($domain);
+    }
+
     public function getProfile(int $appId = 0, string $packageName = ''): array
     {
         $app = $this->appWithMerchant($appId);
@@ -313,7 +333,19 @@ class AppApiObfuscationService extends Service
         return ($submitted === '' || $submitted === $merchantDefault) ? '' : $submitted;
     }
     private function profileImageDomain(array $profile,array $merchant=[]):string{$image=(array)($profile['image_url']??[]);$domain=(string)($profile['image_domain']??($image['domain']??''));return $domain!==''?$domain:(string)($merchant['image_domain']??'');}
-    private function profileApiDomain(array $profile,array $merchant=[]):string{$domain=(string)($profile['api_domain']??'');return $domain!==''?$domain:(string)($merchant['api_domain']??'');}
+    private function profileApiDomain(array $profile,array $merchant=[]):string{$domain=trim((string)($profile['api_domain']??''));return $domain!==''?$domain:trim((string)($merchant['api_domain']??''));}
+    private function generatedApiDomainFromMerchant(array $merchant): string
+    {
+        $host = trim((string) ($merchant['domain'] ?? ''));
+        $host = preg_replace('#^https?://#i', '', $host) ?? $host;
+        $host = preg_replace('#/.*$#', '', $host) ?? $host;
+        $host = rtrim((string) $host, '/');
+        if ($host === '' || $host === 'api' || str_starts_with($host, 'api.')) {
+            return $host;
+        }
+
+        return 'api.' . $host;
+    }
     private function ensureProfile(int $appId,string $pkg){return $this->findProfile($appId,$pkg)?:$this->dao->save(['app_id'=>$appId,'package_name'=>$pkg,'enabled'=>0,'protocol'=>config('api_obfuscation.profiles.default.protocol',[]),'security'=>config('api_obfuscation.profiles.default.security',[]),'crypto'=>config('api_obfuscation.profiles.default.crypto',[]),'image_url'=>config('api_obfuscation.profiles.default.image_url',[]),'route_aliases'=>[]]);}
     private function refreshRouteAliases(int $pid):void{$this->dao->update($pid,['route_aliases'=>$this->buildRouteAliasesByProfile($pid)]);}
     private function formatAliasRow(array $r):array{$i=$r['api_interface']??[];$r['response_key_map']=$this->effectiveResponseAliasMap($r);return array_merge($r,['interface_name'=>$i['name']??'','module'=>$i['module']??'','path'=>$i['path']??'','method'=>$i['method']??'','request_params'=>$i['request_params']??[],'response_params'=>$i['response_params']??[]]);}
