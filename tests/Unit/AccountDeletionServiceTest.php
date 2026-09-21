@@ -73,24 +73,25 @@ class AccountDeletionServiceTest extends TestCase
 
         $data = app(AccountDeletionService::class)->pageData($app);
 
-        $this->assertSame('NovelVault', $data['app_name']);
+        $this->assertSame('内部应用名', $data['app_name']);
+        $this->assertSame('NovelVault', $data['developer_name']);
+        $this->assertSame('汉润信息技术（深圳）有限公司', $data['company_name']);
         $this->assertSame('novelvault@appasd.com', $data['contact_email']);
-        $this->assertSame('汉润信息技术（深圳）有限公司', $data['developer_name']);
         $this->assertSame('宝安区沙井街道后亭社区第二工业区58号A503', $data['developer_address']);
     }
 
-    public function test_google_channel_app_name_falls_back_to_app_name(): void
+    public function test_google_channel_developer_name_is_empty_without_google_channel(): void
     {
         $app = new SystemApp();
-        $app->name = 'NovelVault';
+        $app->name = '内部应用名';
         $app->package_name = '';
         $app->markets = [
             ['market_channel' => 'huawei', 'name' => '华为渠道名'],
         ];
 
         $this->assertSame(
-            'NovelVault',
-            app(AccountDeletionService::class)->googleChannelAppName($app)
+            '',
+            app(AccountDeletionService::class)->googleChannelDeveloperName($app)
         );
     }
 }

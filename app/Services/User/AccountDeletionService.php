@@ -54,34 +54,32 @@ class AccountDeletionService extends Service
             $contactEmail = (string) ($merchant->contact_email ?? '');
         }
 
+        $developerName = $this->googleChannelDeveloperName($app);
+
         return [
             'app' => $app,
-            'app_name' => $this->googleChannelAppName($app),
+            'app_name' => trim((string) ($app->name ?? '')),
             'contact_email' => $contactEmail,
             'package_name' => (string) ($app->package_name ?? ''),
             'logo' => (string) ($app->logo ?? ''),
-            'developer_name' => $merchant ? trim((string) ($merchant->name ?? '')) : '',
+            'developer_name' => $developerName,
+            'company_name' => $merchant ? trim((string) ($merchant->name ?? '')) : '',
             'developer_address' => $merchant ? trim((string) ($merchant->registered_address ?? '')) : '',
             'developer_phone' => $merchant ? trim((string) ($merchant->corporate_phone ?? '')) : '',
         ];
     }
 
     /**
-     * 删除页展示名优先用版本规划里最新谷歌渠道的上架名称，和 Play 商品详情对齐。
+     * Play 开发者名称取版本规划里最新谷歌渠道的上架名称，不看任务状态。
      */
-    public function googleChannelAppName(SystemApp $app): string
+    public function googleChannelDeveloperName(SystemApp $app): string
     {
         $fromPlan = $this->latestGooglePlanName($app);
         if ($fromPlan !== '') {
             return $fromPlan;
         }
 
-        $fromMarkets = $this->googleNameFromMarkets($app->markets ?? []);
-        if ($fromMarkets !== '') {
-            return $fromMarkets;
-        }
-
-        return trim((string) ($app->name ?? ''));
+        return $this->googleNameFromMarkets($app->markets ?? []);
     }
 
     private function latestGooglePlanName(SystemApp $app): string
@@ -95,23 +93,16 @@ class AccountDeletionService extends Service
             return '';
         }
 
-        $query = AppVersionPlanTask::query()
-            ->select('app_version_plan_tasks.name')
+        $name = AppVersionPlanTask::query()
             ->join('app_version_plans', 'app_version_plans.id', '=', 'app_version_plan_tasks.plan_id')
             ->whereIn('app_version_plans.app_id', $appIds)
             ->where('app_version_plan_tasks.market_channel', 'google')
             ->where('app_version_plan_tasks.name', '!=', '')
             ->orderByRaw('COALESCE(app_version_plan_tasks.listed_at, app_version_plan_tasks.updated_at) DESC')
-            ->orderByDesc('app_version_plan_tasks.id');
+            ->orderByDesc('app_version_plan_tasks.id')
+            ->value('app_version_plan_tasks.name');
 
-        $listed = (clone $query)
-            ->where('app_version_plan_tasks.status', '已上架')
-            ->value('name');
-        if (trim((string) $listed) !== '') {
-            return trim((string) $listed);
-        }
-
-        return trim((string) $query->value('name'));
+        return trim((string) $name);
     }
 
     private function googleNameFromMarkets($markets): string

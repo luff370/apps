@@ -121,24 +121,31 @@
             <div>
                 <h1 data-lang="en">Delete your {{ $app_name }} account</h1>
                 <h1 data-lang="zh">删除 {{ $app_name }} 账号</h1>
-                @if ($developer_name)
-                    <p class="meta" data-lang="en">{{ $app_name }} is developed and operated by {{ $developer_name }}.</p>
-                    <p class="meta" data-lang="zh">{{ $app_name }} 由开发者 {{ $developer_name }} 开发并运营。</p>
+                @if ($developer_name || $company_name)
+                    <p class="meta" data-lang="en">{{ $app_name }} is developed and operated by {{ $developer_name ?: $company_name }}@if ($company_name && $company_name !== $developer_name) ({{ $company_name }})@endif.</p>
+                    <p class="meta" data-lang="zh">{{ $app_name }} 由开发者 {{ $developer_name ?: $company_name }}@if ($company_name && $company_name !== $developer_name)（{{ $company_name }}）@endif 开发并运营。</p>
                 @endif
             </div>
         </div>
     </div>
 
-    @if ($developer_name || $developer_address || $contact_email)
+    @if ($developer_name || $company_name || $developer_address || $contact_email)
     <div class="card" id="developer-info">
         <h2 data-lang="en">Developer information</h2>
         <h2 data-lang="zh">开发者信息</h2>
         <dl>
             @if ($developer_name)
                 <div class="info-row">
-                    <dt data-lang="en">Developer / Company</dt>
-                    <dt data-lang="zh">开发者 / 公司</dt>
+                    <dt data-lang="en">Developer</dt>
+                    <dt data-lang="zh">开发者</dt>
                     <dd>{{ $developer_name }}</dd>
+                </div>
+            @endif
+            @if ($company_name)
+                <div class="info-row">
+                    <dt data-lang="en">Company</dt>
+                    <dt data-lang="zh">公司</dt>
+                    <dd>{{ $company_name }}</dd>
                 </div>
             @endif
             @if ($app_name)
@@ -171,8 +178,8 @@
             @endif
         </dl>
         <p class="muted">
-            <span data-lang="en">This account deletion page is provided by {{ $developer_name ?: $app_name }}, the developer of {{ $app_name }} listed on Google Play.</span>
-            <span data-lang="zh">本账号删除页面由 {{ $app_name }} 在 Google Play 上登记的开发者 {{ $developer_name ?: $app_name }} 提供。</span>
+            <span data-lang="en">This account deletion page is provided by {{ $developer_name ?: $company_name ?: $app_name }}, the Google Play developer of {{ $app_name }}@if ($company_name) ({{ $company_name }})@endif.</span>
+            <span data-lang="zh">本账号删除页面由 Google Play 开发者 {{ $developer_name ?: $company_name ?: $app_name }}@if ($company_name && $company_name !== $developer_name)（{{ $company_name }}）@endif 提供。</span>
         </p>
     </div>
     @endif
@@ -181,14 +188,14 @@
         <h2 data-lang="en">How to request account deletion</h2>
         <h2 data-lang="zh">如何申请删除账号</h2>
         <div data-lang="en">
-            <p>You can request deletion of your {{ $app_name }} account and related personal data from {{ $developer_name ?: $app_name }} in either of the following ways. You do not need to keep the app installed.</p>
+            <p>You can request deletion of your {{ $app_name }} account and related personal data from {{ $developer_name ?: $company_name ?: $app_name }} in either of the following ways. You do not need to keep the app installed.</p>
             <ol>
                 <li><strong>In the app:</strong> open {{ $app_name }} → Me / Settings → Delete account (or Sign out / Cancel account) → confirm. The account is deactivated immediately.</li>
                 <li><strong>On this page:</strong> fill in the form below with the email, login account, or user ID used in {{ $app_name }}, then submit. We process matched requests within 7 days.</li>
             </ol>
         </div>
         <div data-lang="zh">
-            <p>你可以通过以下任一方式向 {{ $developer_name ?: $app_name }} 申请删除 {{ $app_name }} 账号及相关个人数据，无需保持应用已安装。</p>
+            <p>你可以通过以下任一方式向 {{ $developer_name ?: $company_name ?: $app_name }} 申请删除 {{ $app_name }} 账号及相关个人数据，无需保持应用已安装。</p>
             <ol>
                 <li><strong>应用内：</strong>打开 {{ $app_name }} → 我的 / 设置 → 删除账号（或注销账号）→ 确认。账号会立即停用。</li>
                 <li><strong>本页面：</strong>在下方表单填写你在 {{ $app_name }} 使用的邮箱、登录账号或用户 ID 并提交。匹配到的申请将在 7 天内处理。</li>
