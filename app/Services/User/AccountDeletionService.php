@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AccountDeletionService extends Service
 {
+    public const GOOGLE_PLAY_DEVELOPER_NAME = 'NovelVault';
+
     public function __construct(UserDeletionRequestDao $dao)
     {
         $this->dao = $dao;
@@ -54,15 +56,18 @@ class AccountDeletionService extends Service
             $contactEmail = (string) ($merchant->contact_email ?? '');
         }
 
-        $developerName = $this->googleChannelDeveloperName($app);
+        $appName = $this->googleChannelAppName($app);
+        if ($appName === '') {
+            $appName = trim((string) ($app->name ?? ''));
+        }
 
         return [
             'app' => $app,
-            'app_name' => trim((string) ($app->name ?? '')),
+            'app_name' => $appName,
             'contact_email' => $contactEmail,
             'package_name' => (string) ($app->package_name ?? ''),
             'logo' => (string) ($app->logo ?? ''),
-            'developer_name' => $developerName,
+            'developer_name' => self::GOOGLE_PLAY_DEVELOPER_NAME,
             'company_name' => $merchant ? trim((string) ($merchant->name ?? '')) : '',
             'developer_address' => $merchant ? trim((string) ($merchant->registered_address ?? '')) : '',
             'developer_phone' => $merchant ? trim((string) ($merchant->corporate_phone ?? '')) : '',
@@ -70,9 +75,9 @@ class AccountDeletionService extends Service
     }
 
     /**
-     * Play 开发者名称取版本规划里最新谷歌渠道的上架名称，不看任务状态。
+     * 删除页应用名取版本规划里最新谷歌渠道的上架名称，不看任务状态。
      */
-    public function googleChannelDeveloperName(SystemApp $app): string
+    public function googleChannelAppName(SystemApp $app): string
     {
         $fromPlan = $this->latestGooglePlanName($app);
         if ($fromPlan !== '') {

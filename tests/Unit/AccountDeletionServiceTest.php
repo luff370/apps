@@ -61,37 +61,37 @@ class AccountDeletionServiceTest extends TestCase
         $merchant->contact_email = 'novelvault@appasd.com';
 
         $app = new SystemApp();
-        $app->name = '内部应用名';
+        $app->name = '文墨紫微斗数';
         $app->package_name = '';
         $app->logo = '';
         $app->contact_email = '';
         $app->markets = [
             ['market_channel' => 'huawei', 'name' => '华为渠道名'],
-            ['market_channel' => 'google', 'name' => 'NovelVault'],
+            ['market_channel' => 'google', 'name' => '倪师排盘'],
         ];
         $app->setRelation('merchant', $merchant);
 
         $data = app(AccountDeletionService::class)->pageData($app);
 
-        $this->assertSame('内部应用名', $data['app_name']);
+        $this->assertSame('倪师排盘', $data['app_name']);
         $this->assertSame('NovelVault', $data['developer_name']);
         $this->assertSame('汉润信息技术（深圳）有限公司', $data['company_name']);
         $this->assertSame('novelvault@appasd.com', $data['contact_email']);
         $this->assertSame('宝安区沙井街道后亭社区第二工业区58号A503', $data['developer_address']);
     }
 
-    public function test_google_channel_developer_name_is_empty_without_google_channel(): void
+    public function test_app_name_falls_back_to_system_app_name_without_google_channel(): void
     {
         $app = new SystemApp();
-        $app->name = '内部应用名';
+        $app->name = '文墨紫微斗数';
         $app->package_name = '';
         $app->markets = [
             ['market_channel' => 'huawei', 'name' => '华为渠道名'],
         ];
+        $app->setRelation('merchant', null);
 
-        $this->assertSame(
-            '',
-            app(AccountDeletionService::class)->googleChannelDeveloperName($app)
-        );
+        $this->assertSame('', app(AccountDeletionService::class)->googleChannelAppName($app));
+        $this->assertSame('文墨紫微斗数', app(AccountDeletionService::class)->pageData($app)['app_name']);
+        $this->assertSame('NovelVault', app(AccountDeletionService::class)->pageData($app)['developer_name']);
     }
 }
