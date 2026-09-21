@@ -59,6 +59,9 @@ class AccountDeletionService extends Service
             'contact_email' => $contactEmail,
             'package_name' => (string) ($app->package_name ?? ''),
             'logo' => (string) ($app->logo ?? ''),
+            'developer_name' => $merchant ? trim((string) ($merchant->name ?? '')) : '',
+            'developer_address' => $merchant ? trim((string) ($merchant->registered_address ?? '')) : '',
+            'developer_phone' => $merchant ? trim((string) ($merchant->corporate_phone ?? '')) : '',
         ];
     }
 

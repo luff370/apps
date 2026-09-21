@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Models\Merchant;
+use App\Models\SystemApp;
 use App\Models\User;
 use App\Services\User\AccountDeletionService;
 use Tests\TestCase;
@@ -48,5 +50,28 @@ class AccountDeletionServiceTest extends TestCase
         $this->assertNotNull($store);
         $this->assertSame('App\Http\Controllers\Web\AccountDeletionController@store', $store->getAction('controller'));
         $this->assertContains('POST', $store->methods());
+    }
+
+    public function test_page_data_includes_developer_info(): void
+    {
+        $merchant = new Merchant();
+        $merchant->name = '汉润信息技术（深圳）有限公司';
+        $merchant->registered_address = '宝安区沙井街道后亭社区第二工业区58号A503';
+        $merchant->corporate_phone = '';
+        $merchant->contact_email = 'novelvault@appasd.com';
+
+        $app = new SystemApp();
+        $app->name = 'NovelVault';
+        $app->package_name = 'com.example.novelvault';
+        $app->logo = '';
+        $app->contact_email = '';
+        $app->setRelation('merchant', $merchant);
+
+        $data = app(AccountDeletionService::class)->pageData($app);
+
+        $this->assertSame('NovelVault', $data['app_name']);
+        $this->assertSame('novelvault@appasd.com', $data['contact_email']);
+        $this->assertSame('汉润信息技术（深圳）有限公司', $data['developer_name']);
+        $this->assertSame('宝安区沙井街道后亭社区第二工业区58号A503', $data['developer_address']);
     }
 }
