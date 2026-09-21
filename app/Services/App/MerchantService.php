@@ -116,8 +116,8 @@ class MerchantService extends Service
 
         $domain = $this->normalizeDomainHost($data['domain'] ?? '');
         $appDomain = $this->resolveAppDomain($domain, !empty($data['id']));
-        $apiDomain = $this->normalizeDomainHost($data['api_domain'] ?? '') ?: $this->withSubdomain($domain, 'api');
-        $imageDomain = $this->normalizeDomainHost($data['image_domain'] ?? '') ?: $this->withSubdomain($domain, 'img');
+        $apiDomain = $this->withHttps($this->normalizeDomainHost($data['api_domain'] ?? '') ?: $this->withSubdomain($domain, 'api'));
+        $imageDomain = $this->withHttps($this->normalizeDomainHost($data['image_domain'] ?? '') ?: $this->withSubdomain($domain, 'img'));
 
         return [
             'name' => (string)($data['name'] ?? ''),
@@ -264,6 +264,19 @@ class MerchantService extends Service
         }
 
         return $prefix . '.' . $host;
+    }
+
+    private function withHttps(string $domain): string
+    {
+        $domain = trim($domain);
+        if ($domain === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $domain) || str_starts_with($domain, '//')) {
+            return $domain;
+        }
+
+        return 'https://' . $domain;
     }
 
 }
