@@ -61,10 +61,14 @@ class AccountDeletionServiceTest extends TestCase
         $merchant->contact_email = 'novelvault@appasd.com';
 
         $app = new SystemApp();
-        $app->name = 'NovelVault';
-        $app->package_name = 'com.example.novelvault';
+        $app->name = '内部应用名';
+        $app->package_name = '';
         $app->logo = '';
         $app->contact_email = '';
+        $app->markets = [
+            ['market_channel' => 'huawei', 'name' => '华为渠道名'],
+            ['market_channel' => 'google', 'name' => 'NovelVault'],
+        ];
         $app->setRelation('merchant', $merchant);
 
         $data = app(AccountDeletionService::class)->pageData($app);
@@ -73,5 +77,20 @@ class AccountDeletionServiceTest extends TestCase
         $this->assertSame('novelvault@appasd.com', $data['contact_email']);
         $this->assertSame('汉润信息技术（深圳）有限公司', $data['developer_name']);
         $this->assertSame('宝安区沙井街道后亭社区第二工业区58号A503', $data['developer_address']);
+    }
+
+    public function test_google_channel_app_name_falls_back_to_app_name(): void
+    {
+        $app = new SystemApp();
+        $app->name = 'NovelVault';
+        $app->package_name = '';
+        $app->markets = [
+            ['market_channel' => 'huawei', 'name' => '华为渠道名'],
+        ];
+
+        $this->assertSame(
+            'NovelVault',
+            app(AccountDeletionService::class)->googleChannelAppName($app)
+        );
     }
 }

@@ -4,6 +4,7 @@ namespace App\Services\User;
 
 use App\Dao\User\UserDeletionRequestDao;
 use App\Exceptions\AdminException;
+use App\Models\AppVersionPlanTask;
 use App\Models\SystemApp;
 use App\Models\User;
 use App\Models\UserDeletionRequest;
@@ -55,7 +56,7 @@ class AccountDeletionService extends Service
 
         return [
             'app' => $app,
-            'app_name' => (string) $app->name,
+            'app_name' => $this->googleChannelAppName($app),
             'contact_email' => $contactEmail,
             'package_name' => (string) ($app->package_name ?? ''),
             'logo' => (string) ($app->logo ?? ''),
@@ -63,6 +64,73 @@ class AccountDeletionService extends Service
             'developer_address' => $merchant ? trim((string) ($merchant->registered_address ?? '')) : '',
             'developer_phone' => $merchant ? trim((string) ($merchant->corporate_phone ?? '')) : '',
         ];
+    }
+
+    /**
+     * 删除页展示名优先用版本规划里最新谷歌渠道的上架名称，和 Play 商品详情对齐。
+     */
+    public function googleChannelAppName(SystemApp $app): string
+    {
+        $fromPlan = $this->latestGooglePlanName($app);
+        if ($fromPlan !== '') {
+            return $fromPlan;
+        }
+
+        $fromMarkets = $this->googleNameFromMarkets($app->markets ?? []);
+        if ($fromMarkets !== '') {
+            return $fromMarkets;
+        }
+
+        return trim((string) ($app->name ?? ''));
+    }
+
+    private function latestGooglePlanName(SystemApp $app): string
+    {
+        if (!Schema::hasTable('app_version_plan_tasks') || !Schema::hasTable('app_version_plans')) {
+            return '';
+        }
+
+        $appIds = $this->appIdsFor($app);
+        if (!$appIds) {
+            return '';
+        }
+
+        $query = AppVersionPlanTask::query()
+            ->select('app_version_plan_tasks.name')
+            ->join('app_version_plans', 'app_version_plans.id', '=', 'app_version_plan_tasks.plan_id')
+            ->whereIn('app_version_plans.app_id', $appIds)
+            ->where('app_version_plan_tasks.market_channel', 'google')
+            ->where('app_version_plan_tasks.name', '!=', '')
+            ->orderByRaw('COALESCE(app_version_plan_tasks.listed_at, app_version_plan_tasks.updated_at) DESC')
+            ->orderByDesc('app_version_plan_tasks.id');
+
+        $listed = (clone $query)
+            ->where('app_version_plan_tasks.status', '已上架')
+            ->value('name');
+        if (trim((string) $listed) !== '') {
+            return trim((string) $listed);
+        }
+
+        return trim((string) $query->value('name'));
+    }
+
+    private function googleNameFromMarkets($markets): string
+    {
+        foreach (is_array($markets) ? $markets : [] as $market) {
+            if (!is_array($market)) {
+                continue;
+            }
+            if ((string) ($market['market_channel'] ?? '') !== 'google') {
+                continue;
+            }
+
+            $name = trim((string) ($market['name'] ?? ''));
+            if ($name !== '') {
+                return $name;
+            }
+        }
+
+        return '';
     }
 
     public function submit(SystemApp $app, array $input, string $ip = '', string $userAgent = ''): UserDeletionRequest
