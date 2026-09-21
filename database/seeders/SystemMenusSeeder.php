@@ -54,6 +54,22 @@ class SystemMenusSeeder extends Seeder
             if (in_array('admin-cms', $grantedAuth, true) && isset($this->authToId['cms-article-course'])) {
                 $next[] = $this->authToId['cms-article-course'];
             }
+            $riskAuths = [
+                'admin-risk',
+                'admin-risk-overview',
+                'admin-risk-device',
+                'admin-risk-event',
+                'admin-risk-graph',
+                'admin-risk-strategy',
+                'admin-risk-list',
+            ];
+            if (array_intersect($grantedAuth, ['admin-app', 'admin-user', 'admin-index-index'])) {
+                foreach ($riskAuths as $auth) {
+                    if (isset($this->authToId[$auth])) {
+                        $next[] = $this->authToId[$auth];
+                    }
+                }
+            }
             DB::table('system_role')->where('id', $role->id)->update([
                 'rules' => implode(',', array_values(array_unique($next))),
             ]);
@@ -127,10 +143,27 @@ class SystemMenusSeeder extends Seeder
                 ],
             ],
             [
+                'icon' => 'md-warning',
+                'menu_name' => '风控管理',
+                'sort' => 125,
+                'menu_path' => '/admin/risk',
+                'header' => 'risk',
+                'is_header' => 1,
+                'unique_auth' => 'admin-risk',
+                'children' => [
+                    ['menu_name' => '风控概览', 'methods' => 'GET', 'sort' => 6, 'menu_path' => '/admin/risk/overview', 'unique_auth' => 'admin-risk-overview'],
+                    ['menu_name' => '设备画像', 'methods' => 'GET', 'sort' => 5, 'menu_path' => '/admin/risk/device', 'unique_auth' => 'admin-risk-device'],
+                    ['menu_name' => '风险事件', 'methods' => 'GET', 'sort' => 4, 'menu_path' => '/admin/risk/event', 'unique_auth' => 'admin-risk-event'],
+                    ['menu_name' => '关联分析', 'methods' => 'GET', 'sort' => 3, 'menu_path' => '/admin/risk/graph', 'unique_auth' => 'admin-risk-graph'],
+                    ['menu_name' => '策略配置', 'methods' => 'GET', 'sort' => 2, 'menu_path' => '/admin/risk/strategy', 'unique_auth' => 'admin-risk-strategy'],
+                    ['menu_name' => '名单管理', 'methods' => 'GET', 'sort' => 1, 'menu_path' => '/admin/risk/list', 'unique_auth' => 'admin-risk-list'],
+                ],
+            ],
+            [
                 'icon' => 'md-person',
                 'menu_name' => '用户管理',
                 'controller' => 'user.user',
-                'sort' => 125,
+                'sort' => 124,
                 'menu_path' => '/admin/user',
                 'header' => 'user',
                 'is_header' => 1,

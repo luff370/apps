@@ -67,4 +67,5 @@ Route::name('admin.')->middleware([
     require_once base_path("/routes/admin/app.php");
     require_once base_path("/routes/admin/system.php");
     require_once base_path("/routes/admin/user.php");
+    require_once base_path("/routes/admin/risk.php");
 });

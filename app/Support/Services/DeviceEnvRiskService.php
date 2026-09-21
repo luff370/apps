@@ -5,6 +5,7 @@ namespace App\Support\Services;
 use RuntimeException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use App\Services\Risk\RiskListService;
 
 class DeviceEnvRiskService
 {
@@ -324,6 +325,11 @@ class DeviceEnvRiskService
         // 统一返回结构放到 request attributes 中，后续控制器、日志或审计任务都可以复用。
         // status=missing/error 时 probe 为空，score 会自然为 0，不会触发广告降级。
         $decision = $this->score($probe, $meta['validation']['errors'] ?? []);
+        try {
+            $decision = RiskListService::overlayDecision($decision, $probe, $meta);
+        } catch (\Throwable $e) {
+            // 名单表尚未迁移或缓存不可用时，不影响探针评分。
+        }
 
         return array_merge($meta, [
             'status' => $status,
