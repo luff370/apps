@@ -151,8 +151,8 @@ class UserController extends Controller
     public function profile(Request $request)
     {
         $profile = $request->all();
-        $uuid = (string) $this->getUuid();
-        $appId = (int) $this->getAppId();
+        $uuid = (string)$this->getUuid();
+        $appId = (int)$this->getAppId();
         $archiveService = app(UserArchiveService::class);
         $userId = $archiveService->resolveUserId($request, $uuid, $appId);
 
@@ -162,6 +162,7 @@ class UserController extends Controller
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
 
+        logger()->info('保存用户档案', array_merge($request->all(), $profile));
         try {
             $archiveService->saveClientProfile($profile);
         } catch (\Exception $exception) {
