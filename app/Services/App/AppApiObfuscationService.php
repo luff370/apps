@@ -179,6 +179,23 @@ class AppApiObfuscationService extends Service
 
     public function deleteAlias(int $id): void { $r=$this->aliasDao->get($id); if(!$r)return; $pid=(int)$r['profile_id']; $this->aliasDao->delete($id); $this->refreshRouteAliases($pid); }
 
+    public function deleteAliasesByInterfaceId(int $interfaceId): void
+    {
+        if ($interfaceId <= 0) {
+            return;
+        }
+
+        $profileIds = $this->aliasDao->search(['interface_id' => $interfaceId])
+            ->pluck('profile_id')
+            ->unique()
+            ->filter()
+            ->all();
+        $this->aliasDao->search(['interface_id' => $interfaceId])->delete();
+        foreach ($profileIds as $profileId) {
+            $this->refreshRouteAliases((int) $profileId);
+        }
+    }
+
     public function generateAliases(array $d): array
     {
         // URL 别名不再使用 hash4/hex6/restful 等可选规则。

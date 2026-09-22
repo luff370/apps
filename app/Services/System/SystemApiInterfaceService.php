@@ -3,13 +3,25 @@
 namespace App\Services\System;
 
 use App\Dao\System\SystemApiInterfaceDao;
+use App\Services\App\AppApiObfuscationService;
 use App\Services\Service;
 
 class SystemApiInterfaceService extends Service
 {
-    public function __construct(SystemApiInterfaceDao $dao)
-    {
+    public function __construct(
+        SystemApiInterfaceDao $dao,
+        private AppApiObfuscationService $obfuscationService
+    ) {
         $this->dao = $dao;
+    }
+
+    public function delete($id, ?string $key = null)
+    {
+        if (!is_array($id) && ($key === null || $key === 'id') && (int) $id > 0) {
+            $this->obfuscationService->deleteAliasesByInterfaceId((int) $id);
+        }
+
+        return $this->dao->delete($id, $key);
     }
 
     public function saveOrUpdate(array $data): void
