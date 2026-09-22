@@ -156,7 +156,7 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $result = $wrap->invoke($middleware, $response, [
             'response_key_map' => ['status' => 's', 'msg' => 'm', 'data' => 'd'],
             'response_data_key_map' => ['should_not' => 'apply'],
-            'protocol' => [],
+            'protocol' => ['encrypt_response' => true],
         ], $request);
 
         $this->assertSame([
@@ -164,6 +164,31 @@ class ApiObfuscationStableRoutingTest extends TestCase
             'm' => 'ok',
             'd' => ['items' => [], 'tk' => 'abc', 'status' => 1],
         ], $result->getData(true));
+    }
+
+    public function test_response_aliases_are_skipped_when_encrypt_response_is_off(): void
+    {
+        $middleware = (new ReflectionClass(ApiObfuscationMiddleware::class))->newInstanceWithoutConstructor();
+        $wrap = $this->method(ApiObfuscationMiddleware::class, 'wrapJsonResponse');
+
+        $request = Request::create('/api/open/abc12345', 'POST');
+        $request->attributes->set('api_obfuscation_route_alias', [
+            'response_key_map' => ['list' => 'items'],
+        ]);
+
+        $payload = [
+            'status' => 200,
+            'msg' => 'ok',
+            'data' => ['list' => []],
+        ];
+        $response = new JsonResponse($payload);
+
+        $result = $wrap->invoke($middleware, $response, [
+            'response_key_map' => ['status' => 's', 'msg' => 'm', 'data' => 'd'],
+            'protocol' => ['encrypt_response' => false],
+        ], $request);
+
+        $this->assertSame($payload, $result->getData(true));
     }
 
     public function test_route_alias_request_map_is_unmapped_before_controller(): void

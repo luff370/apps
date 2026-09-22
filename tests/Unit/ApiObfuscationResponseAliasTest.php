@@ -148,7 +148,7 @@ class ApiObfuscationResponseAliasTest extends TestCase
 
         $result = $wrap->invoke($middleware, $response, [
             'response_key_map' => ['status' => 's', 'msg' => 'm', 'data' => 'd'],
-            'protocol' => [],
+            'protocol' => ['encrypt_response' => true],
         ], $request);
 
         $this->assertSame([
@@ -181,7 +181,7 @@ class ApiObfuscationResponseAliasTest extends TestCase
 
         $result = $wrap->invoke($middleware, $response, [
             'response_key_map' => ['code' => 's', 'message' => 'm', 'result' => 'd'],
-            'protocol' => [],
+            'protocol' => ['encrypt_response' => true],
         ], $request);
 
         $this->assertSame([
