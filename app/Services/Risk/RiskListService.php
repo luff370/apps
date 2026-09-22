@@ -10,7 +10,6 @@ use App\Services\Service;
 use App\Support\Services\FormBuilder as Form;
 use App\Support\Services\FormOptions;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Schema;
 
 class RiskListService extends Service
 {
@@ -119,10 +118,6 @@ class RiskListService extends Service
 
     public static function match(string $uuid, string $deviceSn, int $appId): ?array
     {
-        if (!Schema::hasTable('risk_lists')) {
-            return null;
-        }
-
         $rows = Cache::remember(self::CACHE_KEY, 60, function () {
             return RiskList::query()
                 ->where('status', 1)
