@@ -162,7 +162,7 @@ class UserController extends Controller
         $profile['version'] = $this->getAppVersion();
         $profile['market_channel'] = $this->getMarketChannel();
 
-        logger()->info('保存用户档案', array_merge($request->all(), $profile));
+        logger()->info('保存用户档案---', array_merge($request->all(), $profile));
         try {
             $archiveService->saveClientProfile($profile);
         } catch (\Exception $exception) {
