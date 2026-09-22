@@ -156,12 +156,13 @@ Route::middleware($deviceEnv)->group(function () {
 
     // 混淆网关入口。旧版 /api/open/{alias} 与新版 /api/open/atlasriver/{alias} 靠路径段数区分，
     // 不使用 {params?}，避免旧路由把 gatewaySuffix 误当成 alias。
+    // 三段前缀也接受 4~32 位别名：历史导出把 hash4 别名拼在新前缀后（如 /api/service/cloudzone/49e8）。
     foreach (config('api_obfuscation.gateway_prefixes', ['gateway']) as $gatewayPrefix) {
         $p = trim($gatewayPrefix, '/');
 
         Route::any("{$p}/{gatewaySuffix}/{alias}", 'ObfuscatedGatewayController@dispatchDynamic')
             ->where('gatewaySuffix', '[a-z]{6,63}')
-            ->where('alias', '[a-z0-9]{8}');
+            ->where('alias', '[a-z0-9]{4,32}');
 
         Route::any("{$p}/{alias}", 'ObfuscatedGatewayController@dispatch')
             ->where('alias', '[a-z0-9]{4,32}');

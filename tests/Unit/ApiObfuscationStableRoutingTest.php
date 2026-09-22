@@ -100,6 +100,19 @@ class ApiObfuscationStableRoutingTest extends TestCase
         $this->assertSame('atlasriver', $route->parameter('gatewaySuffix'));
     }
 
+    public function test_legacy_four_char_alias_matches_new_three_segment_prefix(): void
+    {
+        $request = Request::create('/api/service/cloudzone/49e8', 'POST');
+        $route = app('router')->getRoutes()->match($request);
+
+        $this->assertSame(
+            'App\Http\Controllers\Api\ObfuscatedGatewayController@dispatchDynamic',
+            $route->getAction('controller')
+        );
+        $this->assertSame('49e8', $route->parameter('alias'));
+        $this->assertSame('cloudzone', $route->parameter('gatewaySuffix'));
+    }
+
     public function test_legacy_two_segment_url_matches_dispatch_route(): void
     {
         $request = Request::create('/api/open/abc12345', 'POST');
