@@ -9,6 +9,9 @@ use App\Models\AppApiObfuscationProfile;
 
 class ApiObfuscationProfileResolver
 {
+    /**
+     * 按请求头里的应用身份解析混淆配置：先查库，再回退到 config 里按 app_id / 包名 / default。
+     */
     public function resolve(Request $request): array
     {
         $profiles = config('api_obfuscation.profiles', []);
@@ -33,6 +36,7 @@ class ApiObfuscationProfileResolver
         return $this->normalizeProfile($default);
     }
 
+    /** 与默认配置合并，并套上全局 enabled 开关。 */
     private function normalizeProfile(array $profile): array
     {
         $defaultProfile = config('api_obfuscation.profiles.default', []);
@@ -79,6 +83,10 @@ class ApiObfuscationProfileResolver
         });
     }
 
+    /**
+     * 运行时路由别名：启用中的别名 + 仍存在的公共 API。
+     * 公共接口已删的行会被跳过，不会进网关转发表。
+     */
     private function buildRouteAliases(int $appId, string $packageName): array
     {
         $profileQuery = AppApiObfuscationProfile::query();

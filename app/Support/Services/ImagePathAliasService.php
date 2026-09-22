@@ -13,6 +13,8 @@ namespace App\Support\Services;
 class ImagePathAliasService
 {
     private const ALIAS_LENGTH = 32;
+
+    /** 由应用身份 + 真实路径前缀算出 32 位路径别名。 */
     public function make(int $appId, string $packageName, string $pathPrefix): string
     {
         return $this->stableUrlAlias($this->identity($appId, $packageName, $pathPrefix));
@@ -34,6 +36,7 @@ class ImagePathAliasService
         return $leadingSlash . $alias . ($tail !== '' ? '/' . $tail : '');
     }
 
+    /** identity 用真实前缀，不含日期和文件名。 */
     private function identity(int $appId, string $packageName, string $pathPrefix): string
     {
         $prefix = trim(str_replace('\\', '/', $pathPrefix), '/');

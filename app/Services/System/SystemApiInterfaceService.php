@@ -15,6 +15,9 @@ class SystemApiInterfaceService extends Service
         $this->dao = $dao;
     }
 
+    /**
+     * 删除公共 API 时同步删掉所有应用下的接口别名。
+     */
     public function delete($id, ?string $key = null)
     {
         if (!is_array($id) && ($key === null || $key === 'id') && (int) $id > 0) {

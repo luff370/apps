@@ -11,6 +11,7 @@ class DeviceEnvHeaderAliasService
 {
     public const ORIGIN_HEADER = 'Device-Env';
 
+    /** 该应用客户端应使用的 Device-Env 请求头名。 */
     public function make(int $appId, string $packageName): string
     {
         return $this->stableHeaderAlias($this->identity($appId, $packageName));

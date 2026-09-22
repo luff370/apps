@@ -11,11 +11,13 @@ use App\Models\AppAgreement;
  */
 class AgreementUrlAliasService
 {
+    /** 算出该应用某类协议的 8 位路径别名。 */
     public function make(int $appId, string $packageName, string $type): string
     {
         return $this->stableUrlAlias($this->identity($appId, $packageName, $type));
     }
 
+    /** 拼出可访问的协议 URL：{api_domain}/{alias}/{platform}。 */
     public function url(int $appId, string $packageName, string $type, string $platform, ?string $root = null): string
     {
         $path = $this->make($appId, $packageName, $type) . '/' . trim($platform, '/');
@@ -27,6 +29,7 @@ class AgreementUrlAliasService
         return url($path);
     }
 
+    /** 用别名反查是哪个应用的哪类协议；用于协议页路由。 */
     public function resolve(string $alias): ?array
     {
         $apps = SystemApp::query()->where('is_del', 0)->get(['id', 'package_name']);
@@ -44,6 +47,7 @@ class AgreementUrlAliasService
         return null;
     }
 
+    /** 与接口 URL 别名同一套 identity 形态，path 固定为 agreement/{type}。 */
     private function identity(int $appId, string $packageName, string $type): string
     {
         $type = trim($type, '/');
