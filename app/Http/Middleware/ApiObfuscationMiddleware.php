@@ -37,11 +37,13 @@ class ApiObfuscationMiddleware
             return $decrypted;
         }
 
-        $requestKeyMap = $this->resolveRequestKeyMap($request, $profile);
-        if (!empty($requestKeyMap)) {
-            // 映射表是「真实字段 => 别名」；客户端提交别名，需反查回真实字段。
-            // 直接替换参数袋，不要 merge：否则别名字段还留在 json()/request 里。
-            $this->replaceRequestInput($request, $requestKeyMap);
+        if ($this->protocolFlag($profile, 'encrypt_request')) {
+            $requestKeyMap = $this->resolveRequestKeyMap($request, $profile);
+            if (!empty($requestKeyMap)) {
+                // 映射表是「真实字段 => 别名」；客户端提交别名，需反查回真实字段。
+                // 直接替换参数袋，不要 merge：否则别名字段还留在 json()/request 里。
+                $this->replaceRequestInput($request, $requestKeyMap);
+            }
         }
 
         $response = $next($request);
@@ -62,21 +64,23 @@ class ApiObfuscationMiddleware
         }
 
         $payload = $this->rewriteImageUrls($payload, $profile, $request);
-        $routeAlias = (array) $request->attributes->get('api_obfuscation_route_alias', []);
 
-        // 两层响应映射必须分开：
-        // 1) 接口别名（及历史 response_data_key_map）只改 data 里面的字段；
-        // 2) 应用配置里的 response_key_map 只改外层 status/msg/data。
-        $responseDataKeyMap = $this->responseDataKeyMap($routeAlias, $profile);
-        if (!empty($responseDataKeyMap)) {
-            // 接口别名映射业务字段：data 对象、data 列表、result 列表都走深度 remap。
-            // 外层 status/msg/data 不在这份 map 里，随后由 profile.response_key_map 单独处理。
-            $payload = $this->remapKeys($payload, $responseDataKeyMap, true);
-        }
+        // 字段别名和报文加密共用「响应加密」开关：关闭时保持原始 status/msg/data 及业务字段名。
+        if ($this->protocolFlag($profile, 'encrypt_response')) {
+            $routeAlias = (array) $request->attributes->get('api_obfuscation_route_alias', []);
 
-        $responseKeyMap = (array) ($profile['response_key_map'] ?? []);
-        if (!empty($responseKeyMap)) {
-            $payload = $this->remapKeys($payload, $responseKeyMap, false);
+            // 两层响应映射必须分开：
+            // 1) 接口别名（及历史 response_data_key_map）只改 data 里面的字段；
+            // 2) 应用配置里的 response_key_map 只改外层 status/msg/data。
+            $responseDataKeyMap = $this->responseDataKeyMap($routeAlias, $profile);
+            if (!empty($responseDataKeyMap)) {
+                $payload = $this->remapKeys($payload, $responseDataKeyMap, true);
+            }
+
+            $responseKeyMap = (array) ($profile['response_key_map'] ?? []);
+            if (!empty($responseKeyMap)) {
+                $payload = $this->remapKeys($payload, $responseKeyMap, false);
+            }
         }
 
         $protocol = $profile['protocol'] ?? [];
@@ -383,6 +387,16 @@ class ApiObfuscationMiddleware
         $origin = ($scheme !== '' ? $scheme . ':' : '') . '//' . $host;
 
         return $port ? $origin . ':' . $port : $origin;
+    }
+
+    private function protocolFlag(array $profile, string $flag): bool
+    {
+        $protocol = (array) ($profile['protocol'] ?? []);
+        if (array_key_exists($flag, $protocol)) {
+            return (bool) $protocol[$flag];
+        }
+
+        return (bool) ($profile[$flag] ?? false);
     }
 
     private function responseDataKeyMap(array $routeAlias, array $profile): array

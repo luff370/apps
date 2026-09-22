@@ -38,6 +38,14 @@ class ApiObfuscationProfileResolver
         $defaultProfile = config('api_obfuscation.profiles.default', []);
         $merged = array_replace_recursive($defaultProfile, $profile);
 
+        $protocol = (array) ($merged['protocol'] ?? []);
+        if (array_key_exists('encrypt_request', $merged)) {
+            $protocol['encrypt_request'] = (bool) $merged['encrypt_request'];
+        }
+        if (array_key_exists('encrypt_response', $merged)) {
+            $protocol['encrypt_response'] = (bool) $merged['encrypt_response'];
+        }
+
         return [
             'enabled' => (bool) (config('api_obfuscation.enabled', false) && ($merged['enabled'] ?? false)),
             'app_id' => $merged['app_id'] ?? null,
@@ -46,7 +54,7 @@ class ApiObfuscationProfileResolver
             'request_key_map' => $this->defaultKeyMap($merged['request_key_map'] ?? [], 'request_key_map'),
             'response_key_map' => $this->defaultKeyMap($merged['response_key_map'] ?? [], 'response_key_map'),
             'response_data_key_map' => $merged['response_data_key_map'] ?? [],
-            'protocol' => $merged['protocol'] ?? [],
+            'protocol' => $protocol,
             'security' => $merged['security'] ?? [],
             'crypto' => $merged['crypto'] ?? [],
             'image_url' => $merged['image_url'] ?? [],
