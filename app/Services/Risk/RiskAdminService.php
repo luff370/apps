@@ -592,16 +592,27 @@ class RiskAdminService extends Service
             return collect();
         }
 
-        $latestIds = RiskProbeLog::query()
-            ->where('status', 'ok')
-            ->whereIn('device_identity', $identities)
-            ->selectRaw('MAX(id) as id')
-            ->groupBy('device_identity');
+        $columns = RiskProbeLog::adminListColumns();
+        $columnSql = implode(', ', $columns);
+        $logs = collect();
+        foreach (array_chunk($identities, 50) as $chunk) {
+            $identitySql = implode(' UNION ALL ', array_fill(0, count($chunk), 'SELECT ? AS device_identity'));
+            $rows = DB::select(
+                "SELECT {$columnSql} FROM ({$identitySql}) ids JOIN LATERAL (
+                    SELECT {$columnSql}
+                    FROM risk_probe_logs
+                    WHERE status = 'ok' AND device_identity = ids.device_identity
+                    ORDER BY id DESC
+                    LIMIT 1
+                ) latest ON TRUE",
+                $chunk
+            );
+            foreach ($rows as $row) {
+                $logs->push((new RiskProbeLog())->newFromBuilder($row));
+            }
+        }
 
-        return RiskProbeLog::query()
-            ->whereIn('id', $latestIds)
-            ->get(RiskProbeLog::adminListColumns())
-            ->keyBy(fn ($log) => DeviceEnvRiskView::identityFromLog($log));
+        return $logs->keyBy(fn ($log) => DeviceEnvRiskView::identityFromLog($log));
     }
 
     private function sampleAccountsByIdentity(array $identities, int $limit = 3): array
