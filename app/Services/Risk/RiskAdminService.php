@@ -30,23 +30,26 @@ class RiskAdminService extends Service
             ->whereBetween('created_at', [$todayStart, $todayEnd])
             ->count();
 
-        $multiAccount = (int) User::query()
-            ->select('uuid')
-            ->where('uuid', '!=', '')
-            ->when(!empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
-            ->groupBy('uuid')
-            ->havingRaw('COUNT(*) >= 2')
-            ->get()
-            ->count();
+        $multiAccount = (int) DB::query()->fromSub(
+            User::query()
+                ->select('uuid')
+                ->where('uuid', '!=', '')
+                ->when(!empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
+                ->groupBy('uuid')
+                ->havingRaw('COUNT(*) >= 2'),
+            'multi_accounts'
+        )->count();
 
         $farmSuspect = (int) DB::query()->fromSub($this->farmClusterQuery($filter), 'farms')->count();
 
         $apps = DeviceEnvRiskView::appNameMap();
         $channels = DeviceEnvRiskView::channelMap();
+        $topLogs = $this->topRiskDevices($filter);
+        $accountCounts = $this->accountCountMap($topLogs->map(fn ($log) => DeviceEnvRiskView::identityFromLog($log))->all());
         $topRiskDevices = [];
-        foreach ($this->topRiskDevices($filter) as $log) {
+        foreach ($topLogs as $log) {
             $row = DeviceEnvRiskView::formatLog($log, $apps, $channels);
-            $row['account_count'] = $this->accountCount($row['device_identity'], $row['app_id']);
+            $row['account_count'] = $accountCounts[$row['device_identity']][$row['app_id']] ?? 0;
             $topRiskDevices[] = $row;
         }
 
@@ -129,20 +132,22 @@ class RiskAdminService extends Service
         $count = (clone $query)->count();
         $list = [];
         if ($count > 0) {
-            $rows = (clone $query)->orderByDesc('id')->forPage($page, $limit)->get();
+            $rows = (clone $query)->orderByDesc('id')->forPage($page, $limit)->get(RiskProbeLog::adminListColumns());
             $apps = DeviceEnvRiskView::appNameMap();
             $channels = DeviceEnvRiskView::channelMap();
+            $identities = [];
+            foreach ($rows as $log) {
+                $identity = DeviceEnvRiskView::identityFromLog($log);
+                if ($identity !== '') {
+                    $identities[] = $identity;
+                }
+            }
+            $accountCounts = $this->accountCountMap($identities);
+            $firstSeen = $this->firstSeenMap($identities);
             foreach ($rows as $log) {
                 $item = DeviceEnvRiskView::formatLog($log, $apps, $channels);
-                $item['account_count'] = $this->accountCount($item['device_identity'], $item['app_id']);
-                $item['created_at'] = DeviceEnvRiskView::formatTime(
-                    RiskProbeLog::query()
-                        ->where(function ($q) use ($item) {
-                            $q->where('user_uuid', $item['device_identity'])
-                                ->orWhere('device_sn', $item['device_identity']);
-                        })
-                        ->min('created_at')
-                );
+                $item['account_count'] = $accountCounts[$item['device_identity']][$item['app_id']] ?? 0;
+                $item['created_at'] = DeviceEnvRiskView::formatTime($firstSeen[$item['device_identity']] ?? $log->created_at);
                 $list[] = $item;
             }
         }
@@ -160,10 +165,9 @@ class RiskAdminService extends Service
         $channels = DeviceEnvRiskView::channelMap();
         $detail = DeviceEnvRiskView::formatLog($log, $apps, $channels);
         $identity = $detail['device_identity'];
-        $firstAt = RiskProbeLog::query()
-            ->where(function ($q) use ($identity) {
-                $q->where('user_uuid', $identity)->orWhere('device_sn', $identity);
-            })
+        $firstAt = $identity === '' ? null : RiskProbeLog::query()
+            ->where('status', 'ok')
+            ->where('device_identity', $identity)
             ->min('created_at');
         $detail['created_at'] = DeviceEnvRiskView::formatTime($firstAt);
         $detail['accounts'] = $this->accounts($identity, (int) $detail['app_id']);
@@ -179,14 +183,12 @@ class RiskAdminService extends Service
             'click_sample_count' => $log->click_sample_count,
             'swipe_sample_count' => $log->swipe_sample_count,
         ];
-        $events = RiskProbeLog::query()
+        $events = $identity === '' ? collect() : RiskProbeLog::query()
             ->where('status', 'ok')
-            ->where(function ($q) use ($identity) {
-                $q->where('user_uuid', $identity)->orWhere('device_sn', $identity);
-            })
+            ->where('device_identity', $identity)
             ->orderByDesc('id')
             ->limit(20)
-            ->get();
+            ->get(RiskProbeLog::adminListColumns());
         $detail['recent_events'] = [];
         foreach ($events as $event) {
             $row = DeviceEnvRiskView::formatLog($event, $apps, $channels);
@@ -295,13 +297,21 @@ class RiskAdminService extends Service
         if ($count > 0) {
             $apps = DeviceEnvRiskView::appNameMap();
             $channels = DeviceEnvRiskView::channelMap();
-            $rows = (clone $query)->orderByDesc('id')->forPage($page, $limit)->get();
+            $rows = (clone $query)->orderByDesc('id')->forPage($page, $limit)->get(RiskProbeLog::adminListColumns());
+            $items = [];
             foreach ($rows as $log) {
-                $item = DeviceEnvRiskView::formatLog($log, $apps, $channels);
-                $user = User::query()->where('uuid', $item['device_identity'])->orderByDesc('id')->first(['id']);
-                $item['user_id'] = (int) ($user->id ?? 0);
-                $list[] = $item;
+                $items[] = DeviceEnvRiskView::formatLog($log, $apps, $channels);
             }
+            $userIds = User::query()
+                ->select('uuid', DB::raw('MAX(id) as user_id'))
+                ->whereIn('uuid', array_values(array_filter(array_column($items, 'device_identity'))))
+                ->groupBy('uuid')
+                ->pluck('user_id', 'uuid');
+            foreach ($items as &$item) {
+                $item['user_id'] = (int) ($userIds[$item['device_identity']] ?? 0);
+            }
+            unset($item);
+            $list = $items;
         }
 
         return compact('list', 'count');
@@ -330,8 +340,9 @@ class RiskAdminService extends Service
     private function multiAccountClusters(array $filter, string $keyword): array
     {
         $apps = DeviceEnvRiskView::appNameMap();
+        $channels = DeviceEnvRiskView::channelMap();
         $rows = User::query()
-            ->select('uuid', DB::raw('COUNT(*) as account_count'), DB::raw('MAX(id) as last_user_id'))
+            ->select('uuid', DB::raw('COUNT(*) as account_count'))
             ->where('uuid', '!=', '')
             ->when(!empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
             ->groupBy('uuid')
@@ -340,15 +351,17 @@ class RiskAdminService extends Service
             ->limit(200)
             ->get();
 
+        $uuids = $rows->pluck('uuid')->all();
+        $logs = $this->latestLogsByIdentity($uuids);
+        $samples = $this->sampleAccountsByIdentity($uuids);
         $clusters = [];
         foreach ($rows as $row) {
-            $log = $this->findDeviceLog($row->uuid);
+            $log = $logs->get($row->uuid);
             if (!$log) {
                 continue;
             }
-            $formatted = DeviceEnvRiskView::formatLog($log, $apps, DeviceEnvRiskView::channelMap());
-            $accounts = $this->accounts($row->uuid, (int) $formatted['app_id']);
-            $sample = array_slice(array_column($accounts, 'account'), 0, 3);
+            $formatted = DeviceEnvRiskView::formatLog($log, $apps, $channels);
+            $sample = array_slice($samples[$row->uuid] ?? [], 0, 3);
             $blob = strtolower($formatted['device_identity'] . ' ' . $formatted['hardware_hash'] . ' ' . implode(' ', $sample));
             if ($keyword !== '' && !str_contains($blob, $keyword)) {
                 continue;
@@ -393,13 +406,23 @@ class RiskAdminService extends Service
                 ->get(RiskProbeLog::adminListColumns())
                 ->keyBy('id');
 
+        $identities = [];
+        foreach ($logs as $log) {
+            $identity = DeviceEnvRiskView::identityFromLog($log);
+            if ($identity !== '') {
+                $identities[] = $identity;
+            }
+        }
+        $samples = $this->sampleAccountsByIdentity($identities);
+        $accountCounts = $this->accountCountMap($identities);
+
         $clusters = [];
         foreach ($groups as $group) {
             $ip = $group->client_ip;
             $log = $logs->get((int) $group->last_id);
             $formatted = $log ? DeviceEnvRiskView::formatLog($log, $apps, $channels) : null;
             $identity = $formatted['device_identity'] ?? '';
-            $accounts = $identity !== '' ? array_column($this->accounts($identity, (int) ($formatted['app_id'] ?? 0)), 'account') : [];
+            $accounts = $identity !== '' ? ($samples[$identity] ?? []) : [];
             $sample = array_values(array_unique(array_slice($accounts, 0, 3)));
             $hardware = $formatted['hardware_hash'] ?? '';
             $blob = strtolower($ip . ' ' . $hardware . ' ' . implode(' ', $sample));
@@ -412,7 +435,7 @@ class RiskAdminService extends Service
                 'title' => '疑似设备农场',
                 'device_identity' => '',
                 'device_id' => 0,
-                'account_count' => count($accounts),
+                'account_count' => $identity === '' ? 0 : ($accountCounts[$identity][(int) ($formatted['app_id'] ?? 0)] ?? 0),
                 'device_count' => (int) $group->device_count,
                 'risk_score' => (int) ($group->max_score ?? ($formatted['risk_score'] ?? 0)),
                 'hardware_hash' => $hardware ?: (string) $ip,
@@ -465,14 +488,17 @@ class RiskAdminService extends Service
             if ($item['device_identity'] === $identity || isset($seen[$item['device_identity']])) {
                 continue;
             }
-            $seen[$item['device_identity']] = true;
-            $item['similarity'] = 80;
-            $item['relation'] = '同出口 IP';
-            $item['account_count'] = $this->accountCount($item['device_identity'], $item['app_id']);
-            $similar[] = $item;
-            if (count($similar) >= 8) {
+            $seen[$item['device_identity']] = $item;
+            if (count($seen) >= 8) {
                 break;
             }
+        }
+        $accountCounts = $this->accountCountMap(array_keys($seen));
+        foreach ($seen as $item) {
+            $item['similarity'] = 80;
+            $item['relation'] = '同出口 IP';
+            $item['account_count'] = $accountCounts[$item['device_identity']][$item['app_id']] ?? 0;
+            $similar[] = $item;
         }
 
         return $similar;
@@ -490,9 +516,7 @@ class RiskAdminService extends Service
 
         return RiskProbeLog::query()
             ->where('status', 'ok')
-            ->where(function ($q) use ($key) {
-                $q->where('user_uuid', $key)->orWhere('device_sn', $key);
-            })
+            ->where('device_identity', $key)
             ->orderByDesc('id')
             ->first();
     }
@@ -524,17 +548,81 @@ class RiskAdminService extends Service
         return $list;
     }
 
-    private function accountCount(string $identity, int $appId = 0): int
+    private function accountCountMap(array $identities): array
     {
-        if ($identity === '') {
-            return 0;
-        }
-        $query = User::query()->where('uuid', $identity)->where('is_del', 0);
-        if ($appId) {
-            $query->where('app_id', $appId);
+        $identities = array_values(array_unique(array_filter($identities)));
+        if ($identities === []) {
+            return [];
         }
 
-        return $query->count();
+        $map = [];
+        $rows = User::query()
+            ->select('uuid', 'app_id', DB::raw('COUNT(*) as account_count'))
+            ->whereIn('uuid', $identities)
+            ->where('is_del', 0)
+            ->groupBy('uuid', 'app_id')
+            ->get();
+        foreach ($rows as $row) {
+            $map[$row->uuid][(int) $row->app_id] = (int) $row->account_count;
+        }
+
+        return $map;
+    }
+
+    private function firstSeenMap(array $identities): array
+    {
+        $identities = array_values(array_unique(array_filter($identities)));
+        if ($identities === []) {
+            return [];
+        }
+
+        return RiskProbeLog::query()
+            ->where('status', 'ok')
+            ->whereIn('device_identity', $identities)
+            ->select('device_identity', DB::raw('MIN(created_at) as first_at'))
+            ->groupBy('device_identity')
+            ->pluck('first_at', 'device_identity')
+            ->all();
+    }
+
+    private function latestLogsByIdentity(array $identities)
+    {
+        $identities = array_values(array_unique(array_filter($identities)));
+        if ($identities === []) {
+            return collect();
+        }
+
+        $latestIds = RiskProbeLog::query()
+            ->where('status', 'ok')
+            ->whereIn('device_identity', $identities)
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('device_identity');
+
+        return RiskProbeLog::query()
+            ->whereIn('id', $latestIds)
+            ->get(RiskProbeLog::adminListColumns())
+            ->keyBy(fn ($log) => DeviceEnvRiskView::identityFromLog($log));
+    }
+
+    private function sampleAccountsByIdentity(array $identities, int $limit = 3): array
+    {
+        $identities = array_values(array_unique(array_filter($identities)));
+        if ($identities === []) {
+            return [];
+        }
+
+        $ranked = User::query()
+            ->select('uuid', 'account')
+            ->selectRaw('ROW_NUMBER() OVER (PARTITION BY uuid ORDER BY id DESC) as rn')
+            ->whereIn('uuid', $identities)
+            ->where('is_del', 0);
+        $rows = DB::query()->fromSub($ranked, 'ranked_accounts')->where('rn', '<=', $limit)->get();
+        $map = [];
+        foreach ($rows as $row) {
+            $map[$row->uuid][] = $row->account;
+        }
+
+        return $map;
     }
 
     private function trend(array $filter): array

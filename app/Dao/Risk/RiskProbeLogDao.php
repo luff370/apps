@@ -4,6 +4,7 @@ namespace App\Dao\Risk;
 
 use App\Dao\BaseDao;
 use App\Models\RiskProbeLog;
+use App\Support\Services\DeviceEnvRiskView;
 use Illuminate\Database\Eloquent\Builder;
 
 class RiskProbeLogDao extends BaseDao
