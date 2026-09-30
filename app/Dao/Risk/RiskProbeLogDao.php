@@ -4,7 +4,6 @@ namespace App\Dao\Risk;
 
 use App\Dao\BaseDao;
 use App\Models\RiskProbeLog;
-use App\Support\Services\DeviceEnvRiskView;
 use Illuminate\Database\Eloquent\Builder;
 
 class RiskProbeLogDao extends BaseDao
@@ -63,15 +62,18 @@ class RiskProbeLogDao extends BaseDao
         return $query;
     }
 
+    public function latestDeviceIds(array $where = []): Builder
+    {
+        return $this->search($where)
+            ->whereNotNull('device_identity')
+            ->where('device_identity', '!=', '')
+            ->selectRaw('MAX(id) as id')
+            ->groupBy('device_identity');
+    }
+
     public function latestDeviceQuery(array $where = []): Builder
     {
-        $identity = DeviceEnvRiskView::IDENTITY_SQL;
-        $latest = $this->search($where)
-            ->selectRaw('MAX(id) as id')
-            ->whereRaw($identity . ' IS NOT NULL')
-            ->groupByRaw($identity);
-
-        return $this->newQuery()->whereIn('id', $latest);
+        return $this->newQuery()->whereIn('id', $this->latestDeviceIds($where));
     }
 
     private function scopeDecision(Builder $query, string $decision): void

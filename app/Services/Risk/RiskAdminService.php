@@ -18,15 +18,10 @@ class RiskAdminService extends Service
 
     public function overview(array $filter): array
     {
-        $base = $this->dao->search($filter);
-        $identity = DeviceEnvRiskView::IDENTITY_SQL;
         $todayStart = today()->startOfDay()->toDateTimeString();
         $todayEnd = today()->endOfDay()->toDateTimeString();
+        $stats = $this->deviceSnapshotStats($filter);
 
-        $deviceTotal = (int) (clone $base)->whereRaw($identity . ' IS NOT NULL')
-            ->selectRaw('COUNT(DISTINCT ' . $identity . ') as aggregate')
-            ->value('aggregate');
-        $highRisk = (clone $this->dao->latestDeviceQuery($filter))->where('risk_score', '>=', 70)->count();
         $blockedToday = (clone $this->dao->search($filter))
             ->whereBetween('created_at', [$todayStart, $todayEnd])
             ->where('compliance_mode', 1)
@@ -44,29 +39,12 @@ class RiskAdminService extends Service
             ->get()
             ->count();
 
-        $farmSuspect = $this->farmClusterQuery($filter)->get()->count();
-
-        $latest = $this->dao->latestDeviceQuery($filter);
-        $scoreDistribution = [
-            ['level' => 'normal', 'label' => '正常 0-30', 'count' => (clone $latest)->where('risk_score', '<', 30)->count()],
-            ['level' => 'watch', 'label' => '观察 30-70', 'count' => (clone $latest)->where('risk_score', '>=', 30)->where('risk_score', '<', 70)->count()],
-            ['level' => 'high', 'label' => '高风险 70-90', 'count' => (clone $latest)->where('risk_score', '>=', 70)->where('risk_score', '<', 90)->count()],
-            ['level' => 'critical', 'label' => '严重 90-100', 'count' => (clone $latest)->where('risk_score', '>=', 90)->count()],
-        ];
-
-        $decisionBase = $this->dao->latestDeviceQuery($filter);
-        $decisionDistribution = [
-            ['decision' => 'pass', 'count' => (clone $decisionBase)->where('compliance_mode', 0)->where('ad_switch', 1)->where('risk_score', '<', 30)->count()],
-            ['decision' => 'verify', 'count' => (clone $decisionBase)->where('compliance_mode', 0)->where('ad_switch', 1)->where('risk_score', '>=', 30)->count()],
-            ['decision' => 'limit', 'count' => (clone $decisionBase)->where('compliance_mode', 0)->where('ad_switch', 0)->count()],
-            ['decision' => 'block', 'count' => (clone $decisionBase)->where('compliance_mode', 1)->count()],
-        ];
+        $farmSuspect = (int) DB::query()->fromSub($this->farmClusterQuery($filter), 'farms')->count();
 
         $apps = DeviceEnvRiskView::appNameMap();
         $channels = DeviceEnvRiskView::channelMap();
-        $topLogs = $this->dao->latestDeviceQuery($filter)->orderByDesc('risk_score')->orderByDesc('id')->limit(8)->get();
         $topRiskDevices = [];
-        foreach ($topLogs as $log) {
+        foreach ($this->topRiskDevices($filter) as $log) {
             $row = DeviceEnvRiskView::formatLog($log, $apps, $channels);
             $row['account_count'] = $this->accountCount($row['device_identity'], $row['app_id']);
             $topRiskDevices[] = $row;
@@ -74,18 +52,74 @@ class RiskAdminService extends Service
 
         return [
             'summary' => [
-                'device_total' => $deviceTotal,
-                'high_risk' => $highRisk,
+                'device_total' => (int) $stats->device_total,
+                'high_risk' => (int) $stats->high_risk,
                 'blocked_today' => $blockedToday,
                 'farm_suspect' => $farmSuspect,
                 'multi_account' => $multiAccount,
                 'event_today' => $eventToday,
             ],
-            'score_distribution' => $scoreDistribution,
-            'decision_distribution' => $decisionDistribution,
+            'score_distribution' => [
+                ['level' => 'normal', 'label' => '正常 0-30', 'count' => (int) $stats->score_normal],
+                ['level' => 'watch', 'label' => '观察 30-70', 'count' => (int) $stats->score_watch],
+                ['level' => 'high', 'label' => '高风险 70-90', 'count' => (int) $stats->score_high],
+                ['level' => 'critical', 'label' => '严重 90-100', 'count' => (int) $stats->score_critical],
+            ],
+            'decision_distribution' => [
+                ['decision' => 'pass', 'count' => (int) $stats->decision_pass],
+                ['decision' => 'verify', 'count' => (int) $stats->decision_verify],
+                ['decision' => 'limit', 'count' => (int) $stats->decision_limit],
+                ['decision' => 'block', 'count' => (int) $stats->decision_block],
+            ],
             'top_risk_devices' => $topRiskDevices,
             'trend' => $this->trend($filter),
         ];
+    }
+
+    /**
+     * 每台设备只取最新一条，分数分布和决策分布一次算完。
+     */
+    private function deviceSnapshotStats(array $filter): object
+    {
+        $table = (new RiskProbeLog())->getTable();
+        $stats = RiskProbeLog::query()
+            ->joinSub($this->dao->latestDeviceIds($filter), 'latest_device', 'latest_device.id', '=', $table . '.id')
+            ->selectRaw('COUNT(*) as device_total')
+            ->selectRaw('SUM(' . $table . '.risk_score >= 70) as high_risk')
+            ->selectRaw('SUM(' . $table . '.risk_score < 30) as score_normal')
+            ->selectRaw('SUM(' . $table . '.risk_score >= 30 AND ' . $table . '.risk_score < 70) as score_watch')
+            ->selectRaw('SUM(' . $table . '.risk_score >= 70 AND ' . $table . '.risk_score < 90) as score_high')
+            ->selectRaw('SUM(' . $table . '.risk_score >= 90) as score_critical')
+            ->selectRaw('SUM(' . $table . '.compliance_mode = 0 AND ' . $table . '.ad_switch = 1 AND ' . $table . '.risk_score < 30) as decision_pass')
+            ->selectRaw('SUM(' . $table . '.compliance_mode = 0 AND ' . $table . '.ad_switch = 1 AND ' . $table . '.risk_score >= 30) as decision_verify')
+            ->selectRaw('SUM(' . $table . '.compliance_mode = 0 AND ' . $table . '.ad_switch = 0) as decision_limit')
+            ->selectRaw('SUM(' . $table . '.compliance_mode = 1) as decision_block')
+            ->first();
+
+        return $stats ?: (object) [
+            'device_total' => 0,
+            'high_risk' => 0,
+            'score_normal' => 0,
+            'score_watch' => 0,
+            'score_high' => 0,
+            'score_critical' => 0,
+            'decision_pass' => 0,
+            'decision_verify' => 0,
+            'decision_limit' => 0,
+            'decision_block' => 0,
+        ];
+    }
+
+    private function topRiskDevices(array $filter)
+    {
+        $table = (new RiskProbeLog())->getTable();
+
+        return RiskProbeLog::query()
+            ->joinSub($this->dao->latestDeviceIds($filter), 'latest_device', 'latest_device.id', '=', $table . '.id')
+            ->orderByDesc($table . '.risk_score')
+            ->orderByDesc($table . '.id')
+            ->limit(8)
+            ->get(array_map(fn ($column) => $table . '.' . $column, RiskProbeLog::adminListColumns()));
     }
 
     public function deviceList(array $filter): array
@@ -392,20 +426,20 @@ class RiskAdminService extends Service
 
     private function farmClusterQuery(array $filter)
     {
-        $identity = DeviceEnvRiskView::IDENTITY_SQL;
         $query = $this->dao->search($filter)
             ->whereNotNull('client_ip')
             ->where('client_ip', '!=', '')
-            ->whereRaw($identity . ' IS NOT NULL');
+            ->whereNotNull('device_identity')
+            ->where('device_identity', '!=', '');
 
         if (empty($filter['time'])) {
             $query->where('created_at', '>=', now()->subDays(7)->startOfDay()->toDateTimeString());
         }
 
         return $query
-            ->select('client_ip', DB::raw('COUNT(DISTINCT ' . $identity . ') as device_count'))
+            ->select('client_ip', DB::raw('COUNT(DISTINCT device_identity) as device_count'))
             ->groupBy('client_ip')
-            ->havingRaw('COUNT(DISTINCT ' . $identity . ') >= 3');
+            ->havingRaw('COUNT(DISTINCT device_identity) >= 3');
     }
 
     private function similarDevices(RiskProbeLog $log, array $apps, array $channels): array
@@ -505,20 +539,26 @@ class RiskAdminService extends Service
 
     private function trend(array $filter): array
     {
+        $start = today()->subDays(6)->startOfDay();
+        $end = today()->endOfDay();
+        $rows = $this->dao->search($filter)
+            ->whereBetween('created_at', [$start->toDateTimeString(), $end->toDateTimeString()])
+            ->selectRaw('DATE(created_at) as day')
+            ->selectRaw('COUNT(DISTINCT CASE WHEN risk_score >= 70 THEN device_identity END) as high_risk')
+            ->selectRaw('SUM(compliance_mode = 1) as blocked')
+            ->groupByRaw('DATE(created_at)')
+            ->get()
+            ->keyBy(fn ($row) => (string) $row->day);
+
         $dates = [];
         $highRisk = [];
         $blocked = [];
-        $identity = DeviceEnvRiskView::IDENTITY_SQL;
         for ($i = 6; $i >= 0; $i--) {
-            $day = today()->subDays($i);
-            $start = $day->copy()->startOfDay()->toDateTimeString();
-            $end = $day->copy()->endOfDay()->toDateTimeString();
-            $dates[] = $day->format('m-d');
-            $dayQuery = $this->dao->search($filter)->whereBetween('created_at', [$start, $end]);
-            $highRisk[] = (int) (clone $dayQuery)->where('risk_score', '>=', 70)
-                ->selectRaw('COUNT(DISTINCT ' . $identity . ') as aggregate')
-                ->value('aggregate');
-            $blocked[] = (clone $dayQuery)->where('compliance_mode', 1)->count();
+            $day = today()->subDays($i)->toDateString();
+            $row = $rows->get($day);
+            $dates[] = today()->subDays($i)->format('m-d');
+            $highRisk[] = (int) ($row->high_risk ?? 0);
+            $blocked[] = (int) ($row->blocked ?? 0);
         }
 
         return [
