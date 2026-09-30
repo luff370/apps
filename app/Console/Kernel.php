@@ -24,6 +24,9 @@ class Kernel extends ConsoleKernel
         // 每天1:30执行违章举报图片删除操作
         $schedule->command('app:traffic-images-delete')->dailyAt('01:30');
 
+        // 凌晨分批清理过期探针，单次限时，不和白天的写入抢锁
+        $schedule->command('app:risk-probe-logs-prune')->dailyAt('03:00')->withoutOverlapping(60);
+
         // 每天6:00-24:00 每两小时执行违章举报内容重新排序操作
         $schedule->command('app:traffic-violation-generate-sort')->between('06:00', '00:00')->everyTwoHours();
 

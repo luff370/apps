@@ -35,6 +35,9 @@ return [
         'audit_enabled' => (bool) env('DEVICE_ENV_AUDIT_ENABLED', true),
         'ad_block_score_threshold' => (int) env('DEVICE_ENV_AD_BLOCK_SCORE', 40),
         'compliance_score_threshold' => (int) env('DEVICE_ENV_COMPLIANCE_SCORE', 60),
+        // 0 分且未关广告的探针保留天数；有风险信号或解密失败的保留更久。
+        'retention_normal_days' => (int) env('DEVICE_ENV_RETENTION_NORMAL_DAYS', 30),
+        'retention_risk_days' => (int) env('DEVICE_ENV_RETENTION_RISK_DAYS', 90),
     ],
 
     /*
