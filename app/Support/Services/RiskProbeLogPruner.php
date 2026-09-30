@@ -12,23 +12,40 @@ class RiskProbeLogPruner
 {
     private bool $stoppedEarly = false;
 
-    public function prune(int $normalDays, int $riskDays, int $batch = 500, int $sleepMs = 200, int $maxSeconds = 600): array
+    private bool $failed = false;
+
+    public function prune(int $normalDays, int $riskDays, int $batch = 500, int $sleepMs = 200, int $maxSeconds = 3600): array
     {
         $this->stoppedEarly = false;
+        $this->failed = false;
         $deadline = microtime(true) + max(1, $maxSeconds);
-        $riskDeleted = $this->deleteOlderThan(now()->subDays($riskDays)->toDateTimeString(), false, $batch, $sleepMs, $deadline);
-        $normalDeleted = $this->deleteOlderThan(now()->subDays($normalDays)->toDateTimeString(), true, $batch, $sleepMs, $deadline);
+        logger()->info('探针日志清理开始', [
+            'normal_days' => $normalDays,
+            'risk_days' => $riskDays,
+            'batch' => $batch,
+        ]);
 
-        return [
+        $riskDeleted = $this->deleteOlderThan('有风险/解密失败', now()->subDays($riskDays)->toDateTimeString(), false, $batch, $sleepMs, $deadline);
+        $normalDeleted = $this->deleteOlderThan('无风险', now()->subDays($normalDays)->toDateTimeString(), true, $batch, $sleepMs, $deadline);
+
+        $result = [
             'risk_deleted' => $riskDeleted,
             'normal_deleted' => $normalDeleted,
-            'finished' => !$this->stoppedEarly,
+            'finished' => !$this->stoppedEarly && !$this->failed,
+            'failed' => $this->failed,
         ];
+        if ($this->failed) {
+            logger()->error('探针日志清理失败', $result);
+        } else {
+            logger()->info('探针日志清理完成', $result);
+        }
+
+        return $result;
     }
 
-    private function deleteOlderThan(string $before, bool $quietOnly, int $batch, int $sleepMs, float $deadline): int
+    private function deleteOlderThan(string $label, string $before, bool $quietOnly, int $batch, int $sleepMs, float $deadline): int
     {
-        if ($this->stoppedEarly) {
+        if ($this->stoppedEarly || $this->failed) {
             return 0;
         }
 
@@ -40,13 +57,50 @@ class RiskProbeLogPruner
             while (true) {
                 if (microtime(true) >= $deadline) {
                     $this->stoppedEarly = true;
+                    logger()->info('探针日志清理达到本次时限', [
+                        'label' => $label,
+                        'status' => $status,
+                        'deleted' => $deleted,
+                    ]);
                     break 2;
                 }
-                $ids = $this->nextIds($status, $before, $quietOnly, $batch);
+                try {
+                    $ids = $this->nextIds($status, $before, $quietOnly, $batch);
+                } catch (\Throwable $e) {
+                    $this->failed = true;
+                    logger()->error('探针日志清理查询失败', [
+                        'label' => $label,
+                        'status' => $status,
+                        'before' => $before,
+                        'error' => $e->getMessage(),
+                    ]);
+                    break 2;
+                }
                 if ($ids === []) {
                     break;
                 }
-                $deleted += DB::table('risk_probe_logs')->whereIn('id', $ids)->delete();
+                try {
+                    $count = DB::table('risk_probe_logs')->whereIn('id', $ids)->delete();
+                } catch (\Throwable $e) {
+                    $this->failed = true;
+                    logger()->error('探针日志清理删除失败', [
+                        'label' => $label,
+                        'status' => $status,
+                        'before' => $before,
+                        'id_from' => $ids[0],
+                        'id_to' => $ids[count($ids) - 1],
+                        'batch' => count($ids),
+                        'error' => $e->getMessage(),
+                    ]);
+                    break 2;
+                }
+                $deleted += $count;
+                logger()->info('探针日志清理删除成功', [
+                    'label' => $label,
+                    'status' => $status,
+                    'deleted' => $count,
+                    'total' => $deleted,
+                ]);
                 if ($sleepMs > 0) {
                     usleep($sleepMs * 1000);
                 }

@@ -12,7 +12,7 @@ class PruneRiskProbeLogs extends Command
         {--risk-days= : 有风险或解密失败记录保留天数}
         {--batch=500 : 每批删除条数}
         {--sleep-ms=200 : 每批之间的间隔毫秒}
-        {--max-seconds=600 : 单次最长运行秒数，未删完的留给下次}';
+        {--max-seconds=3600 : 单次最长运行秒数，未删完的留给下次}';
 
     protected $description = '分批清理过期的设备环境探针日志';
 
@@ -34,12 +34,18 @@ class PruneRiskProbeLogs extends Command
             max(1, (int) $this->option('max-seconds')),
         );
 
-        $this->info(sprintf(
+        $message = sprintf(
             '探针清理结束：无风险 %d 条，有风险/失败 %d 条%s',
             $result['normal_deleted'],
             $result['risk_deleted'],
-            $result['finished'] ? '' : '，已达本次时限，剩余留给下次'
-        ));
+            $result['failed'] ? '，删除失败已中止' : ($result['finished'] ? '' : '，已达本次时限，剩余留给下次')
+        );
+        if ($result['failed']) {
+            $this->error($message);
+
+            return self::FAILURE;
+        }
+        $this->info($message);
 
         return self::SUCCESS;
     }
