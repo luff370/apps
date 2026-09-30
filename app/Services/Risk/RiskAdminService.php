@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\DB;
 
 class RiskAdminService extends Service
 {
+    /** @var array<int, object>|null */
+    private ?array $fullDeviceSnapshot = null;
+
     public function __construct(RiskProbeLogDao $dao)
     {
         $this->dao = $dao;
@@ -22,7 +25,7 @@ class RiskAdminService extends Service
         $todayEnd = today()->endOfDay()->toDateTimeString();
         $stats = $this->deviceSnapshotStats($filter);
 
-        $blockedToday = (clone $this->dao->search($filter))
+        $blockedToday = $this->useFarmIndex($this->dao->search($filter))
             ->whereBetween('created_at', [$todayStart, $todayEnd])
             ->where('compliance_mode', 1)
             ->count();
@@ -84,6 +87,10 @@ class RiskAdminService extends Service
      */
     private function deviceSnapshotStats(array $filter): object
     {
+        if ($this->usesFullDeviceSnapshot($filter)) {
+            return $this->statsFromFullSnapshot();
+        }
+
         $table = (new RiskProbeLog())->getTable();
         $stats = RiskProbeLog::query()
             ->joinSub($this->dao->latestDeviceIds($filter), 'latest_device', 'latest_device.id', '=', $table . '.id')
@@ -99,7 +106,108 @@ class RiskAdminService extends Service
             ->selectRaw('SUM(' . $table . '.compliance_mode = 1) as decision_block')
             ->first();
 
-        return $stats ?: (object) [
+        return $stats ?: $this->emptySnapshotStats();
+    }
+
+    private function topRiskDevices(array $filter)
+    {
+        $table = (new RiskProbeLog())->getTable();
+        $columns = array_map(fn ($column) => $table . '.' . $column, RiskProbeLog::adminListColumns());
+
+        if (!$this->usesFullDeviceSnapshot($filter)) {
+            return RiskProbeLog::query()
+                ->joinSub($this->dao->latestDeviceIds($filter), 'latest_device', 'latest_device.id', '=', $table . '.id')
+                ->orderByDesc($table . '.risk_score')
+                ->orderByDesc($table . '.id')
+                ->limit(8)
+                ->get($columns);
+        }
+
+        $ids = [];
+        foreach ($this->fullDeviceSnapshot() as $row) {
+            $ids[] = [(int) $row->id, (int) $row->risk_score];
+        }
+        usort($ids, function (array $a, array $b) {
+            return $b[1] <=> $a[1] ?: $b[0] <=> $a[0];
+        });
+        $ids = array_column(array_slice($ids, 0, 8), 0);
+        if ($ids === []) {
+            return collect();
+        }
+
+        $logs = RiskProbeLog::query()->whereIn('id', $ids)->get($columns)->keyBy('id');
+
+        return collect($ids)->map(fn ($id) => $logs->get($id))->filter()->values();
+    }
+
+    /**
+     * 未带筛选时，每台设备的最新分数放在 rpl_device_snapshot 里，聚合不再回表读 probe_json。
+     */
+    private function usesFullDeviceSnapshot(array $filter): bool
+    {
+        foreach (['app_id', 'market_channel', 'version', 'time', 'decision', 'risk_level', 'event_type', 'keyword'] as $key) {
+            if (!empty($filter[$key])) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function fullDeviceSnapshot(): array
+    {
+        if ($this->fullDeviceSnapshot !== null) {
+            return $this->fullDeviceSnapshot;
+        }
+
+        return $this->fullDeviceSnapshot = DB::select(
+            "SELECT l.id, l.risk_score, l.compliance_mode, l.ad_switch
+            FROM (
+                SELECT device_identity, MAX(id) AS id
+                FROM risk_probe_logs FORCE INDEX (rpl_device_snapshot)
+                WHERE status = 'ok' AND device_identity > ''
+                GROUP BY device_identity
+            ) d
+            JOIN risk_probe_logs l FORCE INDEX (rpl_device_snapshot)
+                ON l.status = 'ok' AND l.device_identity = d.device_identity AND l.id = d.id"
+        );
+    }
+
+    private function statsFromFullSnapshot(): object
+    {
+        $stats = $this->emptySnapshotStats();
+        foreach ($this->fullDeviceSnapshot() as $row) {
+            $score = (int) $row->risk_score;
+            $compliance = (int) $row->compliance_mode;
+            $adSwitch = (int) $row->ad_switch;
+            $stats->device_total++;
+            $stats->high_risk += (int) ($score >= 70);
+            $stats->score_normal += (int) ($score < 30);
+            $stats->score_watch += (int) ($score >= 30 && $score < 70);
+            $stats->score_high += (int) ($score >= 70 && $score < 90);
+            $stats->score_critical += (int) ($score >= 90);
+            $stats->decision_pass += (int) ($compliance === 0 && $adSwitch === 1 && $score < 30);
+            $stats->decision_verify += (int) ($compliance === 0 && $adSwitch === 1 && $score >= 30);
+            $stats->decision_limit += (int) ($compliance === 0 && $adSwitch === 0);
+            $stats->decision_block += (int) ($compliance === 1);
+        }
+
+        return $stats;
+    }
+
+    /**
+     * 分数、决策、IP 聚合都在这支索引里，避免回表读取 probe_json。
+     */
+    private function useFarmIndex($query)
+    {
+        $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`rpl_farm_ip_agg`)'));
+
+        return $query;
+    }
+
+    private function emptySnapshotStats(): object
+    {
+        return (object) [
             'device_total' => 0,
             'high_risk' => 0,
             'score_normal' => 0,
@@ -111,18 +219,6 @@ class RiskAdminService extends Service
             'decision_limit' => 0,
             'decision_block' => 0,
         ];
-    }
-
-    private function topRiskDevices(array $filter)
-    {
-        $table = (new RiskProbeLog())->getTable();
-
-        return RiskProbeLog::query()
-            ->joinSub($this->dao->latestDeviceIds($filter), 'latest_device', 'latest_device.id', '=', $table . '.id')
-            ->orderByDesc($table . '.risk_score')
-            ->orderByDesc($table . '.id')
-            ->limit(8)
-            ->get(array_map(fn ($column) => $table . '.' . $column, RiskProbeLog::adminListColumns()));
     }
 
     public function deviceList(array $filter): array
@@ -449,7 +545,7 @@ class RiskAdminService extends Service
 
     private function farmClusterQuery(array $filter)
     {
-        $query = $this->dao->search($filter)
+        $query = $this->useFarmIndex($this->dao->search($filter))
             ->whereNotNull('client_ip')
             ->where('client_ip', '!=', '')
             ->whereNotNull('device_identity')
@@ -640,7 +736,7 @@ class RiskAdminService extends Service
     {
         $start = today()->subDays(6)->startOfDay();
         $end = today()->endOfDay();
-        $rows = $this->dao->search($filter)
+        $rows = $this->useFarmIndex($this->dao->search($filter))
             ->whereBetween('created_at', [$start->toDateTimeString(), $end->toDateTimeString()])
             ->selectRaw('DATE(created_at) as day')
             ->selectRaw('COUNT(DISTINCT CASE WHEN risk_score >= 70 THEN device_identity END) as high_risk')
