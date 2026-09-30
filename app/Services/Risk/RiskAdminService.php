@@ -340,49 +340,50 @@ class RiskAdminService extends Service
     private function farmClusters(array $filter, string $keyword): array
     {
         $apps = DeviceEnvRiskView::appNameMap();
-        $groups = $this->farmClusterQuery($filter)->limit(100)->get();
+        $channels = DeviceEnvRiskView::channelMap();
+        $groups = $this->farmClusterQuery($filter)
+            ->addSelect([
+                DB::raw('MAX(id) as last_id'),
+                DB::raw('MAX(risk_score) as max_score'),
+                DB::raw('MAX(created_at) as last_active_at'),
+            ])
+            ->orderByDesc('device_count')
+            ->limit(100)
+            ->get();
+
+        $lastIds = $groups->pluck('last_id')->filter()->unique()->values()->all();
+        $logs = $lastIds === []
+            ? collect()
+            : RiskProbeLog::query()
+                ->whereIn('id', $lastIds)
+                ->get(RiskProbeLog::adminListColumns())
+                ->keyBy('id');
+
         $clusters = [];
         foreach ($groups as $group) {
             $ip = $group->client_ip;
-            $sampleLogs = $this->dao->search($filter)
-                ->where('client_ip', $ip)
-                ->orderByDesc('id')
-                ->limit(20)
-                ->get();
-            $identities = [];
-            $accounts = [];
-            $maxScore = 0;
-            $lastActive = '';
-            $hardware = '';
-            foreach ($sampleLogs as $log) {
-                $row = DeviceEnvRiskView::formatLog($log, $apps, DeviceEnvRiskView::channelMap());
-                $identities[$row['device_identity']] = $row;
-                $maxScore = max($maxScore, $row['risk_score']);
-                $lastActive = $lastActive ?: $row['last_report_at'];
-                $hardware = $hardware ?: $row['hardware_hash'];
-            }
-            foreach (array_slice(array_values($identities), 0, 3) as $row) {
-                foreach ($this->accounts($row['device_identity'], (int) $row['app_id']) as $acc) {
-                    $accounts[] = $acc['account'];
-                }
-            }
+            $log = $logs->get((int) $group->last_id);
+            $formatted = $log ? DeviceEnvRiskView::formatLog($log, $apps, $channels) : null;
+            $identity = $formatted['device_identity'] ?? '';
+            $accounts = $identity !== '' ? array_column($this->accounts($identity, (int) ($formatted['app_id'] ?? 0)), 'account') : [];
             $sample = array_values(array_unique(array_slice($accounts, 0, 3)));
+            $hardware = $formatted['hardware_hash'] ?? '';
             $blob = strtolower($ip . ' ' . $hardware . ' ' . implode(' ', $sample));
             if ($keyword !== '' && !str_contains($blob, $keyword)) {
                 continue;
             }
             $clusters[] = [
-                'id' => 'farm_' . md5($ip),
+                'id' => 'farm_' . md5((string) $ip),
                 'cluster_type' => 'farm',
                 'title' => '疑似设备农场',
                 'device_identity' => '',
                 'device_id' => 0,
-                'account_count' => count(array_unique($accounts)),
+                'account_count' => count($accounts),
                 'device_count' => (int) $group->device_count,
-                'risk_score' => $maxScore,
-                'hardware_hash' => $hardware ?: $ip,
+                'risk_score' => (int) ($group->max_score ?? ($formatted['risk_score'] ?? 0)),
+                'hardware_hash' => $hardware ?: (string) $ip,
                 'sample_accounts' => $sample,
-                'last_active_at' => $lastActive,
+                'last_active_at' => DeviceEnvRiskView::formatTime($group->last_active_at ?? ($formatted['last_report_at'] ?? '')),
             ];
         }
 
@@ -392,12 +393,17 @@ class RiskAdminService extends Service
     private function farmClusterQuery(array $filter)
     {
         $identity = DeviceEnvRiskView::IDENTITY_SQL;
-
-        return $this->dao->search($filter)
-            ->select('client_ip', DB::raw('COUNT(DISTINCT ' . $identity . ') as device_count'))
+        $query = $this->dao->search($filter)
             ->whereNotNull('client_ip')
             ->where('client_ip', '!=', '')
-            ->whereRaw($identity . ' IS NOT NULL')
+            ->whereRaw($identity . ' IS NOT NULL');
+
+        if (empty($filter['time'])) {
+            $query->where('created_at', '>=', now()->subDays(7)->startOfDay()->toDateTimeString());
+        }
+
+        return $query
+            ->select('client_ip', DB::raw('COUNT(DISTINCT ' . $identity . ') as device_count'))
             ->groupBy('client_ip')
             ->havingRaw('COUNT(DISTINCT ' . $identity . ') >= 3');
     }
@@ -416,7 +422,7 @@ class RiskAdminService extends Service
             })
             ->orderByDesc('id')
             ->limit(30)
-            ->get();
+            ->get(RiskProbeLog::adminListColumns());
 
         $seen = [];
         $similar = [];

@@ -26,4 +26,29 @@ class RiskProbeLog extends BaseModel
         'env_field_count_ok' => 'boolean',
         'env_allows_ads' => 'boolean',
     ];
+
+    /**
+     * 后台列表 / 关联簇用不含大 JSON，避免按 IP 抽样时回表扫 probe_json。
+     */
+    public static function adminListColumns(): array
+    {
+        return [
+            'id',
+            'app_id',
+            'status',
+            'probe_v',
+            'platform',
+            'risk_score',
+            'risk_reasons',
+            'env_allows_ads',
+            'compliance_mode',
+            'ad_switch',
+            'client_ip',
+            'app_version',
+            'market_channel',
+            'user_uuid',
+            'device_sn',
+            'created_at',
+        ];
+    }
 }
