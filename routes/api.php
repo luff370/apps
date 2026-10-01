@@ -90,6 +90,8 @@ Route::middleware($deviceEnv)->group(function () {
     Route::prefix('user')->group(
         function (\Illuminate\Routing\Router $route) {
             $route->post('profile', 'UserController@profile');
+            $route->post('profile/update', 'UserController@profileUpdate');
+            $route->post('profile/list', 'UserController@profileList');
         });
 
     Route::post('coin/packages', 'UserWithdrawalController@products');

@@ -41,6 +41,9 @@ class Kernel extends ConsoleKernel
 
         // 每天00:00执行用户会员状态变更定时任务
         $schedule->command('app:member-status-auto-update')->dailyAt('00:00');
+
+        // 会员过期满一个月后清理超量档案，保留最新非会员上限条数
+        $schedule->command('app:user-archive-prune-expired')->dailyAt('00:20');
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Services\User;
 
 use App\Dao\User\UserArchiveDao;
 use App\Exceptions\AdminException;
+use App\Exceptions\ApiException;
 use App\Models\SystemApp;
 use App\Models\User;
 use App\Models\UserProfile;
@@ -167,46 +168,113 @@ class UserArchiveService extends Service
     }
 
     /**
-     * 客户端保存档案：uuid + app_id 不存在则插入，已存在则覆盖。
-     * 日期会兼容旧端「农历 1980/01/26 12:00」这类写法。
+     * 客户端新增档案。日期兼容旧端「农历 1980/01/26 12:00」。
      */
-    public function saveClientProfile(array $profile): void
+    public function saveClientProfile(array $profile): array
     {
         $profile = $this->prepareClientProfile($profile);
-        $hasSaveToArchive = array_key_exists('save_to_archive', $profile);
-        $payload = [
-            'user_id' => (int) ($profile['user_id'] ?? 0),
-            'uuid' => (string) ($profile['uuid'] ?? ''),
-            'app_id' => (int) ($profile['app_id'] ?? 0),
-            'market_channel' => (string) ($profile['market_channel'] ?? ''),
-            'version' => (string) ($profile['version'] ?? ''),
-            'name' => (string) ($profile['name'] ?? ''),
-            'gender' => (string) ($profile['gender'] ?? ''),
-            'calendar' => (string) ($profile['calendar'] ?? ''),
-            'birth_date' => $profile['birth_date'] ?? null,
-            'birth_place' => (string) ($profile['birth_place'] ?? ''),
-            'save_to_archive' => $hasSaveToArchive
-                ? $this->normalizeSaveToArchive($profile['save_to_archive'])
-                : 0,
-        ];
+        $payload = $this->clientProfilePayload($profile, true);
+        $this->assertArchiveLimit((int) $payload['user_id'], (string) $payload['uuid'], (int) $payload['app_id']);
 
-        $update = [
-            'market_channel',
-            'version',
-            'name',
-            'gender',
-            'calendar',
-            'birth_date',
-            'birth_place',
-        ];
-        if ($hasSaveToArchive) {
-            $update[] = 'save_to_archive';
-        }
-        if ($payload['user_id'] > 0) {
-            $update[] = 'user_id';
+        $row = UserProfile::query()->create($payload);
+
+        return $this->formatClientArchive($row->toArray());
+    }
+
+    /**
+     * 客户端修改已有档案。
+     */
+    public function updateClientProfile(int $id, array $profile): array
+    {
+        $uuid = (string) ($profile['uuid'] ?? '');
+        $appId = (int) ($profile['app_id'] ?? 0);
+        $userId = (int) ($profile['user_id'] ?? 0);
+        $row = $this->findOwnedArchive($id, $userId, $uuid, $appId);
+        $profile = $this->prepareClientProfile($profile);
+        $payload = $this->clientProfilePayload($profile, false);
+        unset($payload['uuid'], $payload['app_id']);
+        if ((int) $row->user_id > 0 && (int) ($payload['user_id'] ?? 0) <= 0) {
+            unset($payload['user_id']);
         }
 
-        UserProfile::query()->upsert([$payload], ['uuid', 'app_id'], $update);
+        $row->fill($payload)->save();
+
+        return $this->formatClientArchive($row->fresh()->toArray());
+    }
+
+    /**
+     * 客户端分页列表。
+     */
+    public function listClientProfiles(int $userId, string $uuid, int $appId): array
+    {
+        [$page, $limit] = $this->getPageValue();
+        $page = max($page, 1);
+        $limit = min(max($limit, 1), 50);
+        $query = $this->clientArchiveQuery($userId, $uuid, $appId);
+        $count = (clone $query)->count();
+        $list = [];
+        if ($count > 0) {
+            $rows = $query->orderByDesc('id')
+                ->offset(($page - 1) * $limit)
+                ->limit($limit)
+                ->get()
+                ->toArray();
+            $list = array_map(fn (array $row) => $this->formatClientArchive($row), $rows);
+        }
+
+        return compact('count', 'list') + ['page' => $page, 'limit' => $limit];
+    }
+
+    /**
+     * 会员过期超过宽限期后，只保留最新 N 条。
+     */
+    public function pruneExpiredExtraArchives(): int
+    {
+        $keep = max(1, (int) config('user_archive.guest_limit', 10));
+        $graceDays = max(1, (int) config('user_archive.expire_extra_days', 30));
+        $cutoff = Carbon::now()->subDays($graceDays)->timestamp;
+        $deleted = 0;
+
+        $groups = UserProfile::query()
+            ->selectRaw('user_id, app_id, count(*) as total')
+            ->where('user_id', '>', 0)
+            ->groupBy('user_id', 'app_id')
+            ->havingRaw('count(*) > ?', [$keep])
+            ->get();
+        if ($groups->isEmpty()) {
+            return 0;
+        }
+
+        $users = User::query()
+            ->whereIn('id', $groups->pluck('user_id')->all())
+            ->where('is_vip', 0)
+            ->where('overdue_time', '>', 0)
+            ->where('overdue_time', '<', $cutoff)
+            ->get(['id', 'app_id'])
+            ->keyBy('id');
+
+        foreach ($groups as $group) {
+            $user = $users->get((int) $group->user_id);
+            if (!$user) {
+                continue;
+            }
+            $keepIds = UserProfile::query()
+                ->where('app_id', (int) $group->app_id)
+                ->where('user_id', (int) $group->user_id)
+                ->orderByDesc('id')
+                ->limit($keep)
+                ->pluck('id');
+            if ($keepIds->isEmpty()) {
+                continue;
+            }
+            $deleted += UserProfile::query()
+                ->where('app_id', (int) $group->app_id)
+                ->where('user_id', (int) $group->user_id)
+                ->whereNotIn('id', $keepIds->all())
+                ->delete();
+        }
+
+        return $deleted;
     }
 
     public function normalizeBirthDate($value): ?string
@@ -353,6 +421,126 @@ class UserArchiveService extends Service
         }
 
         return $text ?: '-';
+    }
+
+    private function clientProfilePayload(array $profile, bool $forCreate): array
+    {
+        $payload = [
+            'user_id' => (int) ($profile['user_id'] ?? 0),
+            'uuid' => (string) ($profile['uuid'] ?? ''),
+            'app_id' => (int) ($profile['app_id'] ?? 0),
+            'market_channel' => (string) ($profile['market_channel'] ?? ''),
+            'version' => (string) ($profile['version'] ?? ''),
+            'name' => (string) ($profile['name'] ?? ''),
+            'gender' => (string) ($profile['gender'] ?? ''),
+            'calendar' => (string) ($profile['calendar'] ?? ''),
+            'birth_date' => $profile['birth_date'] ?? null,
+            'birth_place' => (string) ($profile['birth_place'] ?? ''),
+        ];
+        if ($forCreate || array_key_exists('save_to_archive', $profile)) {
+            $payload['save_to_archive'] = $this->normalizeSaveToArchive($profile['save_to_archive'] ?? 0);
+        }
+
+        return $payload;
+    }
+
+    private function clientArchiveQuery(int $userId, string $uuid, int $appId)
+    {
+        $query = UserProfile::query()->where('app_id', $appId);
+        if ($userId > 0) {
+            $query->where(function ($query) use ($userId, $uuid) {
+                $query->where('user_id', $userId);
+                if ($uuid !== '') {
+                    $query->orWhere(function ($query) use ($uuid) {
+                        $query->where('uuid', $uuid)
+                            ->where(function ($query) {
+                                $query->where('user_id', 0)->orWhereNull('user_id');
+                            });
+                    });
+                }
+            });
+        } else {
+            $query->where('uuid', $uuid);
+        }
+
+        return $query;
+    }
+
+    private function assertArchiveLimit(int $userId, string $uuid, int $appId): void
+    {
+        $user = $this->resolveArchiveUser($userId, $uuid, $appId);
+        $limit = $this->archiveLimit($user);
+        $count = $this->clientArchiveQuery((int) ($user['id'] ?? $userId), $uuid, $appId)->count();
+        if ($count < $limit) {
+            return;
+        }
+
+        if ($this->isVipUser($user)) {
+            throw new ApiException('会员档案数量已达上限');
+        }
+
+        throw new ApiException('非会员最多保存' . $limit . '条档案');
+    }
+
+    private function archiveLimit(?User $user): int
+    {
+        if ($this->isVipUser($user)) {
+            return max(1, (int) config('user_archive.member_limit', 5000));
+        }
+
+        return max(1, (int) config('user_archive.guest_limit', 10));
+    }
+
+    private function isVipUser(?User $user): bool
+    {
+        return $user && !empty($user['is_vip']);
+    }
+
+    private function resolveArchiveUser(int $userId, string $uuid, int $appId): ?User
+    {
+        if ($userId > 0) {
+            return User::query()->find($userId);
+        }
+        if ($uuid === '' || $appId <= 0) {
+            return null;
+        }
+
+        return User::query()
+            ->where('app_id', $appId)
+            ->where('uuid', $uuid)
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    private function findOwnedArchive(int $id, int $userId, string $uuid, int $appId): UserProfile
+    {
+        $row = UserProfile::query()->where('id', $id)->where('app_id', $appId)->first();
+        if (!$row) {
+            throw new ApiException('档案不存在');
+        }
+        if ($userId > 0 && (int) $row->user_id > 0 && (int) $row->user_id !== $userId) {
+            throw new ApiException('档案不存在');
+        }
+        if ((int) $row->user_id <= 0 && (string) $row->uuid !== $uuid) {
+            throw new ApiException('档案不存在');
+        }
+
+        return $row;
+    }
+
+    private function formatClientArchive(array $row): array
+    {
+        return [
+            'id' => (int) ($row['id'] ?? 0),
+            'name' => (string) ($row['name'] ?? ''),
+            'gender' => $this->normalizeGender($row['gender'] ?? ''),
+            'calendar' => $this->normalizeCalendar($row['calendar'] ?? ''),
+            'birth_date' => $this->formatDateTime($row['birth_date'] ?? ''),
+            'birth_place' => (string) ($row['birth_place'] ?? ''),
+            'save_to_archive' => (bool) $this->normalizeSaveToArchive($row['save_to_archive'] ?? 0),
+            'created_at' => $this->formatDateTime($row['created_at'] ?? ''),
+            'updated_at' => $this->formatDateTime($row['updated_at'] ?? ''),
+        ];
     }
 
     private function normalizeGender($gender): string

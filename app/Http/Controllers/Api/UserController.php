@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\User;
+use App\Exceptions\ApiException;
 use Illuminate\Http\Request;
 use App\Support\Utils\Token;
 use App\Models\UserFeedback;
@@ -150,32 +151,81 @@ class UserController extends Controller
      */
     public function profile(Request $request)
     {
-        $profile = $request->all();
-        $uuid = (string)$this->getUuid();
-        $appId = (int)$this->getAppId();
         $archiveService = app(UserArchiveService::class);
-        $userId = $archiveService->resolveUserId($request, $uuid, $appId);
+        $profile = $this->buildClientArchiveInput($request, $archiveService);
 
-        $profile['user_id'] = $userId;
-        $profile['uuid'] = $uuid;
-        $profile['app_id'] = $appId;
-        $profile['version'] = $this->getAppVersion();
-        $profile['market_channel'] = $this->getMarketChannel();
-
-        logger()->info('保存用户档案---', array_merge($request->all(), $profile));
         try {
-            $archiveService->saveClientProfile($profile);
+            $data = $archiveService->saveClientProfile($profile);
+        } catch (ApiException $exception) {
+            throw $exception;
         } catch (\Exception $exception) {
             logger()->error('用户档案信息保存失败---' . $exception->getMessage(), $profile);
 
             return $this->fail("保存失败，请稍后重试");
         }
 
-        if ($userId > 0) {
-            $archiveService->bindUserId($userId, $uuid, $appId);
+        if ((int) $profile['user_id'] > 0) {
+            $archiveService->bindUserId((int) $profile['user_id'], (string) $profile['uuid'], (int) $profile['app_id']);
         }
 
-        return $this->success();
+        return $this->success($data);
+    }
+
+    /**
+     * 用户档案信息修改
+     */
+    public function profileUpdate(Request $request)
+    {
+        $id = (int) $request->get('id');
+        if ($id <= 0) {
+            return $this->fail('档案不存在');
+        }
+
+        $archiveService = app(UserArchiveService::class);
+        $profile = $this->buildClientArchiveInput($request, $archiveService);
+
+        try {
+            $data = $archiveService->updateClientProfile($id, $profile);
+        } catch (ApiException $exception) {
+            throw $exception;
+        } catch (\Exception $exception) {
+            logger()->error('用户档案信息修改失败---' . $exception->getMessage(), $profile);
+
+            return $this->fail("保存失败，请稍后重试");
+        }
+
+        if ((int) $profile['user_id'] > 0) {
+            $archiveService->bindUserId((int) $profile['user_id'], (string) $profile['uuid'], (int) $profile['app_id']);
+        }
+
+        return $this->success($data);
+    }
+
+    /**
+     * 用户档案分页列表
+     */
+    public function profileList(Request $request)
+    {
+        $archiveService = app(UserArchiveService::class);
+        $uuid = (string) $this->getUuid();
+        $appId = (int) $this->getAppId();
+        $userId = $archiveService->resolveUserId($request, $uuid, $appId);
+
+        return $this->success($archiveService->listClientProfiles($userId, $uuid, $appId));
+    }
+
+    private function buildClientArchiveInput(Request $request, UserArchiveService $archiveService): array
+    {
+        $profile = $request->all();
+        $uuid = (string) $this->getUuid();
+        $appId = (int) $this->getAppId();
+        $profile['user_id'] = $archiveService->resolveUserId($request, $uuid, $appId);
+        $profile['uuid'] = $uuid;
+        $profile['app_id'] = $appId;
+        $profile['version'] = $this->getAppVersion();
+        $profile['market_channel'] = $this->getMarketChannel();
+
+        return $profile;
     }
 
     /**
