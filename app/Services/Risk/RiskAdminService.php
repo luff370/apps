@@ -689,22 +689,19 @@ class RiskAdminService extends Service
         }
 
         $columns = RiskProbeLog::adminListColumns();
-        $columnSql = implode(', ', $columns);
         $logs = collect();
         foreach (array_chunk($identities, 50) as $chunk) {
-            $identitySql = implode(' UNION ALL ', array_fill(0, count($chunk), 'SELECT ? AS device_identity'));
-            $rows = DB::select(
-                "SELECT {$columnSql} FROM ({$identitySql}) ids JOIN LATERAL (
-                    SELECT {$columnSql}
-                    FROM risk_probe_logs
-                    WHERE status = 'ok' AND device_identity = ids.device_identity
-                    ORDER BY id DESC
-                    LIMIT 1
-                ) latest ON TRUE",
-                $chunk
-            );
-            foreach ($rows as $row) {
-                $logs->push((new RiskProbeLog())->newFromBuilder($row));
+            $lookups = [];
+            foreach ($chunk as $identity) {
+                $lookups[] = '(SELECT id FROM risk_probe_logs FORCE INDEX (rpl_device_snapshot) WHERE status = \'ok\' AND device_identity = ? ORDER BY id DESC LIMIT 1)';
+            }
+            $idRows = DB::select(implode(' UNION ALL ', $lookups), $chunk);
+            $ids = array_map(fn ($row) => (int) $row->id, $idRows);
+            if ($ids === []) {
+                continue;
+            }
+            foreach (RiskProbeLog::query()->whereIn('id', $ids)->get($columns) as $log) {
+                $logs->push($log);
             }
         }
 
