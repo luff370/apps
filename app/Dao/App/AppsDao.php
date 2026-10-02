@@ -27,8 +27,8 @@ class AppsDao extends BaseDao
             $query->where('mer_id', $where['mer_id']);
         }
 
-        if (isset($where['is_enable']) && $where['is_enable'] !== '' ) {
-            $query->where('is_enable', $where['is_enable']);
+        if (!empty($where['platform'])) {
+            $query->where('platform', $where['platform']);
         }
 
         if (!empty($where['keyword'])) {

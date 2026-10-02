@@ -23,7 +23,7 @@ class AppsController extends Controller
     public function index()
     {
         $where = $this->getMore([
-            ['is_enable', ''],
+            ['platform', ''],
             ['keyword', ''],
             ['mer_id', ''],
         ]);
