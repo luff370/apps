@@ -54,6 +54,9 @@ class SystemMenusSeeder extends Seeder
             if (in_array('admin-cms', $grantedAuth, true) && isset($this->authToId['cms-article-course'])) {
                 $next[] = $this->authToId['cms-article-course'];
             }
+            if (in_array('cms-article-category', $grantedAuth, true) && isset($this->authToId['cms-category-create'])) {
+                $next[] = $this->authToId['cms-category-create'];
+            }
             $riskAuths = [
                 'admin-risk',
                 'admin-risk-overview',
@@ -226,7 +229,19 @@ class SystemMenusSeeder extends Seeder
                 'is_header' => 1,
                 'unique_auth' => 'admin-cms',
                 'children' => [
-                    ['menu_name' => '内容分类', 'controller' => 'cms.article_category', 'action' => 'index', 'sort' => 10, 'menu_path' => '/admin/cms/article_category/index', 'header' => 'cms', 'is_header' => 1, 'unique_auth' => 'cms-article-category'],
+                    [
+                        'menu_name' => '内容分类',
+                        'controller' => 'cms.article_category',
+                        'action' => 'index',
+                        'sort' => 10,
+                        'menu_path' => '/admin/cms/article_category/index',
+                        'header' => 'cms',
+                        'is_header' => 1,
+                        'unique_auth' => 'cms-article-category',
+                        'children' => [
+                            ['menu_name' => '添加文章分类', 'is_show' => 0, 'menu_path' => '', 'unique_auth' => 'cms-category-create'],
+                        ],
+                    ],
                     [
                         'menu_name' => '内容管理',
                         'controller' => 'cms.article',
