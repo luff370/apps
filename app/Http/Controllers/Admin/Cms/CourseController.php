@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Cms;
 
 use Illuminate\Http\Request;
+use App\Models\Article;
 use App\Models\ArticleCourse;
 use App\Http\Controllers\Admin\Controller;
 
@@ -17,6 +18,9 @@ class CourseController extends Controller
         $image = $request->get('image', '');
         $lastLesson = $request->get('collections');
 
+        if (!$nid) {
+            return $this->fail('缺少内容ID');
+        }
         if (!$lastLesson) {
             return $this->fail('请填写课程数量');
         }
@@ -26,6 +30,18 @@ class CourseController extends Controller
         if (!$source) {
             return $this->fail('请选择课程来源');
         }
+
+        $article = Article::query()->find($nid);
+        if (!$article) {
+            return $this->fail('内容不存在');
+        }
+
+        $article->code = $code;
+        $article->source = $source;
+        $article->duration = $duration ?? '';
+        $article->image = $image ?? '';
+        $article->collections = (int) $lastLesson;
+        $article->save();
 
         for ($i = 1; $i <= $lastLesson; $i++) {
             ArticleCourse::query()->updateOrCreate(

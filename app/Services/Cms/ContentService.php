@@ -278,6 +278,10 @@ class ContentService extends Service
                         $article->duration = $content['duration'];
                     }
 
+                    if (($article->code === '' || $article->code === null) && !empty($data['code'])) {
+                        $article->code = $data['code'];
+                    }
+
                     $article->save();
                 }
 
