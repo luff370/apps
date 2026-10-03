@@ -253,11 +253,11 @@ class SystemMenusSeeder extends Seeder
                         'unique_auth' => 'cms-article-index',
                         'children' => [
                             ['menu_name' => '文章添加', 'controller' => 'cms.article', 'action' => 'add_article', 'is_show' => 0, 'menu_path' => '/admin/cms/article/add_article', 'header' => 'cms', 'is_header' => 1, 'unique_auth' => 'cms-article-creat'],
+                            ['menu_name' => '课节管理', 'sort' => 2, 'is_show' => 0, 'menu_path' => '/admin/cms/course', 'header' => 'cms', 'is_header' => 1, 'unique_auth' => 'cms-article-course'],
                         ],
                     ],
                     ['menu_name' => '举报数据', 'sort' => 6, 'menu_path' => '/admin/cms/traffic_violation_content/index', 'unique_auth' => 'cms-traffic_violation_content'],
-                    ['menu_name' => '内容爬取', 'sort' => 4, 'is_show' => 0, 'menu_path' => '/admin/cms/generate', 'unique_auth' => 'admin-cms-generate'],
-                    ['menu_name' => '课节管理', 'sort' => 2, 'is_show' => 0, 'menu_path' => '/admin/cms/course', 'unique_auth' => 'cms-article-course'],
+                    ['menu_name' => '内容爬取', 'sort' => 4, 'menu_path' => '/admin/cms/generate', 'unique_auth' => 'admin-cms-generate'],
                 ],
             ],
             [
