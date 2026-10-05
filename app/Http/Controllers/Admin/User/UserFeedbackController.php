@@ -22,9 +22,9 @@ class UserFeedbackController extends Controller
     public function index(): \Illuminate\Http\JsonResponse
     {
         $filter = $this->getMore([
-            ['user_id', ''],
             ['app_id', ''],
             ['market_channel', ''],
+            ['status', ''],
             ['keyword', ''],
             ['time', ''],
         ]);
