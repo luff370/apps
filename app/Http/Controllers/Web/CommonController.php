@@ -54,9 +54,9 @@ class CommonController extends Controller
 
         return response()->json([
             'business_ip' => $ip,
-            'business_ip_source' => 'REMOTE_ADDR',
+            'business_ip_source' => $realIp !== '' && $ip === $realIp ? 'X-Real-IP' : 'REMOTE_ADDR',
             'ip' => $ip,
-            'remote_addr' => $request->server('REMOTE_ADDR'),
+            'remote_addr' => $request->attributes->get('original_remote_addr', $request->server('REMOTE_ADDR')),
             'x_forwarded_for' => $request->header('X-Forwarded-For'),
             'x_real_ip' => $realIp,
             'region' => $geo['region'],
