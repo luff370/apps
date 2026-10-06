@@ -48,16 +48,34 @@ class CommonController extends Controller
     public function ip(Request $request)
     {
         $ip = (string) $request->ip();
-        $geo = $ip !== '' ? (new \Ip2Region())->memorySearch($ip) : [];
+        $realIp = trim(strtok((string) $request->header('X-Real-IP'), ',') ?: '');
+        $geo = $this->ipGeo($ip);
+        $realGeo = $this->ipGeo($realIp);
 
         return response()->json([
+            'business_ip' => $ip,
+            'business_ip_source' => 'REMOTE_ADDR',
             'ip' => $ip,
             'remote_addr' => $request->server('REMOTE_ADDR'),
             'x_forwarded_for' => $request->header('X-Forwarded-For'),
-            'x_real_ip' => $request->header('X-Real-IP'),
-            'region' => $ip !== '' ? ip2region($ip) : '',
-            'ip2region' => $geo,
+            'x_real_ip' => $realIp,
+            'region' => $geo['region'],
+            'ip2region' => $geo['ip2region'],
+            'x_real_ip_region' => $realGeo['region'],
+            'x_real_ip2region' => $realGeo['ip2region'],
         ], 200, [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+    }
+
+    private function ipGeo(string $ip): array
+    {
+        if ($ip === '' || filter_var($ip, FILTER_VALIDATE_IP) === false) {
+            return ['region' => '', 'ip2region' => []];
+        }
+
+        return [
+            'region' => ip2region($ip),
+            'ip2region' => (new \Ip2Region())->memorySearch($ip),
+        ];
     }
 
     public function article($id)
