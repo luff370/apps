@@ -44,7 +44,7 @@ class RiskProbeAuditService
             RiskProbeLog::query()->create([
                 'package_name' => $context['package_name'] ?: null,
                 'app_id' => is_numeric($context['app_id'] ?? null) ? (int) $context['app_id'] : null,
-                'route' => $request->path(),
+                'route' => $this->originalRoute($request),
                 'request_method' => $request->method(),
                 'status' => $context['status'] ?? 'error',
                 'error' => $context['error'] ?? null,
@@ -75,6 +75,32 @@ class RiskProbeAuditService
             // 风控审计不可用不能拖垮业务接口。
             report($e);
         }
+    }
+
+    /**
+     * 混淆网关的 path 是别名。入库记反查后的真实路由，格式与直连接口的 path 一致。
+     * 反查失败时仍记当前 path，避免审计行丢失。
+     */
+    private function originalRoute(Request $request): string
+    {
+        $fallback = $request->path();
+        $alias = (string) ($request->route()?->parameter('alias') ?? '');
+        if ($alias === '') {
+            return $fallback;
+        }
+
+        try {
+            $profile = app(ApiObfuscationProfileResolver::class)->resolve($request);
+        } catch (Throwable $e) {
+            return $fallback;
+        }
+
+        $path = ltrim((string) ($profile['route_aliases'][$alias]['path'] ?? ''), '/');
+        if ($path === '' || str_starts_with($path, 'v/')) {
+            return $fallback;
+        }
+
+        return str_starts_with($path, 'api/') ? $path : 'api/' . $path;
     }
 
     private function withoutReplaySecret(array $probe): array
