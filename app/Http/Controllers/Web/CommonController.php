@@ -7,6 +7,7 @@ use App\Models\AppAgreement;
 use App\Models\ArticleContent;
 use App\Http\Controllers\Controller;
 use App\Support\Services\AgreementUrlAliasService;
+use Illuminate\Http\Request;
 
 class CommonController extends Controller
 {
@@ -42,6 +43,21 @@ class CommonController extends Controller
         }
 
         return view('common.agreement', $agreement);
+    }
+
+    public function ip(Request $request)
+    {
+        $ip = (string) $request->ip();
+        $geo = $ip !== '' ? (new \Ip2Region())->memorySearch($ip) : [];
+
+        return response()->json([
+            'ip' => $ip,
+            'remote_addr' => $request->server('REMOTE_ADDR'),
+            'x_forwarded_for' => $request->header('X-Forwarded-For'),
+            'x_real_ip' => $request->header('X-Real-IP'),
+            'region' => $ip !== '' ? ip2region($ip) : '',
+            'ip2region' => $geo,
+        ], 200, [], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
     }
 
     public function article($id)

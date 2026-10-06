@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+Route::get('/ip', 'CommonController@ip')->name('ip.test');
+
 Route::get('/account-deletion/{app}', 'AccountDeletionController@show')
     ->where('app', '[A-Za-z0-9._\-]+')
     ->name('account-deletion.show');
