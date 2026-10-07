@@ -91,8 +91,11 @@ Route::middleware($deviceEnv)->group(function () {
 
     Route::prefix('user')->group(
         function (\Illuminate\Routing\Router $route) {
+            // 档案上传
             $route->post('profile', 'UserController@profile');
+            // 档案修改
             $route->post('profile/update', 'UserController@profileUpdate');
+            // 档案列表
             $route->post('profile/list', 'UserController@profileList');
         });
 
