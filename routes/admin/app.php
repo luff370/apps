@@ -42,6 +42,12 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::put('apps/{appId}/notices/{id}/status', 'AppNoticeController@setStatus');
     Route::delete('apps/{appId}/notices/{id}', 'AppNoticeController@destroy');
 
+    Route::get('pay_contacts', 'AppPayContactController@index');
+    Route::post('pay_contacts', 'AppPayContactController@save');
+    Route::put('pay_contacts/{id}/sort', 'AppPayContactController@setSort');
+    Route::put('pay_contacts/{id}/status', 'AppPayContactController@setStatus');
+    Route::delete('pay_contacts/{id}', 'AppPayContactController@destroy');
+
     // 产品管理
     Route::resource('product', 'ProductController');
     Route::put('product/{id}/set_sort/{sort}', 'ProductController@setSort');

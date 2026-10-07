@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Models\AppPayment;
 use App\Models\MemberOrder;
+use App\Services\App\AppPayContactService;
 use Illuminate\Http\Request;
 use App\Exceptions\ApiException;
 use App\Support\Services\Payment;
@@ -89,6 +90,7 @@ class PaymentController extends Controller
             Payment::PAY_TYPE_APP,
             Payment::PAY_TYPE_H5,
             Payment::PAY_TYPE_MINI,
+            Payment::PAY_TYPE_CONTACT
         ];
 
         if (!in_array($payType, $supportedPayTypes, true)) {
@@ -147,6 +149,10 @@ class PaymentController extends Controller
                         return $this->fail('未开通的支付宝支付类型：' . $payType);
                         break;
                     case Payment::PAY_CHANNEL_WX:
+                        if ($payType === Payment::PAY_TYPE_CONTACT) {
+                            return $this->payByWechatContact($order);
+                        }
+
                         $payParams = [
                             'out_trade_no' => $orderNo,
                             'description' => '会员订购',
@@ -247,6 +253,28 @@ class PaymentController extends Controller
         $body = $paymentService->orderPay($orderNo, $orderType, $payChannel, $payType);
 
         return view('payment.h5', compact('body'));
+    }
+
+    /**
+     * @throws ApiException
+     */
+    private function payByWechatContact(MemberOrder $order)
+    {
+        $contact = app(AppPayContactService::class)->pickNext((int) $order->app_id);
+        if (!$contact) {
+            return $this->fail('暂无可用的微信联系人');
+        }
+
+        return $this->success([
+            'pay_channel' => Payment::PAY_CHANNEL_WX,
+            'pay_channel_name' => '微信支付',
+            'pay_type' => Payment::PAY_TYPE_CONTACT,
+            'pay_type_name' => '联系人',
+            'order_no' => $order->order_no,
+            'amount' => $order->member_price,
+            'image' => $contact->image,
+            'name' => $contact->name,
+        ]);
     }
 
     /**

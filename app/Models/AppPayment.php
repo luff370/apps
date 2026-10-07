@@ -64,6 +64,7 @@ class AppPayment extends Model
     const PayTypeH5 = 'h5';
     const PayTypeMini = 'mini';
     const PayTypeApp = 'app';
+    const PayTypeContact = 'contact';
 
     public static function payTypeMap()
     {
@@ -71,6 +72,7 @@ class AppPayment extends Model
             self::PayTypeH5 => 'H5支付',
             self::PayTypeMini => '小程序支付',
             self::PayTypeApp => 'App支付',
+            self::PayTypeContact => '联系人',
         ];
     }
 

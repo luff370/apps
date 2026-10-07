@@ -57,6 +57,9 @@ class SystemMenusSeeder extends Seeder
             if (in_array('cms-article-category', $grantedAuth, true) && isset($this->authToId['cms-category-create'])) {
                 $next[] = $this->authToId['cms-category-create'];
             }
+            if (array_intersect($grantedAuth, ['admin-app', 'app-payments']) && isset($this->authToId['app-pay-contacts'])) {
+                $next[] = $this->authToId['app-pay-contacts'];
+            }
             $riskAuths = [
                 'admin-risk',
                 'admin-risk-overview',
@@ -306,6 +309,7 @@ class SystemMenusSeeder extends Seeder
                     ['menu_name' => '价格配置', 'sort' => 7, 'menu_path' => '/admin/app/product', 'unique_auth' => 'app-product'],
                     ['menu_name' => '协议配置', 'sort' => 6, 'menu_path' => '/admin/app/agreements', 'unique_auth' => 'app-agreements'],
                     ['menu_name' => '支付配置', 'sort' => 5, 'menu_path' => '/admin/app/payments', 'unique_auth' => 'app-payments'],
+                    ['menu_name' => '微信联系人', 'sort' => 5, 'menu_path' => '/admin/app/pay_contacts', 'unique_auth' => 'app-pay-contacts'],
                     ['menu_name' => '参数配置', 'sort' => 4, 'menu_path' => '/admin/app/config/index', 'unique_auth' => 'app-config'],
                 ],
             ],

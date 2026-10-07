@@ -20,6 +20,8 @@ class Payment
 
     const PAY_TYPE_MINI = 'mini';
 
+    const PAY_TYPE_CONTACT = 'contact';
+
     public static function getWechatConfigs(): array
     {
         $configs = [];
