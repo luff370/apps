@@ -36,6 +36,12 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::post('apps/{appId}/version_plans/{id}/copy', 'VersionPlanController@copy');
     Route::delete('apps/{appId}/version_plans/{id}', 'VersionPlanController@delete');
 
+    Route::get('apps/{appId}/notices', 'AppNoticeController@index');
+    Route::post('apps/{appId}/notices', 'AppNoticeController@save');
+    Route::put('apps/{appId}/notices/{id}/sort', 'AppNoticeController@setSort');
+    Route::put('apps/{appId}/notices/{id}/status', 'AppNoticeController@setStatus');
+    Route::delete('apps/{appId}/notices/{id}', 'AppNoticeController@destroy');
+
     // 产品管理
     Route::resource('product', 'ProductController');
     Route::put('product/{id}/set_sort/{sort}', 'ProductController@setSort');

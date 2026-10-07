@@ -34,6 +34,8 @@ Route::middleware($deviceEnv)->group(function () {
     Route::post('app/info', 'CommonController@appInfo');
     // 应用版本更新
     Route::get('app/update', 'CommonController@appUpdate');
+    // 应用公告
+    Route::post('app/notices', 'CommonController@appNotices');
     // 获取配置数据
     Route::post('common/get_group_data/{name}', 'CommonController@getGroupData');
     // 提现成功用户展示

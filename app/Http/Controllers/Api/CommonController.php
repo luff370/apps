@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Models\AppVersion;
+use App\Services\App\AppNoticeService;
 use App\Services\App\AppsService;
 use App\Services\App\AppApiObfuscationService;
 use Ramsey\Uuid\Uuid;
@@ -149,6 +150,18 @@ class CommonController extends Controller
         }
 
         return $this->success($returnData);
+    }
+
+    public function appNotices(AppNoticeService $noticeService)
+    {
+        $appId = (int) $this->getAppId();
+        if ($appId <= 0) {
+            return $this->fail('缺少应用信息');
+        }
+
+        return $this->success([
+            'list' => $noticeService->enabledList($appId),
+        ]);
     }
 
     private function __getUserWhiteList(): array
