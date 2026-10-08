@@ -1,0 +1,375 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "文墨对话",
+    "version": "1.0.0",
+    "description": "围绕一份紫微知识（skill）或一份程序计算资料（data）的 DeepSeek 对话。同一用户、应用和目标会续接最近上下文；资料对话会记住已提交的计算报告。\n\n业务成功、参数错误和模型不可用都返回 HTTP 200，用 body.status 区分。登录态和客户端请求头沿用 Apifox 环境变量。\n\nApifox：导入数据 → OpenAPI/Swagger → 选择本文件。"
+  },
+  "servers": [
+    {
+      "url": "{baseUrl}/api",
+      "description": "客户端 API，路径不含域名",
+      "variables": {
+        "baseUrl": {
+          "default": "http://localhost",
+          "description": "服务根地址"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "文墨对话",
+      "description": "紫微知识或程序计算资料上的连续对话"
+    }
+  ],
+  "paths": {
+    "/chatAI/wenmo/message": {
+      "post": {
+        "tags": ["文墨对话"],
+        "summary": "文墨对话",
+        "operationId": "wenmoMessage",
+        "description": "发送一轮对话。不传 session_id 时，按 target_type + target_key 续接最近一次；new_session 为 true 时新开。skill 的 target_key 固定为 ziwei，不能附带 report。data 首次必须提交 report，之后可只传 content。格式不合格时服务端自动重写一次。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/MessageRequest"},
+              "examples": {
+                "skill": {
+                  "summary": "紫微知识",
+                  "value": {
+                    "target_type": "skill",
+                    "target_key": "ziwei",
+                    "content": "紫微星主管什么？"
+                  }
+                },
+                "data": {
+                  "summary": "程序计算资料",
+                  "value": {
+                    "target_type": "data",
+                    "target_key": "chart-1001",
+                    "content": "我的事业怎么样？",
+                    "report": {
+                      "命宫": "紫微",
+                      "官禄宫": "武曲",
+                      "财帛宫": "天府"
+                    }
+                  }
+                },
+                "continue": {
+                  "summary": "续接已有对话",
+                  "value": {
+                    "session_id": 1,
+                    "content": "那财运呢"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HTTP 200。body.status=200 成功，400 为参数或业务错误，503 为对话暂不可用。",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/MessageEnvelope"},
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "status": 200,
+                      "msg": "success",
+                      "data": {
+                        "session_id": 1,
+                        "message_id": 2,
+                        "target_type": "skill",
+                        "target_key": "ziwei",
+                        "result": "【已知资料】\n未选择命盘。问题是紫微星主管什么。\n\n【计算结果】\n本次为知识问答，未调用命盘计算。\n\n【知识依据】\n紫微属土，帝座，主尊贵、权威。\n\n【综合解读】\n紫微是十四主星中的帝座，核心含义是尊贵与权威。正向表现是能定调，盲点是过分看重位置。当前没有命盘，所以只解释通用含义。\n\n【行动建议】\n1. 讨论个人事业前先选择命盘，反馈是是否已经生成报告。\n\n说明：内容仅供传统文化研究和自我观察参考",
+                        "sections": {
+                          "已知资料": "未选择命盘。问题是紫微星主管什么。",
+                          "计算结果": "本次为知识问答，未调用命盘计算。",
+                          "知识依据": "紫微属土，帝座，主尊贵、权威。",
+                          "综合解读": "紫微是十四主星中的帝座，核心含义是尊贵与权威。正向表现是能定调，盲点是过分看重位置。当前没有命盘，所以只解释通用含义。",
+                          "行动建议": "1. 讨论个人事业前先选择命盘，反馈是是否已经生成报告。"
+                        },
+                        "valid": true,
+                        "missing": [],
+                        "corrected": false
+                      }
+                    }
+                  },
+                  "badRequest": {
+                    "summary": "缺少计算报告",
+                    "value": {
+                      "status": 400,
+                      "code": 400,
+                      "msg": "个人命盘分析需要先提供程序计算报告",
+                      "data": null
+                    }
+                  },
+                  "unavailable": {
+                    "summary": "对话暂不可用",
+                    "value": {
+                      "status": 503,
+                      "code": 503,
+                      "msg": "智能对话暂时不可用",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chatAI/wenmo/sessions": {
+      "post": {
+        "tags": ["文墨对话"],
+        "summary": "文墨对话列表",
+        "operationId": "wenmoSessions",
+        "description": "返回当前用户最近 20 条文墨对话，按更新时间倒序。请求体可为空对象。",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {"type": "object"},
+              "example": {}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "对话摘要列表",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/SessionsEnvelope"},
+                "example": {
+                  "status": 200,
+                  "msg": "success",
+                  "data": {
+                    "list": [
+                      {
+                        "id": 1,
+                        "target_type": "skill",
+                        "target_key": "ziwei",
+                        "title": "紫微星主管什么",
+                        "has_report": false,
+                        "updated_at": "2026-10-08 15:00:00"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chatAI/wenmo/history": {
+      "post": {
+        "tags": ["文墨对话"],
+        "summary": "文墨对话记录",
+        "operationId": "wenmoHistory",
+        "description": "读取一条对话的最近 100 条消息和已保存报告。只能读取当前用户自己的会话。用户消息保存的是原问题。",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/HistoryRequest"},
+              "example": {"session_id": 1}
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HTTP 200。对话不存在时 body.status=400。",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/HistoryEnvelope"},
+                "examples": {
+                  "success": {
+                    "summary": "成功",
+                    "value": {
+                      "status": 200,
+                      "msg": "success",
+                      "data": {
+                        "session": {
+                          "id": 1,
+                          "target_type": "data",
+                          "target_key": "chart-1001",
+                          "title": "我的事业怎么样",
+                          "has_report": true,
+                          "report": {
+                            "命宫": "紫微",
+                            "官禄宫": "武曲",
+                            "财帛宫": "天府"
+                          },
+                          "updated_at": "2026-10-08 15:00:00"
+                        },
+                        "messages": [
+                          {
+                            "id": 1,
+                            "role": "user",
+                            "content": "我的事业怎么样？",
+                            "created_at": "2026-10-08 15:00:00"
+                          },
+                          {
+                            "id": 2,
+                            "role": "assistant",
+                            "content": "【已知资料】\n使用资料 chart-1001。\n\n说明：内容仅供传统文化研究和自我观察参考",
+                            "created_at": "2026-10-08 15:00:01"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  "missing": {
+                    "summary": "对话不存在",
+                    "value": {
+                      "status": 400,
+                      "code": 400,
+                      "msg": "对话不存在",
+                      "data": null
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "MessageRequest": {
+        "type": "object",
+        "required": ["content"],
+        "properties": {
+          "session_id": {"type": "integer", "description": "已有对话 ID。传入后按该对话续接", "example": 1},
+          "new_session": {"type": "boolean", "description": "为 true 时新开对话", "example": false},
+          "target_type": {"type": "string", "enum": ["skill", "data"], "description": "新建时必填。skill 为紫微知识，data 为程序计算资料", "example": "skill"},
+          "target_key": {"type": "string", "description": "新建时必填。技能固定 ziwei，资料填命盘 ID，最长 64", "example": "ziwei"},
+          "content": {"type": "string", "description": "用户问题，1 到 2000 字", "example": "紫微星主管什么？"},
+          "report": {
+            "type": "object",
+            "description": "程序计算报告，必须是 JSON 对象。仅 data 使用，同一资料后续可省略",
+            "additionalProperties": true,
+            "example": {"命宫": "紫微", "官禄宫": "武曲", "财帛宫": "天府"}
+          }
+        }
+      },
+      "Sections": {
+        "type": "object",
+        "properties": {
+          "已知资料": {"type": "string"},
+          "计算结果": {"type": "string"},
+          "知识依据": {"type": "string"},
+          "综合解读": {"type": "string"},
+          "行动建议": {"type": "string"}
+        }
+      },
+      "MessageData": {
+        "type": "object",
+        "properties": {
+          "session_id": {"type": "integer", "example": 1},
+          "message_id": {"type": "integer", "example": 2},
+          "target_type": {"type": "string", "example": "skill"},
+          "target_key": {"type": "string", "example": "ziwei"},
+          "result": {"type": "string", "description": "完整回答"},
+          "sections": {"$ref": "#/components/schemas/Sections"},
+          "valid": {"type": "boolean", "description": "是否通过输出格式校验"},
+          "missing": {"type": "array", "items": {"type": "string"}, "description": "仍缺失的部分"},
+          "corrected": {"type": "boolean", "description": "是否已经自动重写过一次"}
+        }
+      },
+      "MessageEnvelope": {
+        "type": "object",
+        "properties": {
+          "status": {"type": "integer", "description": "200 成功，400 业务错误，503 暂不可用"},
+          "code": {"type": "integer"},
+          "msg": {"type": "string"},
+          "data": {"$ref": "#/components/schemas/MessageData"}
+        }
+      },
+      "SessionSummary": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "target_type": {"type": "string"},
+          "target_key": {"type": "string"},
+          "title": {"type": "string"},
+          "has_report": {"type": "boolean"},
+          "updated_at": {"type": "string", "example": "2026-10-08 15:00:00"}
+        }
+      },
+      "SessionsEnvelope": {
+        "type": "object",
+        "properties": {
+          "status": {"type": "integer", "example": 200},
+          "msg": {"type": "string", "example": "success"},
+          "data": {
+            "type": "object",
+            "properties": {
+              "list": {
+                "type": "array",
+                "items": {"$ref": "#/components/schemas/SessionSummary"}
+              }
+            }
+          }
+        }
+      },
+      "HistoryRequest": {
+        "type": "object",
+        "required": ["session_id"],
+        "properties": {
+          "session_id": {"type": "integer", "description": "对话 ID", "example": 1}
+        }
+      },
+      "HistoryMessage": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "role": {"type": "string", "enum": ["user", "assistant"]},
+          "content": {"type": "string"},
+          "created_at": {"type": "string"}
+        }
+      },
+      "HistoryEnvelope": {
+        "type": "object",
+        "properties": {
+          "status": {"type": "integer"},
+          "code": {"type": "integer"},
+          "msg": {"type": "string"},
+          "data": {
+            "type": "object",
+            "properties": {
+              "session": {
+                "allOf": [
+                  {"$ref": "#/components/schemas/SessionSummary"},
+                  {
+                    "type": "object",
+                    "properties": {
+                      "report": {
+                        "type": "object",
+                        "nullable": true,
+                        "additionalProperties": true,
+                        "description": "已保存的程序计算报告"
+                      }
+                    }
+                  }
+                ]
+              },
+              "messages": {
+                "type": "array",
+                "items": {"$ref": "#/components/schemas/HistoryMessage"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -139,6 +139,12 @@ Route::middleware($deviceEnv)->group(function () {
     Route::prefix('chatAI')->middleware(['token_auth'])->group(
         function (\Illuminate\Routing\Router $route) {
             $route->post('dialogue', 'ChatAiController@task');
+            // 文墨对话
+            $route->post('wenmo/message', 'TianjiChatController@message');
+            // 文墨对话列表
+            $route->post('wenmo/sessions', 'TianjiChatController@sessions');
+            // 文墨对话记录
+            $route->post('wenmo/history', 'TianjiChatController@history');
             $route->post('content/evaluate', 'ChatAiController@evaluate');
             $route->post('imageToImage', 'ChatAiController@imageToImage');
             $route->post('getImages', 'ChatAiController@getImages');
