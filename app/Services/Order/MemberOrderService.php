@@ -79,6 +79,7 @@ class MemberOrderService extends Service
         $payStatusColorMap = MemberOrder::payStatusColorMap();
         $refundStatusMap = MemberOrder::refundStatusMap();
         $refundStatusColorMap = MemberOrder::refundStatusColorMap();
+        $paidStats = $this->paidStatsByUser($list);
         foreach ($list as &$item) {
             $item['type_name'] = $typeMap[$item['type']] ?? '';
             $item['member_type_name'] = $memberTypeMap[$item['member_type']] ?? '';
@@ -101,6 +102,10 @@ class MemberOrderService extends Service
                 'name' => $item['product_name'],
                 'price' => $item['product_price'],
             ];
+            $stat = $paidStats[(int) ($item['user_id'] ?? 0)] ?? ['count' => 0, 'amount' => 0];
+            $item['paid_order_count'] = $stat['count'];
+            $item['paid_order_amount'] = number_format($stat['amount'], 2, '.', '');
+            $item['is_repurchase'] = $stat['count'] >= 2 ? 1 : 0;
         }
 
         return $list;
@@ -173,6 +178,36 @@ class MemberOrderService extends Service
         }
 
         $this->dao->update($id, ['remark' => trim($remark)]);
+    }
+
+    private function paidStatsByUser($list): array
+    {
+        $userIds = [];
+        foreach ($list as $item) {
+            $userId = (int) ($item['user_id'] ?? 0);
+            if ($userId > 0) {
+                $userIds[$userId] = $userId;
+            }
+        }
+        if ($userIds === []) {
+            return [];
+        }
+
+        $stats = [];
+        $rows = MemberOrder::query()
+            ->selectRaw('user_id, COUNT(*) as paid_count, SUM(pay_price) as paid_amount')
+            ->whereIn('user_id', array_values($userIds))
+            ->where('pay_status', MemberOrder::PAY_STATUS_PAID)
+            ->groupBy('user_id')
+            ->get();
+        foreach ($rows as $row) {
+            $stats[(int) $row->user_id] = [
+                'count' => (int) $row->paid_count,
+                'amount' => round((float) $row->paid_amount, 2),
+            ];
+        }
+
+        return $stats;
     }
 
     private function money(float|int|string $value): float

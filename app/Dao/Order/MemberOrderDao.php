@@ -54,17 +54,28 @@ class MemberOrderDao extends BaseDao
             $query->whereIn('market_channel', \App\Models\SystemApp::marketChannelAliases((string) $where['market_channel']));
         }
 
-        if (!empty($where['version'])) {
-            $query->where('version', 'like', trim((string) $where['version']) . '%');
+        if (isset($where['is_repurchase']) && $where['is_repurchase'] !== '') {
+            $repurchaseUsers = MemberOrder::query()
+                ->select('user_id')
+                ->where('pay_status', MemberOrder::PAY_STATUS_PAID)
+                ->groupBy('user_id')
+                ->havingRaw('COUNT(*) >= 2');
+            if ((string) $where['is_repurchase'] === '1') {
+                $query->whereIn('user_id', $repurchaseUsers);
+            } else {
+                $query->whereNotIn('user_id', $repurchaseUsers);
+            }
         }
 
         if (!empty($where['keyword'])) {
-            $query->where(function (Builder $query) use ($where) {
-                $query->where('user_id', 'like', "{$where['keyword']}%")
-                    ->orWhere('order_no', 'like', "{$where['keyword']}%")
-                    ->orWhere('trade_no', 'like', "{$where['keyword']}%")
-                    ->orWhere('subscribe_product_id', 'like', "{$where['keyword']}%")
-                    ->orWhere('product_name', 'like', "{$where['keyword']}%");
+            $keyword = trim((string) $where['keyword']);
+            $query->where(function (Builder $query) use ($keyword) {
+                $query->where('user_id', 'like', "{$keyword}%")
+                    ->orWhere('order_no', 'like', "{$keyword}%")
+                    ->orWhere('trade_no', 'like', "{$keyword}%")
+                    ->orWhere('subscribe_product_id', 'like', "{$keyword}%")
+                    ->orWhere('product_name', 'like', "{$keyword}%")
+                    ->orWhere('version', 'like', "{$keyword}%");
             });
         }
 
