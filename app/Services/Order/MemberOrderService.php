@@ -79,7 +79,7 @@ class MemberOrderService extends Service
         $payStatusColorMap = MemberOrder::payStatusColorMap();
         $refundStatusMap = MemberOrder::refundStatusMap();
         $refundStatusColorMap = MemberOrder::refundStatusColorMap();
-        $paidStats = $this->paidStatsByUser($list);
+        $purchaseProgress = $this->purchaseProgress($list);
         foreach ($list as &$item) {
             $item['type_name'] = $typeMap[$item['type']] ?? '';
             $item['member_type_name'] = $memberTypeMap[$item['member_type']] ?? '';
@@ -102,10 +102,10 @@ class MemberOrderService extends Service
                 'name' => $item['product_name'],
                 'price' => $item['product_price'],
             ];
-            $stat = $paidStats[(int) ($item['user_id'] ?? 0)] ?? ['count' => 0, 'amount' => 0];
-            $item['paid_order_count'] = $stat['count'];
-            $item['paid_order_amount'] = number_format($stat['amount'], 2, '.', '');
-            $item['is_repurchase'] = $stat['count'] >= 2 ? 1 : 0;
+            $progress = $purchaseProgress[(int) ($item['id'] ?? 0)] ?? null;
+            $item['purchase_seq'] = $progress['seq'] ?? 0;
+            $item['purchase_amount'] = $progress ? number_format($progress['amount'], 2, '.', '') : '';
+            $item['is_repurchase'] = $progress['is_repurchase'] ?? 0;
         }
 
         return $list;
@@ -180,7 +180,10 @@ class MemberOrderService extends Service
         $this->dao->update($id, ['remark' => trim($remark)]);
     }
 
-    private function paidStatsByUser($list): array
+    /**
+     * 按支付时间排出每个用户的成功订单，得到每一笔是第几次、以及截止这笔的累计金额。
+     */
+    private function purchaseProgress($list): array
     {
         $userIds = [];
         foreach ($list as $item) {
@@ -193,21 +196,28 @@ class MemberOrderService extends Service
             return [];
         }
 
-        $stats = [];
         $rows = MemberOrder::query()
-            ->selectRaw('user_id, COUNT(*) as paid_count, SUM(pay_price) as paid_amount')
             ->whereIn('user_id', array_values($userIds))
             ->where('pay_status', MemberOrder::PAY_STATUS_PAID)
-            ->groupBy('user_id')
-            ->get();
+            ->orderBy('pay_time')
+            ->orderBy('id')
+            ->get(['id', 'user_id', 'pay_price']);
+
+        $progress = [];
+        $seq = [];
+        $amount = [];
         foreach ($rows as $row) {
-            $stats[(int) $row->user_id] = [
-                'count' => (int) $row->paid_count,
-                'amount' => round((float) $row->paid_amount, 2),
+            $userId = (int) $row->user_id;
+            $seq[$userId] = ($seq[$userId] ?? 0) + 1;
+            $amount[$userId] = round(($amount[$userId] ?? 0) + (float) $row->pay_price, 2);
+            $progress[(int) $row->id] = [
+                'seq' => $seq[$userId],
+                'amount' => $amount[$userId],
+                'is_repurchase' => $seq[$userId] >= 2 ? 1 : 0,
             ];
         }
 
-        return $stats;
+        return $progress;
     }
 
     private function money(float|int|string $value): float

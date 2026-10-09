@@ -55,15 +55,26 @@ class MemberOrderDao extends BaseDao
         }
 
         if (isset($where['is_repurchase']) && $where['is_repurchase'] !== '') {
-            $repurchaseUsers = MemberOrder::query()
-                ->select('user_id')
-                ->where('pay_status', MemberOrder::PAY_STATUS_PAID)
-                ->groupBy('user_id')
-                ->havingRaw('COUNT(*) >= 2');
+            $earlierPaid = function ($earlier) {
+                $earlier->selectRaw('1')
+                    ->from('member_orders as earlier')
+                    ->whereColumn('earlier.user_id', 'member_orders.user_id')
+                    ->where('earlier.pay_status', MemberOrder::PAY_STATUS_PAID)
+                    ->where(function ($time) {
+                        $time->whereColumn('earlier.pay_time', '<', 'member_orders.pay_time')
+                            ->orWhere(function ($sameTime) {
+                                $sameTime->whereColumn('earlier.pay_time', 'member_orders.pay_time')
+                                    ->whereColumn('earlier.id', '<', 'member_orders.id');
+                            });
+                    });
+            };
             if ((string) $where['is_repurchase'] === '1') {
-                $query->whereIn('user_id', $repurchaseUsers);
+                $query->where('pay_status', MemberOrder::PAY_STATUS_PAID)->whereExists($earlierPaid);
             } else {
-                $query->whereNotIn('user_id', $repurchaseUsers);
+                $query->where(function (Builder $query) use ($earlierPaid) {
+                    $query->where('pay_status', '<>', MemberOrder::PAY_STATUS_PAID)
+                        ->orWhereNotExists($earlierPaid);
+                });
             }
         }
 
