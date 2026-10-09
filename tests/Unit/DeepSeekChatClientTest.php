@@ -77,3 +77,24 @@ class DeepSeekChatClientTest extends TestCase
         (new DeepSeekChatClient())->complete([['role' => 'user', 'content' => '你好']]);
     }
 }
+
+class DeepSeekSseParserTest extends TestCase
+{
+    public function test_it_emits_deltas_when_chunks_split_a_line(): void
+    {
+        $deltas = '';
+        $parser = new \App\Services\Tianji\DeepSeekSseParser(function (string $delta) use (&$deltas) {
+            $deltas .= $delta;
+        });
+
+        $parser->push("data: {\"choices\":[{\"delta\":{\"content\":\"紫\"}}]}\n");
+        $parser->push("data: {\"id\":\"chatcmpl-1\",\"choices\":[{\"delta\":{\"con");
+        $parser->push("tent\":\"微\"}}]}\r\n\r\n");
+        $parser->push("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4,\"total_tokens\":7}}\n");
+        $parser->push("data: [DONE]\n");
+
+        $this->assertSame('紫微', $deltas);
+        $this->assertSame('chatcmpl-1', $parser->id);
+        $this->assertSame(7, $parser->usage['total_tokens']);
+    }
+}

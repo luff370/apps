@@ -13,6 +13,7 @@ class TianjiChatService
 
     /**
      * 发送一轮对话：校验目标、带上最近上下文和报告，并保存问答。
+     * $emit 收到 meta、delta、replace、done，用于把增量推给客户端。
      *
      * @param  array{
      *     user_id: int,
@@ -24,8 +25,29 @@ class TianjiChatService
      *     content: string,
      *     report?: array|string|null
      * }  $input
+     * @param  callable(string, array): void|null  $emit
      */
-    public function send(array $input): array
+    public function send(array $input, ?callable $emit = null): array
+    {
+        return $this->play($this->prepare($input), $emit);
+    }
+
+    /**
+     * 校验请求并准备好本轮上下文。模型调用之前的错误在这里抛出。
+     *
+     * @param  array{
+     *     user_id: int,
+     *     app_id: int,
+     *     session_id?: int|string|null,
+     *     new_session?: bool,
+     *     target_type?: string|null,
+     *     target_key?: string|null,
+     *     content: string,
+     *     report?: array|string|null
+     * }  $input
+     * @return array{session: TianjiSessionRecord, content: string, messages: array<int, array{role: string, content: string}>}
+     */
+    public function prepare(array $input): array
     {
         $userId = (int) ($input['user_id'] ?? 0);
         $appId = (int) ($input['app_id'] ?? 0);
@@ -38,10 +60,33 @@ class TianjiChatService
         $incomingReport = $this->normalizeReport($input['report'] ?? null);
         $session = $this->resolveSession($input, $userId, $appId, $content, $incomingReport);
         $report = $this->resolveReport($session, $incomingReport);
-
         $history = $this->repository->messages($session->id, (int) config('tianji.history_messages', 20));
-        $messages = $this->buildMessages($session, $content, $report, $history);
-        [$answer, $usage, $corrected] = $this->completeWithRetry($messages, $session->targetType);
+
+        return [
+            'session' => $session,
+            'content' => $content,
+            'messages' => $this->buildMessages($session, $content, $report, $history),
+        ];
+    }
+
+    /**
+     * 流式生成回答，保存消息，并通过 $emit 推出增量。
+     *
+     * @param  array{session: TianjiSessionRecord, content: string, messages: array<int, array{role: string, content: string}>}  $turn
+     * @param  callable(string, array): void|null  $emit
+     */
+    public function play(array $turn, ?callable $emit = null): array
+    {
+        $emit ??= function (string $event, array $data) {
+        };
+        $session = $turn['session'];
+        $content = $turn['content'];
+        $emit('meta', [
+            'session_id' => $session->id,
+            'target_type' => $session->targetType,
+            'target_key' => $session->targetKey,
+        ]);
+        [$answer, $usage, $corrected] = $this->completeWithRetry($turn['messages'], $session->targetType, $emit);
 
         $assistant = $this->repository->transaction(function () use ($session, $content, $answer, $usage, $corrected) {
             $this->repository->addMessage($session->id, 'user', $content, 0, 0, 0, false, true);
@@ -58,7 +103,7 @@ class TianjiChatService
             );
         });
 
-        return [
+        $payload = [
             'session_id' => $session->id,
             'message_id' => $assistant->id,
             'target_type' => $session->targetType,
@@ -69,6 +114,9 @@ class TianjiChatService
             'missing' => $answer['missing'],
             'corrected' => $corrected,
         ];
+        $emit('done', $payload);
+
+        return $payload;
     }
 
     /** 列出当前用户最近的对话摘要。 */
@@ -229,23 +277,29 @@ class TianjiChatService
     }
 
     /**
-     * 调用模型；格式不合格时只自动重写一次。
+     * 流式调用模型；格式不合格时清空已输出内容，并只自动重写一次。
      *
      * @param  array<int, array{role: string, content: string}>  $messages
+     * @param  callable(string, array): void  $emit
      * @return array{0: array{content: string, valid: bool, missing: string[], sections: array<string, string>}, 1: array{prompt_tokens: int, completion_tokens: int, total_tokens: int}, 2: bool}
      */
-    private function completeWithRetry(array $messages, string $targetType): array
+    private function completeWithRetry(array $messages, string $targetType, callable $emit): array
     {
-        $first = $this->client->complete($messages);
+        $first = $this->client->stream($messages, function (string $delta) use ($emit) {
+            $emit('delta', ['content' => $delta]);
+        });
         $answer = TianjiReplyValidator::assess($first['content'], $targetType);
         $usage = $this->usage($first);
         if ($answer['valid']) {
             return [$answer, $usage, false];
         }
 
+        $emit('replace', ['content' => '']);
         $messages[] = ['role' => 'assistant', 'content' => $answer['content']];
         $messages[] = ['role' => 'user', 'content' => $this->correctionInstruction($answer['missing'])];
-        $second = $this->client->complete($messages);
+        $second = $this->client->stream($messages, function (string $delta) use ($emit) {
+            $emit('delta', ['content' => $delta]);
+        });
 
         return [
             TianjiReplyValidator::assess($second['content'], $targetType),

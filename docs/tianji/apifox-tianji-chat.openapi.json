@@ -29,7 +29,7 @@
         "tags": ["文墨对话"],
         "summary": "文墨对话",
         "operationId": "wenmoMessage",
-        "description": "发送一轮对话。不传 session_id 时，按 target_type + target_key 续接最近一次；new_session 为 true 时新开。skill 的 target_key 固定为 ziwei，不能附带 report。data 首次必须提交 report，之后可只传 content。格式不合格时服务端自动重写一次。",
+        "description": "发送一轮对话，响应为 text/event-stream。不传 session_id 时，按 target_type + target_key 续接最近一次；new_session 为 true 时新开。skill 的 target_key 固定为 ziwei，不能附带 report。data 首次必须提交 report，之后可只传 content。格式不合格时先发 replace 清空已显示文字，再重写一次。参数错误在开流之前返回 JSON。",
         "requestBody": {
           "required": true,
           "content": {
@@ -70,53 +70,23 @@
         },
         "responses": {
           "200": {
-            "description": "HTTP 200。body.status=200 成功，400 为参数或业务错误，503 为对话暂不可用。",
+            "description": "SSE。依次出现 meta、若干 delta，必要时 replace 后再来若干 delta，最后 done。生成过程失败时发送 error。",
+            "content": {
+              "text/event-stream": {
+                "schema": {"type": "string"},
+                "example": "event: meta\ndata: {\"session_id\":1,\"target_type\":\"skill\",\"target_key\":\"ziwei\"}\n\nevent: delta\ndata: {\"content\":\"【已知资料】\"}\n\nevent: delta\ndata: {\"content\":\"\\n未选择命盘。\"}\n\nevent: done\ndata: {\"session_id\":1,\"message_id\":2,\"target_type\":\"skill\",\"target_key\":\"ziwei\",\"result\":\"【已知资料】\\n未选择命盘。\\n\\n说明：内容仅供传统文化研究和自我观察参考\",\"sections\":{\"已知资料\":\"未选择命盘。\"},\"valid\":true,\"missing\":[],\"corrected\":false}\n\n"
+              }
+            }
+          },
+          "400": {
+            "description": "开流前的参数或业务错误，例如未提供计算报告。",
             "content": {
               "application/json": {
-                "schema": {"$ref": "#/components/schemas/MessageEnvelope"},
-                "examples": {
-                  "success": {
-                    "summary": "成功",
-                    "value": {
-                      "status": 200,
-                      "msg": "success",
-                      "data": {
-                        "session_id": 1,
-                        "message_id": 2,
-                        "target_type": "skill",
-                        "target_key": "ziwei",
-                        "result": "【已知资料】\n未选择命盘。问题是紫微星主管什么。\n\n【计算结果】\n本次为知识问答，未调用命盘计算。\n\n【知识依据】\n紫微属土，帝座，主尊贵、权威。\n\n【综合解读】\n紫微是十四主星中的帝座，核心含义是尊贵与权威。正向表现是能定调，盲点是过分看重位置。当前没有命盘，所以只解释通用含义。\n\n【行动建议】\n1. 讨论个人事业前先选择命盘，反馈是是否已经生成报告。\n\n说明：内容仅供传统文化研究和自我观察参考",
-                        "sections": {
-                          "已知资料": "未选择命盘。问题是紫微星主管什么。",
-                          "计算结果": "本次为知识问答，未调用命盘计算。",
-                          "知识依据": "紫微属土，帝座，主尊贵、权威。",
-                          "综合解读": "紫微是十四主星中的帝座，核心含义是尊贵与权威。正向表现是能定调，盲点是过分看重位置。当前没有命盘，所以只解释通用含义。",
-                          "行动建议": "1. 讨论个人事业前先选择命盘，反馈是是否已经生成报告。"
-                        },
-                        "valid": true,
-                        "missing": [],
-                        "corrected": false
-                      }
-                    }
-                  },
-                  "badRequest": {
-                    "summary": "缺少计算报告",
-                    "value": {
-                      "status": 400,
-                      "code": 400,
-                      "msg": "个人命盘分析需要先提供程序计算报告",
-                      "data": null
-                    }
-                  },
-                  "unavailable": {
-                    "summary": "对话暂不可用",
-                    "value": {
-                      "status": 503,
-                      "code": 503,
-                      "msg": "智能对话暂时不可用",
-                      "data": null
-                    }
-                  }
+                "example": {
+                  "status": 400,
+                  "code": 400,
+                  "msg": "个人命盘分析需要先提供程序计算报告",
+                  "data": null
                 }
               }
             }

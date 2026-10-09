@@ -43,7 +43,7 @@ return new class extends Migration
             [
                 'name' => '文墨对话',
                 'path' => 'chatAI/wenmo/message',
-                'remark' => '围绕一份紫微知识或一份程序计算资料对话，并记住上下文',
+                'remark' => '流式 SSE。事件为 meta、delta、replace、done、error；参数错误在开流前返回 JSON',
                 'request_params' => [
                     ['key' => 'session_id', 'type' => 'integer', 'required' => false, 'desc' => '已有对话 ID。传入后忽略自动续接', 'example' => 1],
                     ['key' => 'new_session', 'type' => 'boolean', 'required' => false, 'desc' => '为 true 时新开对话，不续接同目标的最近会话', 'example' => false],

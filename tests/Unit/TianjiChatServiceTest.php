@@ -92,6 +92,35 @@ class TianjiChatServiceTest extends TestCase
         $this->assertStringStartsWith('【已知资料】', $history['messages'][1]['content']);
     }
 
+    public function test_it_streams_deltas_and_replaces_a_malformed_reply(): void
+    {
+        $client = new FakeTianjiChatClient(['你好', TianjiChatFixtures::skillReply()]);
+        [$service] = $this->service($client);
+        $events = [];
+
+        $service->send($this->input('紫微是什么'), function (string $event, array $data) use (&$events) {
+            $events[] = [$event, $data['content'] ?? null];
+        });
+
+        $this->assertSame('meta', $events[0][0]);
+        $this->assertSame('delta', $events[1][0]);
+        $this->assertContains(['replace', ''], $events);
+        $this->assertSame('done', $events[array_key_last($events)][0]);
+        $joined = '';
+        $replaced = false;
+        foreach ($events as [$event, $content]) {
+            if ($event === 'replace') {
+                $joined = '';
+                $replaced = true;
+            }
+            if ($event === 'delta') {
+                $joined .= $content;
+            }
+        }
+        $this->assertTrue($replaced);
+        $this->assertStringStartsWith('【已知资料】', $joined);
+    }
+
     public function test_it_requires_a_computed_report_before_calling_the_model(): void
     {
         $client = new FakeTianjiChatClient([]);

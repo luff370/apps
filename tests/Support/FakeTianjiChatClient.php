@@ -13,12 +13,21 @@ class FakeTianjiChatClient implements ChatCompletionClient
     {
     }
 
-    public function complete(array $messages): array
+    public function stream(array $messages, callable $onDelta): array
     {
         $this->calls[] = $messages;
         $content = array_shift($this->replies);
         if (!is_string($content)) {
             throw new TianjiChatException('测试回复已用完');
+        }
+
+        $length = mb_strlen($content);
+        $size = max(1, (int) ceil($length / 3));
+        for ($offset = 0; $offset < $length; $offset += $size) {
+            $piece = mb_substr($content, $offset, $size);
+            if ($piece !== '') {
+                $onDelta($piece);
+            }
         }
 
         return [
@@ -28,5 +37,11 @@ class FakeTianjiChatClient implements ChatCompletionClient
             'completion_tokens' => 20,
             'total_tokens' => 30,
         ];
+    }
+
+    public function complete(array $messages): array
+    {
+        return $this->stream($messages, function () {
+        });
     }
 }
