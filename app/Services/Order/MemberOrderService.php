@@ -181,7 +181,7 @@ class MemberOrderService extends Service
     }
 
     /**
-     * 按支付时间排出每个用户的成功订单，得到每一笔是第几次、以及截止这笔的累计金额。
+     * 按支付时间排出每个用户仍有效的成功订单。已退款或退完后金额为 0 的不参与排序，部分退款按剩余金额累计。
      */
     private function purchaseProgress($list): array
     {
@@ -199,17 +199,22 @@ class MemberOrderService extends Service
         $rows = MemberOrder::query()
             ->whereIn('user_id', array_values($userIds))
             ->where('pay_status', MemberOrder::PAY_STATUS_PAID)
+            ->where('refund_status', '<>', MemberOrder::REFUND_STATUS_REFUNDED)
             ->orderBy('pay_time')
             ->orderBy('id')
-            ->get(['id', 'user_id', 'pay_price']);
+            ->get(['id', 'user_id', 'pay_price', 'refund_price']);
 
         $progress = [];
         $seq = [];
         $amount = [];
         foreach ($rows as $row) {
+            $net = round((float) $row->pay_price - (float) $row->refund_price, 2);
+            if ($net <= 0) {
+                continue;
+            }
             $userId = (int) $row->user_id;
             $seq[$userId] = ($seq[$userId] ?? 0) + 1;
-            $amount[$userId] = round(($amount[$userId] ?? 0) + (float) $row->pay_price, 2);
+            $amount[$userId] = round(($amount[$userId] ?? 0) + $net, 2);
             $progress[(int) $row->id] = [
                 'seq' => $seq[$userId],
                 'amount' => $amount[$userId],

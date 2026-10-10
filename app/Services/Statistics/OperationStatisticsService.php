@@ -1067,12 +1067,9 @@ class OperationStatisticsService
             ->select('user_id')
             ->selectRaw('MIN(pay_time) as first_pay_time')
             ->tap(fn (Builder $query) => $this->applyRechargeFilter($query, $filter))
-            ->where(function (Builder $query) {
-                $query->where('paid', 1)->orWhere('pay_status', MemberOrder::PAY_STATUS_PAID);
-            })
+            ->tap(fn (Builder $query) => $this->whereEffectivePaid($query))
             ->where('pay_time', '>', 0)
             ->where('user_id', '>', 0)
-            ->where('pay_price', '>', 0)
             ->groupBy('user_id');
 
         return (int) DB::query()
@@ -1085,9 +1082,9 @@ class OperationStatisticsService
     }
 
     /**
-     * 支付成功的会员订单查询。
+     * 支付成功且未全额退款的会员订单。
      *
-     * paid 和 pay_status 两套字段都兼容，避免历史数据字段口径不同导致漏算。
+     * paid 和 pay_status 两套字段都兼容。已退款订单不再计入笔数和金额，部分退款仍保留，金额另扣退款。
      */
     private function paidMemberOrders(Carbon $start, Carbon $end, int|array $filter): Builder
     {
@@ -1096,9 +1093,15 @@ class OperationStatisticsService
         return MemberOrder::query()
             ->tap(fn (Builder $query) => $this->applyRechargeFilter($query, $filter))
             ->whereBetween('pay_time', [$start->copy()->startOfDay()->timestamp, $end->copy()->endOfDay()->timestamp])
-            ->where(function (Builder $query) {
-                $query->where('paid', 1)->orWhere('pay_status', MemberOrder::PAY_STATUS_PAID);
-            });
+            ->tap(fn (Builder $query) => $this->whereEffectivePaid($query));
+    }
+
+    private function whereEffectivePaid(Builder $query): void
+    {
+        $query->where(function (Builder $query) {
+            $query->where('paid', 1)->orWhere('pay_status', MemberOrder::PAY_STATUS_PAID);
+        })->where('refund_status', '<>', MemberOrder::REFUND_STATUS_REFUNDED)
+            ->whereRaw('pay_price - COALESCE(refund_price, 0) > 0');
     }
 
     private function paidMemberOrderAmount(Builder $query): float

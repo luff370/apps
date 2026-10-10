@@ -55,11 +55,17 @@ class MemberOrderDao extends BaseDao
         }
 
         if (isset($where['is_repurchase']) && $where['is_repurchase'] !== '') {
-            $earlierPaid = function ($earlier) {
+            $keepsPayment = function ($order, string $table = '') {
+                $prefix = $table === '' ? '' : $table . '.';
+                $order->where($prefix . 'pay_status', MemberOrder::PAY_STATUS_PAID)
+                    ->where($prefix . 'refund_status', '<>', MemberOrder::REFUND_STATUS_REFUNDED)
+                    ->whereRaw($prefix . 'pay_price - COALESCE(' . $prefix . 'refund_price, 0) > 0');
+            };
+            $earlierPaid = function ($earlier) use ($keepsPayment) {
                 $earlier->selectRaw('1')
                     ->from('member_orders as earlier')
                     ->whereColumn('earlier.user_id', 'member_orders.user_id')
-                    ->where('earlier.pay_status', MemberOrder::PAY_STATUS_PAID)
+                    ->tap(fn ($query) => $keepsPayment($query, 'earlier'))
                     ->where(function ($time) {
                         $time->whereColumn('earlier.pay_time', '<', 'member_orders.pay_time')
                             ->orWhere(function ($sameTime) {
@@ -69,10 +75,12 @@ class MemberOrderDao extends BaseDao
                     });
             };
             if ((string) $where['is_repurchase'] === '1') {
-                $query->where('pay_status', MemberOrder::PAY_STATUS_PAID)->whereExists($earlierPaid);
+                $query->tap(fn ($order) => $keepsPayment($order))->whereExists($earlierPaid);
             } else {
                 $query->where(function (Builder $query) use ($earlierPaid) {
                     $query->where('pay_status', '<>', MemberOrder::PAY_STATUS_PAID)
+                        ->orWhere('refund_status', MemberOrder::REFUND_STATUS_REFUNDED)
+                        ->orWhereRaw('pay_price - COALESCE(refund_price, 0) <= 0')
                         ->orWhereNotExists($earlierPaid);
                 });
             }
