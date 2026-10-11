@@ -20,8 +20,7 @@ class TianjiChatService
      *     app_id: int,
      *     session_id?: int|string|null,
      *     new_session?: bool,
-     *     target_type?: string|null,
-     *     target_key?: string|null,
+     *     agent_key?: string|null,
      *     content: string,
      *     report?: array|string|null
      * }  $input
@@ -40,8 +39,7 @@ class TianjiChatService
      *     app_id: int,
      *     session_id?: int|string|null,
      *     new_session?: bool,
-     *     target_type?: string|null,
-     *     target_key?: string|null,
+     *     agent_key?: string|null,
      *     content: string,
      *     report?: array|string|null
      * }  $input
@@ -91,7 +89,6 @@ class TianjiChatService
         ]);
         [$answer, $usage, $corrected] = $this->completeWithRetry(
             $turn['messages'],
-            $session->targetType,
             $emit,
             $turn['temperature'] ?? null
         );
@@ -206,7 +203,7 @@ class TianjiChatService
 
         $existing = !empty($input['new_session'])
             ? null
-            : $this->repository->findLatest($userId, $appId, 'agent', $agentKey, $agentKey);
+            : $this->repository->findLatest($userId, $appId, $agentKey);
         if ($existing) {
             return $existing;
         }
@@ -214,11 +211,9 @@ class TianjiChatService
         return $this->repository->createSession(
             $userId,
             $appId,
-            'agent',
             $agentKey,
             null,
-            mb_substr($content, 0, 24),
-            $agentKey
+            mb_substr($content, 0, 24)
         );
     }
 
@@ -287,12 +282,12 @@ class TianjiChatService
      * @param  callable(string, array): void  $emit
      * @return array{0: array{content: string, valid: bool, missing: string[], sections: array<string, string>}, 1: array{prompt_tokens: int, completion_tokens: int, total_tokens: int}, 2: bool}
      */
-    private function completeWithRetry(array $messages, string $targetType, callable $emit, ?float $temperature): array
+    private function completeWithRetry(array $messages, callable $emit, ?float $temperature): array
     {
         $first = $this->client->stream($messages, function (string $delta) use ($emit) {
             $emit('delta', ['content' => $delta]);
         }, $temperature);
-        $answer = TianjiReplyValidator::assess($first['content'], $targetType);
+        $answer = TianjiReplyValidator::assess($first['content']);
         $usage = $this->usage($first);
         if ($answer['valid']) {
             return [$answer, $usage, false];
@@ -306,7 +301,7 @@ class TianjiChatService
         }, $temperature);
 
         return [
-            TianjiReplyValidator::assess($second['content'], $targetType),
+            TianjiReplyValidator::assess($second['content']),
             $this->addUsage($usage, $this->usage($second)),
             true,
         ];
@@ -391,80 +386,6 @@ class TianjiChatService
         }
     }
 
-    /** 续接已有对话时，传入的目标必须和会话一致。 */
-    private function assertSameTarget(TianjiSessionRecord $session, mixed $targetType, mixed $targetKey): void
-    {
-        if (is_string($targetType) && $targetType !== '' && $targetType !== $session->targetType) {
-            throw new TianjiChatException('对话与目标类型不一致');
-        }
-        if (is_string($targetKey) && $targetKey !== '' && $targetKey !== $session->targetKey) {
-            throw new TianjiChatException('对话与目标资料不一致');
-        }
-    }
-
-    /** 知识对话拒绝报告；资料对话在没有历史报告时必须提交报告。 */
-    private function assertReportAllowed(string $targetType, ?array $incomingReport, ?array $storedReport): void
-    {
-        if ($targetType === 'skill' && $incomingReport !== null) {
-            throw new TianjiChatException('知识对话不接收命盘报告，个人解读请改为数据对话');
-        }
-        if ($targetType === 'data' && $incomingReport === null && !$this->hasReport($storedReport)) {
-            throw new TianjiChatException('个人命盘分析需要先提供程序计算报告');
-        }
-    }
-
-    /** 目标类型只接受 skill 或 data。 */
-    private function requireTargetType(mixed $targetType): string
-    {
-        if ($targetType !== 'skill' && $targetType !== 'data') {
-            throw new TianjiChatException('目标类型只能是 skill 或 data');
-        }
-
-        return $targetType;
-    }
-
-    /** 知识问答的 target_key 是智能体标识；资料对话的 target_key 是命盘 ID。 */
-    private function requireTargetKey(int $appId, string $targetType, mixed $targetKey): string
-    {
-        $targetKey = trim((string) $targetKey);
-        if ($targetType === 'skill') {
-            if ($this->agents->findEnabled($appId, $targetKey) === null) {
-                throw new TianjiChatException('当前应用未配置该智能体');
-            }
-
-            return $targetKey;
-        }
-
-        if ($targetKey === '' || mb_strlen($targetKey) > 64 || preg_match('/[\x00-\x1F]/', $targetKey) === 1) {
-            throw new TianjiChatException('资料标识无效');
-        }
-
-        return $targetKey;
-    }
-
-    /**
-     * 知识问答用 target_key 选智能体。排盘用 agent_key 选智能体，命盘 ID 仍放在 target_key。
-     */
-    private function resolveAgentKey(int $appId, string $targetType, string $targetKey, mixed $requested): string
-    {
-        $requested = trim((string) $requested);
-        if ($targetType === 'skill') {
-            if ($requested !== '' && $requested !== $targetKey) {
-                throw new TianjiChatException('对话与智能体不一致');
-            }
-
-            return $targetKey;
-        }
-        if ($requested === '') {
-            throw new TianjiChatException('请指定智能体');
-        }
-        if ($this->agents->findEnabled($appId, $requested) === null) {
-            throw new TianjiChatException('当前应用未配置该智能体');
-        }
-
-        return $requested;
-    }
-
     /** 续接时传入的智能体必须和会话一致。 */
     private function assertSameAgent(TianjiSessionRecord $session, mixed $requested): void
     {
@@ -479,7 +400,7 @@ class TianjiChatService
      */
     private function agentFor(TianjiSessionRecord $session): array
     {
-        $key = $session->agentKey !== '' ? $session->agentKey : $session->targetKey;
+        $key = $session->agentKey;
         $agent = $this->agents->findEnabled($session->appId, $key);
         if ($agent === null) {
             throw new TianjiChatException('当前应用未配置该智能体');

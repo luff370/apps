@@ -9,8 +9,6 @@ class TianjiChatSession extends BaseModel
     protected $fillable = [
         'app_id',
         'user_id',
-        'target_type',
-        'target_key',
         'agent_key',
         'title',
         'report',

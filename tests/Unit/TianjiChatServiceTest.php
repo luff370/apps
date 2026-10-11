@@ -65,7 +65,7 @@ class TianjiChatServiceTest extends TestCase
         [$service] = $this->service($client);
         $report = ['命宫' => '紫微', '官禄宫' => '武曲', '财帛宫' => '天府'];
 
-        $first = $service->send($this->input('我的事业怎么样', 'data', 'chart-1', $report));
+        $first = $service->send($this->input('我的事业怎么样', 'ziwei', $report));
         $service->send([
             'user_id' => 7,
             'app_id' => 10048,
@@ -151,7 +151,7 @@ class TianjiChatServiceTest extends TestCase
         ]]));
 
         try {
-            $service->send($this->input('我的事业怎么样', 'data', 'chart-1'));
+            $service->send($this->input('我的事业怎么样'));
             $this->fail('缺少报告时应拒绝');
         } catch (TianjiChatException $e) {
             $this->assertSame('排盘报告不能为空', $e->getMessage());
@@ -166,7 +166,7 @@ class TianjiChatServiceTest extends TestCase
         [$service] = $this->service($client);
 
         try {
-            $service->send($this->input('泰卦怎么看', 'skill', 'iching'));
+            $service->send($this->input('泰卦怎么看', 'iching'));
             $this->fail('未配置的智能体应拒绝');
         } catch (TianjiChatException $e) {
             $this->assertSame('当前应用未配置该智能体', $e->getMessage());
@@ -209,7 +209,7 @@ class TianjiChatServiceTest extends TestCase
         $service->send($this->input('第一问'));
         $service->send($this->input('第二问'));
         $service->send($this->input('第三问'));
-        $fresh = $service->send($this->input('新的开始', 'skill', 'ziwei', null, true));
+        $fresh = $service->send($this->input('新的开始', 'ziwei', null, true));
 
         $thirdCall = array_column($client->calls[2], 'content');
         $this->assertNotContains('第一问', $thirdCall);
@@ -237,9 +237,9 @@ class TianjiChatServiceTest extends TestCase
     {
         $uris = collect(Route::getRoutes())->map(fn ($route) => $route->uri())->all();
 
-        $this->assertContains('api/chatAI/wenmo/message', $uris);
-        $this->assertContains('api/chatAI/wenmo/sessions', $uris);
-        $this->assertContains('api/chatAI/wenmo/history', $uris);
+        $this->assertContains('api/chatAI/agent/message', $uris);
+        $this->assertContains('api/chatAI/agent/sessions', $uris);
+        $this->assertContains('api/chatAI/agent/history', $uris);
     }
 
     public function test_container_resolves_the_chat_service(): void
@@ -259,15 +259,14 @@ class TianjiChatServiceTest extends TestCase
 
     private function input(
         string $content,
-        string $targetType = 'skill',
-        string $targetKey = 'ziwei',
+        string $agentKey = 'ziwei',
         ?array $report = null,
         bool $newSession = false
     ): array {
         return [
             'user_id' => 7,
             'app_id' => 10048,
-            'agent_key' => $targetType === 'data' ? 'ziwei' : $targetKey,
+            'agent_key' => $agentKey,
             'content' => $content,
             'report' => $report,
             'new_session' => $newSession,

@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "文墨对话",
-    "version": "1.1.0",
+    "title": "智能体对话",
+    "version": "1.2.0",
     "description": "按应用里配置的智能体进行 DeepSeek 对话。同一用户、应用和智能体会续接最近上下文。content 是用户提问；智能体声明的额外字段（例如紫微排盘的 report）随请求传入，并在同一对话里记住。\n\n业务成功、参数错误和模型不可用都返回 HTTP 200，用 body.status 区分。登录态和客户端请求头沿用 Apifox 环境变量。\n\nApifox：导入数据 → OpenAPI/Swagger → 选择本文件。"
   },
   "servers": [
@@ -19,17 +19,17 @@
   ],
   "tags": [
     {
-      "name": "文墨对话",
+      "name": "智能体对话",
       "description": "按智能体进行的连续对话"
     }
   ],
   "paths": {
-    "/chatAI/wenmo/message": {
+    "/chatAI/agent/message": {
       "post": {
-        "tags": ["文墨对话"],
-        "summary": "文墨对话",
-        "operationId": "wenmoMessage",
-        "description": "发送一轮对话，响应为 text/event-stream。不传 session_id 时，按 agent_key 续接该智能体最近一次对话；new_session 为 true 时新开。content 是用户提问。其它字段由该智能体在后台声明，例如紫微排盘的 report。声明为必填且本轮和历史都没有时，开流前返回 JSON。回答缺少免责声明时先发 replace 清空已显示文字，再重写一次。",
+        "tags": ["智能体对话"],
+        "summary": "智能体对话",
+        "operationId": "agentMessage",
+        "description": "发送一轮对话，响应为 text/event-stream。第一次传 agent_key、content，以及该智能体声明的额外字段（紫微排盘是选填的 report）。session_id 和 new_session 可以不传。\n\n同一条对话后续可以不带 report，服务端使用已保存的参数。不传 session_id 时按 agent_key 续接最近一条，此时仍要传 agent_key。传 session_id 时续接这一条，可以不传 agent_key。new_session 不传等于 false；只有要新开另一条对话时才传 true。不必为了续接而传 new_session=false。\n\n换一份命盘时在同一次请求里再传 report，会覆盖这条对话里保存的报告。声明为必填且本轮和历史都没有时，开流前返回 JSON。回答缺少免责声明时先发 replace 清空已显示文字，再重写一次。",
         "requestBody": {
           "required": true,
           "content": {
@@ -55,8 +55,15 @@
                     }
                   }
                 },
-                "continue": {
-                  "summary": "续接已有对话",
+                "continue_agent": {
+                  "summary": "同一条对话续接，不带 report",
+                  "value": {
+                    "agent_key": "ziwei",
+                    "content": "那财运呢"
+                  }
+                },
+                "continue_session": {
+                  "summary": "指定 session_id 续接",
                   "value": {
                     "session_id": 1,
                     "content": "那财运呢"
@@ -92,12 +99,12 @@
         }
       }
     },
-    "/chatAI/wenmo/sessions": {
+    "/chatAI/agent/sessions": {
       "post": {
-        "tags": ["文墨对话"],
-        "summary": "文墨对话列表",
-        "operationId": "wenmoSessions",
-        "description": "返回当前用户最近 20 条文墨对话，按更新时间倒序。请求体可为空对象。",
+        "tags": ["智能体对话"],
+        "summary": "智能体对话列表",
+        "operationId": "agentSessions",
+        "description": "返回当前用户最近 20 条智能体对话，按更新时间倒序。请求体可为空对象。",
         "requestBody": {
           "required": false,
           "content": {
@@ -134,12 +141,12 @@
         }
       }
     },
-    "/chatAI/wenmo/history": {
+    "/chatAI/agent/history": {
       "post": {
-        "tags": ["文墨对话"],
-        "summary": "文墨对话记录",
-        "operationId": "wenmoHistory",
-        "description": "读取一条对话的最近 100 条消息，以及该智能体已保存的请求参数。只能读取当前用户自己的会话。用户消息保存的是原问题。",
+        "tags": ["智能体对话"],
+        "summary": "智能体对话记录",
+        "operationId": "agentHistory",
+        "description": "读取一条对话的最近 100 条消息，以及已保存的参数。只能读取当前用户自己的会话。用户消息保存的是原问题。\n\ninputs 是这条对话里已经保存的额外参数，由智能体在后台声明的字段组成。紫微排盘只声明了 report，所以 inputs 是 {report: 命盘}。字段名正好是 report 时，同一份数据再抄到 session.report，has_report 也看这一份。客户端读命盘用 session.report。其它应用声明的字段只出现在 inputs 里。",
         "requestBody": {
           "required": true,
           "content": {
@@ -222,13 +229,13 @@
         "required": ["content"],
         "additionalProperties": true,
         "properties": {
-          "session_id": {"type": "integer", "description": "已有对话 ID。传入后按该对话续接", "example": 1},
-          "new_session": {"type": "boolean", "description": "为 true 时新开同一智能体的另一条对话", "example": false},
-          "agent_key": {"type": "string", "description": "智能体标识。新建时必填；已传 session_id 时可省略", "example": "ziwei"},
+          "session_id": {"type": "integer", "description": "续接指定对话。不传时按 agent_key 续接最近一条", "example": 1},
+          "new_session": {"type": "boolean", "description": "不传等于 false。只有新开另一条对话时才传 true，续接时不必传 false", "example": false},
+          "agent_key": {"type": "string", "description": "智能体标识。不传 session_id 时必填；传了 session_id 时可省略", "example": "ziwei"},
           "content": {"type": "string", "description": "用户问题，1 到 2000 字", "example": "紫微星主管什么？"},
           "report": {
             "type": "object",
-            "description": "应用 10025 紫微排盘智能体声明的本地命盘报告，选填。换一份命盘时重新传入；同一对话后续可省略。其它应用的额外字段以该智能体在后台的声明为准",
+            "description": "紫微排盘声明的本地命盘，选填。第一次个人分析时传入。同一条对话后续可省略。换一份命盘时再传，会覆盖已保存的报告。其它应用的额外字段以该智能体的后台声明为准",
             "additionalProperties": true,
             "example": {"命宫": "紫微", "官禄宫": "武曲", "财帛宫": "天府"}
           }
@@ -328,13 +335,13 @@
                         "type": "object",
                         "nullable": true,
                         "additionalProperties": true,
-                        "description": "已保存的排盘报告。尚未传入时为 null"
+                        "description": "字段名为 report 时，从 inputs 抄出的那一份命盘。客户端读命盘用这个字段。尚未传入时为 null"
                       },
                       "inputs": {
                         "type": "object",
                         "nullable": true,
                         "additionalProperties": true,
-                        "description": "该智能体声明并已保存的请求参数。紫微排盘里与 report 相同"
+                        "description": "已保存的额外参数合集，键名是智能体声明的字段。紫微排盘只有 report，因此这里是 {report: 命盘}，与上面的 report 是同一份数据"
                       }
                     }
                   }

@@ -9,7 +9,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class TianjiChatController extends Controller
 {
-    /** 流式发送一轮文墨对话。参数错误先返回 JSON，生成过程用 SSE 推送。 */
+    /** 流式发送一轮智能体对话。参数错误先返回 JSON，生成过程用 SSE 推送。 */
     public function message(Request $request, TianjiChatService $service)
     {
         $input = [
@@ -39,13 +39,13 @@ class TianjiChatController extends Controller
         });
     }
 
-    /** 列出当前用户最近的天纪对话。 */
+    /** 列出当前用户最近的智能体对话。 */
     public function sessions(TianjiChatService $service)
     {
         return $this->respond(fn () => $service->sessions(authUserId(), $this->appId()));
     }
 
-    /** 读取一条天纪对话的历史消息和已保存报告。 */
+    /** 读取一条智能体对话的历史消息和已保存参数。 */
     public function history(Request $request, TianjiChatService $service)
     {
         return $this->respond(function () use ($request, $service) {
@@ -53,7 +53,7 @@ class TianjiChatController extends Controller
         });
     }
 
-    /** 成功时返回 data，天纪业务错误返回统一失败结构。 */
+    /** 成功时返回 data，业务错误返回统一失败结构。 */
     private function respond(callable $callback)
     {
         try {

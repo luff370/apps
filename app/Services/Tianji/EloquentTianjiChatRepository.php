@@ -8,21 +8,17 @@ use Illuminate\Support\Facades\DB;
 
 class EloquentTianjiChatRepository implements TianjiChatRepository
 {
-    /** 新建一条绑定技能或资料的对话。 */
+    /** 新建一条智能体对话。 */
     public function createSession(
         int $userId,
         int $appId,
-        string $targetType,
-        string $targetKey,
+        string $agentKey,
         ?array $report,
-        string $title,
-        string $agentKey = ''
+        string $title
     ): TianjiSessionRecord {
         $session = TianjiChatSession::query()->create([
             'user_id' => $userId,
             'app_id' => $appId,
-            'target_type' => $targetType,
-            'target_key' => $targetKey,
             'agent_key' => $agentKey,
             'title' => $title,
             'report' => $report,
@@ -43,18 +39,15 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
         return $session ? $this->sessionRecord($session) : null;
     }
 
-    /** 查找同一用户、应用和目标下最近的一条对话。 */
-    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey, string $agentKey = ''): ?TianjiSessionRecord
+    /** 查找同一用户、应用和智能体下最近的一条对话。 */
+    public function findLatest(int $userId, int $appId, string $agentKey): ?TianjiSessionRecord
     {
-        $query = TianjiChatSession::query()
+        $session = TianjiChatSession::query()
             ->where('user_id', $userId)
             ->where('app_id', $appId)
-            ->where('target_type', $targetType)
-            ->where('target_key', $targetKey);
-        if ($agentKey !== '') {
-            $query->where('agent_key', $agentKey);
-        }
-        $session = $query->orderByDesc('id')->first();
+            ->where('agent_key', $agentKey)
+            ->orderByDesc('id')
+            ->first();
 
         return $session ? $this->sessionRecord($session) : null;
     }
@@ -153,12 +146,10 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
             (int) $session->id,
             (int) $session->user_id,
             (int) $session->app_id,
-            (string) $session->target_type,
-            (string) $session->target_key,
+            (string) ($session->agent_key ?? ''),
             (string) $session->title,
             $session->report,
             optional($session->updated_at)->format('Y-m-d H:i:s') ?? '',
-            (string) ($session->agent_key ?? ''),
             is_array($session->inputs) ? $session->inputs : null,
         );
     }

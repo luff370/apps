@@ -3,9 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\Tianji\EloquentTianjiChatRepository;
-use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 use PDO;
 use Tests\TestCase;
 
@@ -31,15 +29,16 @@ class EloquentTianjiChatRepositoryTest extends TestCase
             '--path' => 'database/migrations/2026_10_11_120000_add_agent_key_to_tianji_chat_sessions.php',
             '--force' => true,
         ]);
-        Schema::table('tianji_chat_sessions', function (Blueprint $table) {
-            $table->json('inputs')->nullable();
-        });
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_10_11_190000_drop_session_target_columns_and_refresh_agent_api.php',
+            '--force' => true,
+        ]);
     }
 
     public function test_it_stores_a_report_and_returns_messages_in_order(): void
     {
         $repository = new EloquentTianjiChatRepository();
-        $session = $repository->createSession(7, 10048, 'data', 'chart-1', null, '我的事业');
+        $session = $repository->createSession(7, 10048, 'ziwei', null, '我的事业');
         $repository->saveReport($session->id, ['官禄宫' => '武曲']);
         $repository->addMessage($session->id, 'user', '我的事业怎么样', 0, 0, 0, false, true);
         $repository->addMessage($session->id, 'assistant', '【综合解读】', 10, 20, 30, true, true);
@@ -52,7 +51,7 @@ class EloquentTianjiChatRepositoryTest extends TestCase
         $this->assertSame('我的事业怎么样', $messages[0]->content);
         $this->assertTrue($messages[1]->corrected);
 
-        $latest = $repository->findLatest(7, 10048, 'data', 'chart-1');
+        $latest = $repository->findLatest(7, 10048, 'ziwei');
         $this->assertSame($session->id, $latest->id);
         $this->assertSame(['官禄宫' => '武曲'], $latest->report);
     }

@@ -23,23 +23,19 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
     public function createSession(
         int $userId,
         int $appId,
-        string $targetType,
-        string $targetKey,
+        string $agentKey,
         ?array $report,
-        string $title,
-        string $agentKey = ''
+        string $title
     ): TianjiSessionRecord {
         $this->sessionId++;
         $session = new TianjiSessionRecord(
             $this->sessionId,
             $userId,
             $appId,
-            $targetType,
-            $targetKey,
+            $agentKey,
             $title,
             $report,
             $this->now(),
-            $agentKey,
             null
         );
         $this->sessions[$session->id] = $session;
@@ -57,17 +53,11 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         return $session;
     }
 
-    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey, string $agentKey = ''): ?TianjiSessionRecord
+    public function findLatest(int $userId, int $appId, string $agentKey): ?TianjiSessionRecord
     {
         $found = null;
         foreach ($this->sessions as $session) {
-            if ($session->userId !== $userId || $session->appId !== $appId) {
-                continue;
-            }
-            if ($session->targetType !== $targetType || $session->targetKey !== $targetKey) {
-                continue;
-            }
-            if ($agentKey !== '' && $session->agentKey !== $agentKey) {
+            if ($session->userId !== $userId || $session->appId !== $appId || $session->agentKey !== $agentKey) {
                 continue;
             }
             if ($found === null || $session->id > $found->id) {
@@ -86,12 +76,10 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             $session->id,
             $session->userId,
             $session->appId,
-            $session->targetType,
-            $session->targetKey,
+            $session->agentKey,
             $session->title,
             $report,
             $this->now(),
-            $session->agentKey,
             $inputs
         );
     }
@@ -103,12 +91,10 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             $session->id,
             $session->userId,
             $session->appId,
-            $session->targetType,
-            $session->targetKey,
+            $session->agentKey,
             $session->title,
             $report,
             $this->now(),
-            $session->agentKey,
             $session->inputs
         );
     }
@@ -150,12 +136,10 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             $session->id,
             $session->userId,
             $session->appId,
-            $session->targetType,
-            $session->targetKey,
+            $session->agentKey,
             $session->title,
             $session->report,
             $message->createdAt,
-            $session->agentKey,
             $session->inputs
         );
 

@@ -17,11 +17,11 @@ class TianjiReplyValidator
     ];
 
     /**
-     * 检查回答是否包含规定标题、免责声明，以及技能或资料的边界。
+     * 检查回答是否非空，并以免责声明结尾。
      *
      * @return array{content: string, valid: bool, missing: string[], sections: array<string, string>}
      */
-    public static function assess(string $content, string $targetType): array
+    public static function assess(string $content): array
     {
         $content = self::unwrap(trim($content));
         $heading = '【已知资料】';
@@ -52,36 +52,6 @@ class TianjiReplyValidator
             'missing' => array_values(array_unique($missing)),
             'sections' => $sections,
         ];
-    }
-
-    /**
-     * 检查技能问答和资料解读有没有越界。
-     *
-     * @param  array<string, string>  $sections
-     * @return string[]
-     */
-    private static function boundaryIssues(array $sections, string $targetType): array
-    {
-        $issues = [];
-        if ($targetType === 'skill') {
-            if ($sections['已知资料'] !== '' && !str_contains($sections['已知资料'], '未选择命盘')) {
-                $issues[] = '已知资料需写明未选择命盘';
-            }
-            if ($sections['计算结果'] !== '' && !str_contains($sections['计算结果'], '本次为知识问答，未调用命盘计算')) {
-                $issues[] = '计算结果需写明本次为知识问答，未调用命盘计算';
-            }
-        }
-
-        if ($targetType === 'data') {
-            if ($sections['已知资料'] !== '' && str_contains($sections['已知资料'], '未选择命盘')) {
-                $issues[] = '已提供计算报告时已知资料不能写未选择命盘';
-            }
-            if ($sections['计算结果'] !== '' && str_contains($sections['计算结果'], '本次为知识问答，未调用命盘计算')) {
-                $issues[] = '已提供计算报告时计算结果不能写成知识问答';
-            }
-        }
-
-        return $issues;
     }
 
     /** 标题必须按约定顺序出现。 */
