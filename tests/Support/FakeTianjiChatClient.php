@@ -13,7 +13,7 @@ class FakeTianjiChatClient implements ChatCompletionClient
     {
     }
 
-    public function stream(array $messages, callable $onDelta): array
+    public function stream(array $messages, callable $onDelta, ?float $temperature = null): array
     {
         $this->calls[] = $messages;
         $content = array_shift($this->replies);
@@ -39,9 +39,9 @@ class FakeTianjiChatClient implements ChatCompletionClient
         ];
     }
 
-    public function complete(array $messages): array
+    public function complete(array $messages, ?float $temperature = null): array
     {
         return $this->stream($messages, function () {
-        });
+        }, $temperature);
     }
 }

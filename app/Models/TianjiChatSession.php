@@ -11,13 +11,16 @@ class TianjiChatSession extends BaseModel
         'user_id',
         'target_type',
         'target_key',
+        'agent_key',
         'title',
         'report',
+        'inputs',
     ];
 
     protected $casts = [
         'app_id' => 'int',
         'user_id' => 'int',
         'report' => 'array',
+        'inputs' => 'array',
     ];
 }

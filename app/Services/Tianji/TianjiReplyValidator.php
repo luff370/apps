@@ -31,27 +31,12 @@ class TianjiReplyValidator
             $content = substr($content, $start);
         }
 
+        $missing = $content === '' ? ['内容'] : [];
         $sections = [];
-        $missing = [];
         foreach (self::SECTIONS as $name) {
             $token = '【' . $name . '】';
             $pos = strpos($content, $token);
-            if ($pos === false) {
-                $sections[$name] = '';
-                $missing[] = $name;
-                continue;
-            }
-
-            $sections[$name] = self::sectionBody($content, $pos + strlen($token));
-            if ($sections[$name] === '') {
-                $missing[] = $name;
-            } elseif (mb_strlen($sections[$name]) < self::MIN_LENGTH[$name]) {
-                $missing[] = $name . '过短';
-            }
-        }
-
-        if (!self::inOrder($content)) {
-            $missing[] = '标题顺序';
+            $sections[$name] = $pos === false ? '' : self::sectionBody($content, $pos + strlen($token));
         }
 
         if (!str_contains($content, self::DISCLAIMER)) {
@@ -60,8 +45,6 @@ class TianjiReplyValidator
             $disclaimerAt = strpos($content, self::DISCLAIMER);
             $content = substr($content, 0, $disclaimerAt + strlen(self::DISCLAIMER));
         }
-
-        $missing = array_merge($missing, self::boundaryIssues($sections, $targetType));
 
         return [
             'content' => trim($content),

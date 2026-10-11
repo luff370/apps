@@ -19,12 +19,11 @@ tianji/
     └── index.json            # 机器可读的分区和关键词索引
 ```
 
-## 最小接入
+## 客户端接入
 
-1. 只检索 `knowledge/tianji.md` 中的“天纪·天机道”章节。
-2. 将 `SYSTEM_PROMPT.md` 作为 system prompt。
-3. 把用户问题和必要的结构化资料传给模型。
-4. 涉及排盘、起卦或户型分析时，先由程序计算，再把计算结果交给模型解释。
+对话接口见 `CHAT_CONTRACT.md`，Apifox 可导入 `apifox-tianji-chat.openapi.json`。智能体的提示词、知识和额外请求参数在后台「内容管理 / 智能体管理」里配置。应用 10025 的紫微排盘标识是 `ziwei`，本地命盘通过请求字段 `report` 传入。
+
+本目录里的 `SYSTEM_PROMPT.md` 和 `knowledge/` 只保留为资料，运行时不再读取。
 
 ## 需要程序计算的内容
 

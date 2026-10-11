@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "文墨对话",
-    "version": "1.0.0",
-    "description": "围绕一份紫微知识（skill）或一份程序计算资料（data）的 DeepSeek 对话。同一用户、应用和目标会续接最近上下文；资料对话会记住已提交的计算报告。\n\n业务成功、参数错误和模型不可用都返回 HTTP 200，用 body.status 区分。登录态和客户端请求头沿用 Apifox 环境变量。\n\nApifox：导入数据 → OpenAPI/Swagger → 选择本文件。"
+    "version": "1.1.0",
+    "description": "按应用里配置的智能体进行 DeepSeek 对话。同一用户、应用和智能体会续接最近上下文。content 是用户提问；智能体声明的额外字段（例如紫微排盘的 report）随请求传入，并在同一对话里记住。\n\n业务成功、参数错误和模型不可用都返回 HTTP 200，用 body.status 区分。登录态和客户端请求头沿用 Apifox 环境变量。\n\nApifox：导入数据 → OpenAPI/Swagger → 选择本文件。"
   },
   "servers": [
     {
@@ -20,7 +20,7 @@
   "tags": [
     {
       "name": "文墨对话",
-      "description": "紫微知识或程序计算资料上的连续对话"
+      "description": "按智能体进行的连续对话"
     }
   ],
   "paths": {
@@ -29,26 +29,24 @@
         "tags": ["文墨对话"],
         "summary": "文墨对话",
         "operationId": "wenmoMessage",
-        "description": "发送一轮对话，响应为 text/event-stream。不传 session_id 时，按 target_type + target_key 续接最近一次；new_session 为 true 时新开。skill 的 target_key 固定为 ziwei，不能附带 report。data 首次必须提交 report，之后可只传 content。格式不合格时先发 replace 清空已显示文字，再重写一次。参数错误在开流之前返回 JSON。",
+        "description": "发送一轮对话，响应为 text/event-stream。不传 session_id 时，按 agent_key 续接该智能体最近一次对话；new_session 为 true 时新开。content 是用户提问。其它字段由该智能体在后台声明，例如紫微排盘的 report。声明为必填且本轮和历史都没有时，开流前返回 JSON。回答缺少免责声明时先发 replace 清空已显示文字，再重写一次。",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {"$ref": "#/components/schemas/MessageRequest"},
               "examples": {
-                "skill": {
-                  "summary": "紫微知识",
+                "knowledge": {
+                  "summary": "未选择命盘的知识问答",
                   "value": {
-                    "target_type": "skill",
-                    "target_key": "ziwei",
+                    "agent_key": "ziwei",
                     "content": "紫微星主管什么？"
                   }
                 },
-                "data": {
-                  "summary": "程序计算资料",
+                "report": {
+                  "summary": "带上本地排盘报告",
                   "value": {
-                    "target_type": "data",
-                    "target_key": "chart-1001",
+                    "agent_key": "ziwei",
                     "content": "我的事业怎么样？",
                     "report": {
                       "命宫": "紫微",
@@ -70,22 +68,22 @@
         },
         "responses": {
           "200": {
-            "description": "SSE。依次出现 meta、若干 delta，必要时 replace 后再来若干 delta，最后 done。生成过程失败时发送 error。",
+            "description": "HTTP 200，Content-Type 为 text/event-stream。依次出现 meta、若干 delta，回答缺少免责声明时先 replace 清空已显示文字再重写，最后 done。生成过程失败时发送 error，内容为 {\"status\":503,\"msg\":\"智能对话暂时不可用\"}。参数错误不会进入这条流。",
             "content": {
               "text/event-stream": {
                 "schema": {"type": "string"},
-                "example": "event: meta\ndata: {\"session_id\":1,\"target_type\":\"skill\",\"target_key\":\"ziwei\"}\n\nevent: delta\ndata: {\"content\":\"【已知资料】\"}\n\nevent: delta\ndata: {\"content\":\"\\n未选择命盘。\"}\n\nevent: done\ndata: {\"session_id\":1,\"message_id\":2,\"target_type\":\"skill\",\"target_key\":\"ziwei\",\"result\":\"【已知资料】\\n未选择命盘。\\n\\n说明：内容仅供传统文化研究和自我观察参考\",\"sections\":{\"已知资料\":\"未选择命盘。\"},\"valid\":true,\"missing\":[],\"corrected\":false}\n\n"
+                "example": "event: meta\ndata: {\"session_id\":1,\"agent_key\":\"ziwei\"}\n\nevent: delta\ndata: {\"content\":\"紫微属土，帝座。\"}\n\nevent: done\ndata: {\"session_id\":1,\"message_id\":2,\"agent_key\":\"ziwei\",\"result\":\"紫微属土，帝座，主尊贵与权威。\\n说明：内容仅供传统文化研究和自我观察参考\",\"sections\":{\"已知资料\":\"\",\"计算结果\":\"\",\"知识依据\":\"\",\"综合解读\":\"\",\"行动建议\":\"\"},\"valid\":true,\"missing\":[],\"corrected\":false}\n\n"
               }
             }
           },
           "400": {
-            "description": "开流前的参数或业务错误，例如未提供计算报告。",
+            "description": "开流前的参数或业务错误，例如未指定智能体，或必填参数未提供。",
             "content": {
               "application/json": {
                 "example": {
                   "status": 400,
                   "code": 400,
-                  "msg": "个人命盘分析需要先提供程序计算报告",
+                  "msg": "请指定智能体",
                   "data": null
                 }
               }
@@ -122,8 +120,7 @@
                     "list": [
                       {
                         "id": 1,
-                        "target_type": "skill",
-                        "target_key": "ziwei",
+                        "agent_key": "ziwei",
                         "title": "紫微星主管什么",
                         "has_report": false,
                         "updated_at": "2026-10-08 15:00:00"
@@ -142,7 +139,7 @@
         "tags": ["文墨对话"],
         "summary": "文墨对话记录",
         "operationId": "wenmoHistory",
-        "description": "读取一条对话的最近 100 条消息和已保存报告。只能读取当前用户自己的会话。用户消息保存的是原问题。",
+        "description": "读取一条对话的最近 100 条消息，以及该智能体已保存的请求参数。只能读取当前用户自己的会话。用户消息保存的是原问题。",
         "requestBody": {
           "required": true,
           "content": {
@@ -167,8 +164,7 @@
                       "data": {
                         "session": {
                           "id": 1,
-                          "target_type": "data",
-                          "target_key": "chart-1001",
+                          "agent_key": "ziwei",
                           "title": "我的事业怎么样",
                           "has_report": true,
                           "report": {
@@ -176,20 +172,27 @@
                             "官禄宫": "武曲",
                             "财帛宫": "天府"
                           },
-                          "updated_at": "2026-10-08 15:00:00"
+                          "inputs": {
+                            "report": {
+                              "命宫": "紫微",
+                              "官禄宫": "武曲",
+                              "财帛宫": "天府"
+                            }
+                          },
+                          "updated_at": "2026-10-11 15:00:00"
                         },
                         "messages": [
                           {
                             "id": 1,
                             "role": "user",
                             "content": "我的事业怎么样？",
-                            "created_at": "2026-10-08 15:00:00"
+                            "created_at": "2026-10-11 15:00:00"
                           },
                           {
                             "id": 2,
                             "role": "assistant",
-                            "content": "【已知资料】\n使用资料 chart-1001。\n\n说明：内容仅供传统文化研究和自我观察参考",
-                            "created_at": "2026-10-08 15:00:01"
+                            "content": "官禄宫见武曲，事业宜按已有安排推进。\n说明：内容仅供传统文化研究和自我观察参考",
+                            "created_at": "2026-10-11 15:00:01"
                           }
                         ]
                       }
@@ -217,15 +220,15 @@
       "MessageRequest": {
         "type": "object",
         "required": ["content"],
+        "additionalProperties": true,
         "properties": {
           "session_id": {"type": "integer", "description": "已有对话 ID。传入后按该对话续接", "example": 1},
-          "new_session": {"type": "boolean", "description": "为 true 时新开对话", "example": false},
-          "target_type": {"type": "string", "enum": ["skill", "data"], "description": "新建时必填。skill 为紫微知识，data 为程序计算资料", "example": "skill"},
-          "target_key": {"type": "string", "description": "新建时必填。技能固定 ziwei，资料填命盘 ID，最长 64", "example": "ziwei"},
+          "new_session": {"type": "boolean", "description": "为 true 时新开同一智能体的另一条对话", "example": false},
+          "agent_key": {"type": "string", "description": "智能体标识。新建时必填；已传 session_id 时可省略", "example": "ziwei"},
           "content": {"type": "string", "description": "用户问题，1 到 2000 字", "example": "紫微星主管什么？"},
           "report": {
             "type": "object",
-            "description": "程序计算报告，必须是 JSON 对象。仅 data 使用，同一资料后续可省略",
+            "description": "应用 10025 紫微排盘智能体声明的本地命盘报告，选填。换一份命盘时重新传入；同一对话后续可省略。其它应用的额外字段以该智能体在后台的声明为准",
             "additionalProperties": true,
             "example": {"命宫": "紫微", "官禄宫": "武曲", "财帛宫": "天府"}
           }
@@ -233,6 +236,7 @@
       },
       "Sections": {
         "type": "object",
+        "description": "回答里若出现这些标题，会把标题下的正文拆出来。简短回答不使用这些标题，对应值为空字符串。客户端展示 result。",
         "properties": {
           "已知资料": {"type": "string"},
           "计算结果": {"type": "string"},
@@ -246,12 +250,11 @@
         "properties": {
           "session_id": {"type": "integer", "example": 1},
           "message_id": {"type": "integer", "example": 2},
-          "target_type": {"type": "string", "example": "skill"},
-          "target_key": {"type": "string", "example": "ziwei"},
-          "result": {"type": "string", "description": "完整回答"},
+          "agent_key": {"type": "string", "example": "ziwei"},
+          "result": {"type": "string", "description": "完整回答，以免责声明结尾"},
           "sections": {"$ref": "#/components/schemas/Sections"},
-          "valid": {"type": "boolean", "description": "是否通过输出格式校验"},
-          "missing": {"type": "array", "items": {"type": "string"}, "description": "仍缺失的部分"},
+          "valid": {"type": "boolean", "description": "是否包含免责声明"},
+          "missing": {"type": "array", "items": {"type": "string"}, "description": "仍缺失的校验项。缺少免责声明时含“说明”"},
           "corrected": {"type": "boolean", "description": "是否已经自动重写过一次"}
         }
       },
@@ -268,8 +271,7 @@
         "type": "object",
         "properties": {
           "id": {"type": "integer"},
-          "target_type": {"type": "string"},
-          "target_key": {"type": "string"},
+          "agent_key": {"type": "string"},
           "title": {"type": "string"},
           "has_report": {"type": "boolean"},
           "updated_at": {"type": "string", "example": "2026-10-08 15:00:00"}
@@ -326,7 +328,13 @@
                         "type": "object",
                         "nullable": true,
                         "additionalProperties": true,
-                        "description": "已保存的程序计算报告"
+                        "description": "已保存的排盘报告。尚未传入时为 null"
+                      },
+                      "inputs": {
+                        "type": "object",
+                        "nullable": true,
+                        "additionalProperties": true,
+                        "description": "该智能体声明并已保存的请求参数。紫微排盘里与 report 相同"
                       }
                     }
                   }

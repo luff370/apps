@@ -11,17 +11,21 @@ interface TianjiChatRepository
         string $targetType,
         string $targetKey,
         ?array $report,
-        string $title
+        string $title,
+        string $agentKey = ''
     ): TianjiSessionRecord;
 
     /** 按用户和应用读取对话，不属于当前用户时返回空。 */
     public function findOwned(int $sessionId, int $userId, int $appId): ?TianjiSessionRecord;
 
     /** 查找同一用户、应用和目标下最近的一条对话。 */
-    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey): ?TianjiSessionRecord;
+    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey, string $agentKey = ''): ?TianjiSessionRecord;
 
     /** 保存或替换这份资料的程序计算报告。 */
     public function saveReport(int $sessionId, array $report): void;
+
+    /** 保存智能体声明的额外请求参数，例如排盘报告。 */
+    public function saveInputs(int $sessionId, array $inputs): void;
 
     /**
      * 按更新时间倒序列出对话。

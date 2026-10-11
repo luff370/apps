@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Http;
 class DeepSeekChatClient implements ChatCompletionClient
 {
     /** 调用 DeepSeek chat completions。未配置密钥或上游失败时不向外暴露细节。 */
-    public function complete(array $messages): array
+    public function complete(array $messages, ?float $temperature = null): array
     {
         $config = config('chatai.channels.deepseek', []);
         $apiKey = (string) ($config['api_key'] ?? '');
@@ -25,7 +25,7 @@ class DeepSeekChatClient implements ChatCompletionClient
                 ->post($baseUrl . '/chat/completions', [
                     'model' => (string) ($config['model'] ?? 'deepseek-chat'),
                     'messages' => $messages,
-                    'temperature' => (float) ($config['temperature'] ?? 0.3),
+                    'temperature' => $this->temperature($config, $temperature),
                     'max_tokens' => (int) ($config['max_tokens'] ?? 4096),
                 ]);
         } catch (ConnectionException $e) {
@@ -54,7 +54,7 @@ class DeepSeekChatClient implements ChatCompletionClient
     }
 
     /** 以 SSE 读取 DeepSeek，并把每个文本增量交给回调。 */
-    public function stream(array $messages, callable $onDelta): array
+    public function stream(array $messages, callable $onDelta, ?float $temperature = null): array
     {
         $config = config('chatai.channels.deepseek', []);
         $apiKey = (string) ($config['api_key'] ?? '');
@@ -73,7 +73,7 @@ class DeepSeekChatClient implements ChatCompletionClient
         $body = json_encode([
             'model' => (string) ($config['model'] ?? 'deepseek-chat'),
             'messages' => $messages,
-            'temperature' => (float) ($config['temperature'] ?? 0.3),
+            'temperature' => $this->temperature($config, $temperature),
             'max_tokens' => (int) ($config['max_tokens'] ?? 4096),
             'stream' => true,
             'stream_options' => ['include_usage' => true],
@@ -131,5 +131,15 @@ class DeepSeekChatClient implements ChatCompletionClient
             'completion_tokens' => $parser->usage['completion_tokens'],
             'total_tokens' => $parser->usage['total_tokens'],
         ];
+    }
+
+    /** 智能体指定了温度时覆盖渠道默认值。 */
+    private function temperature(array $config, ?float $temperature): float
+    {
+        if ($temperature === null) {
+            return (float) ($config['temperature'] ?? 0.3);
+        }
+
+        return max(0, min(2, $temperature));
     }
 }

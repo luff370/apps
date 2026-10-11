@@ -17,10 +17,9 @@ class TianjiChatController extends Controller
             'app_id' => $this->appId(),
             'session_id' => $request->input('session_id'),
             'new_session' => $request->boolean('new_session'),
-            'target_type' => $request->input('target_type'),
-            'target_key' => $request->input('target_key'),
+            'agent_key' => $request->input('agent_key'),
             'content' => $request->input('content'),
-            'report' => $request->input('report'),
+            'payload' => $request->all(),
         ];
 
         try {

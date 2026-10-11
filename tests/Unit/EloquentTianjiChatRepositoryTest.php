@@ -3,7 +3,9 @@
 namespace Tests\Unit;
 
 use App\Services\Tianji\EloquentTianjiChatRepository;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use PDO;
 use Tests\TestCase;
 
@@ -25,6 +27,13 @@ class EloquentTianjiChatRepositoryTest extends TestCase
             '--path' => 'database/migrations/2026_10_08_140000_create_tianji_chat_tables.php',
             '--force' => true,
         ]);
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_10_11_120000_add_agent_key_to_tianji_chat_sessions.php',
+            '--force' => true,
+        ]);
+        Schema::table('tianji_chat_sessions', function (Blueprint $table) {
+            $table->json('inputs')->nullable();
+        });
     }
 
     public function test_it_stores_a_report_and_returns_messages_in_order(): void

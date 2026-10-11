@@ -4,7 +4,7 @@ namespace Tests\Unit;
 
 use App\Services\Tianji\TianjiChatException;
 use App\Services\Tianji\TianjiChatService;
-use App\Services\Tianji\TianjiKnowledge;
+use Tests\Support\MemoryTianjiAgentCatalog;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\FakeTianjiChatClient;
 use Tests\Support\MemoryTianjiChatRepository;
@@ -34,7 +34,7 @@ class TianjiChatServiceTest extends TestCase
         $this->assertSame('assistant', $client->calls[1][2]['role']);
         $this->assertStringContainsString('紫微', $client->calls[1][3]['content']);
         $this->assertStringContainsString('那命宫呢', $client->calls[1][3]['content']);
-        $this->assertStringContainsString('未提供程序计算报告', $client->calls[1][3]['content']);
+        $this->assertStringContainsString("【排盘报告】\n未提供", $client->calls[1][3]['content']);
         $this->assertStringNotContainsString('乾为天', $client->calls[1][3]['content']);
 
         $history = $service->history(7, 10048, $first['session_id']);
@@ -44,6 +44,16 @@ class TianjiChatServiceTest extends TestCase
         ]);
         $this->assertStringNotContainsString('【紫微知识片段】', $history['messages'][0]['content']);
         $this->assertCount(1, $repository->sessions);
+    }
+
+    public function test_it_rejects_a_skill_when_the_app_has_no_agent(): void
+    {
+        $client = new FakeTianjiChatClient([]);
+        $service = new TianjiChatService(new MemoryTianjiChatRepository(), $client, new MemoryTianjiAgentCatalog([]));
+
+        $this->expectException(TianjiChatException::class);
+        $this->expectExceptionMessage('当前应用未配置该智能体');
+        $service->send($this->input('紫微是什么'));
     }
 
     public function test_it_keeps_a_computed_report_for_later_turns(): void
@@ -124,13 +134,27 @@ class TianjiChatServiceTest extends TestCase
     public function test_it_requires_a_computed_report_before_calling_the_model(): void
     {
         $client = new FakeTianjiChatClient([]);
-        [$service] = $this->service($client);
+        $service = new TianjiChatService(new MemoryTianjiChatRepository(), $client, new MemoryTianjiAgentCatalog([[
+            'app_id' => 10048,
+            'name' => '紫微',
+            'key' => 'ziwei',
+            'system_prompt' => '你是紫微助手。',
+            'knowledge' => '紫微属土。',
+            'temperature' => null,
+            'inputs' => [[
+                'key' => 'report',
+                'name' => '排盘报告',
+                'type' => 'object',
+                'required' => true,
+                'desc' => '',
+            ]],
+        ]]));
 
         try {
             $service->send($this->input('我的事业怎么样', 'data', 'chart-1'));
             $this->fail('缺少报告时应拒绝');
         } catch (TianjiChatException $e) {
-            $this->assertSame('个人命盘分析需要先提供程序计算报告', $e->getMessage());
+            $this->assertSame('排盘报告不能为空', $e->getMessage());
         }
 
         $this->assertSame([], $client->calls);
@@ -143,39 +167,31 @@ class TianjiChatServiceTest extends TestCase
 
         try {
             $service->send($this->input('泰卦怎么看', 'skill', 'iching'));
-            $this->fail('未开放的技能应拒绝');
+            $this->fail('未配置的智能体应拒绝');
         } catch (TianjiChatException $e) {
-            $this->assertSame('当前仅支持紫微斗数', $e->getMessage());
+            $this->assertSame('当前应用未配置该智能体', $e->getMessage());
         }
 
         $this->assertSame([], $client->calls);
     }
 
-    public function test_it_rejects_a_report_on_a_skill_chat_and_a_target_mismatch(): void
+    public function test_it_rejects_a_different_agent_on_the_same_session(): void
     {
         $client = new FakeTianjiChatClient([TianjiChatFixtures::skillReply()]);
         [$service] = $this->service($client);
         $created = $service->send($this->input('紫微是什么'));
 
         try {
-            $service->send($this->input('紫微是什么', 'skill', 'ziwei', ['命宫' => '紫微']));
-            $this->fail('知识对话不应接收报告');
-        } catch (TianjiChatException $e) {
-            $this->assertSame('知识对话不接收命盘报告，个人解读请改为数据对话', $e->getMessage());
-        }
-
-        try {
             $service->send([
                 'user_id' => 7,
                 'app_id' => 10048,
                 'session_id' => $created['session_id'],
-                'target_type' => 'data',
-                'target_key' => 'chart-1',
+                'agent_key' => 'other',
                 'content' => '看看事业',
             ]);
-            $this->fail('目标不一致时应拒绝');
+            $this->fail('智能体不一致时应拒绝');
         } catch (TianjiChatException $e) {
-            $this->assertSame('对话与目标类型不一致', $e->getMessage());
+            $this->assertSame('对话与智能体不一致', $e->getMessage());
         }
     }
 
@@ -236,7 +252,7 @@ class TianjiChatServiceTest extends TestCase
         $repository = new MemoryTianjiChatRepository();
 
         return [
-            new TianjiChatService($repository, $client, new TianjiKnowledge()),
+            new TianjiChatService($repository, $client, new MemoryTianjiAgentCatalog()),
             $repository,
         ];
     }
@@ -251,8 +267,7 @@ class TianjiChatServiceTest extends TestCase
         return [
             'user_id' => 7,
             'app_id' => 10048,
-            'target_type' => $targetType,
-            'target_key' => $targetKey,
+            'agent_key' => $targetType === 'data' ? 'ziwei' : $targetKey,
             'content' => $content,
             'report' => $report,
             'new_session' => $newSession,

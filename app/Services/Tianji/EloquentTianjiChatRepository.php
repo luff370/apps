@@ -15,13 +15,15 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
         string $targetType,
         string $targetKey,
         ?array $report,
-        string $title
+        string $title,
+        string $agentKey = ''
     ): TianjiSessionRecord {
         $session = TianjiChatSession::query()->create([
             'user_id' => $userId,
             'app_id' => $appId,
             'target_type' => $targetType,
             'target_key' => $targetKey,
+            'agent_key' => $agentKey,
             'title' => $title,
             'report' => $report,
         ]);
@@ -42,15 +44,17 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     }
 
     /** 查找同一用户、应用和目标下最近的一条对话。 */
-    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey): ?TianjiSessionRecord
+    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey, string $agentKey = ''): ?TianjiSessionRecord
     {
-        $session = TianjiChatSession::query()
+        $query = TianjiChatSession::query()
             ->where('user_id', $userId)
             ->where('app_id', $appId)
             ->where('target_type', $targetType)
-            ->where('target_key', $targetKey)
-            ->orderByDesc('id')
-            ->first();
+            ->where('target_key', $targetKey);
+        if ($agentKey !== '') {
+            $query->where('agent_key', $agentKey);
+        }
+        $session = $query->orderByDesc('id')->first();
 
         return $session ? $this->sessionRecord($session) : null;
     }
@@ -64,6 +68,21 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
         }
 
         $session->report = $report;
+        $session->save();
+    }
+
+    /** 保存智能体声明的额外参数，并同步其中的 report 字段。 */
+    public function saveInputs(int $sessionId, array $inputs): void
+    {
+        $session = TianjiChatSession::query()->find($sessionId);
+        if (!$session) {
+            return;
+        }
+
+        $session->inputs = $inputs;
+        if (isset($inputs['report']) && is_array($inputs['report'])) {
+            $session->report = $inputs['report'];
+        }
         $session->save();
     }
 
@@ -139,6 +158,8 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
             (string) $session->title,
             $session->report,
             optional($session->updated_at)->format('Y-m-d H:i:s') ?? '',
+            (string) ($session->agent_key ?? ''),
+            is_array($session->inputs) ? $session->inputs : null,
         );
     }
 

@@ -262,6 +262,7 @@ class SystemMenusSeeder extends Seeder
                             ['menu_name' => '课节管理', 'sort' => 2, 'is_show' => 0, 'menu_path' => '/admin/cms/course', 'header' => 'cms', 'is_header' => 1, 'unique_auth' => 'cms-article-course'],
                         ],
                     ],
+                    ['menu_name' => '智能体管理', 'sort' => 7, 'menu_path' => '/admin/cms/agent/index', 'unique_auth' => 'cms-agent'],
                     ['menu_name' => '举报数据', 'sort' => 6, 'menu_path' => '/admin/cms/traffic_violation_content/index', 'unique_auth' => 'cms-traffic_violation_content'],
                     ['menu_name' => '内容爬取', 'sort' => 4, 'menu_path' => '/admin/cms/generate', 'unique_auth' => 'admin-cms-generate'],
                 ],

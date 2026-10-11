@@ -21,6 +21,14 @@ Route::name('cms')->prefix('cms')->namespace('Cms')->group(function () {
     // 课节删除
     Route::delete('course/{id}', 'CourseController@destroy');
 
+    // 智能体管理
+    Route::get('agent', 'AgentController@index');
+    Route::get('agent/{id}', 'AgentController@show');
+    Route::post('agent', 'AgentController@store');
+    Route::put('agent/{id}', 'AgentController@update');
+    Route::delete('agent/{id}', 'AgentController@destroy');
+    Route::put('agent/{id}/status/{value}', 'AgentController@setStatus');
+
     // 举报数据管理
     Route::resource('traffic_violation_content', 'TrafficViolationContentController');
     Route::put('traffic_violation_content/set_field_value/{id}/{value}/{field}', 'TrafficViolationContentController@setFieldValue');

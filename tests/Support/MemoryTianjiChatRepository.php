@@ -26,7 +26,8 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         string $targetType,
         string $targetKey,
         ?array $report,
-        string $title
+        string $title,
+        string $agentKey = ''
     ): TianjiSessionRecord {
         $this->sessionId++;
         $session = new TianjiSessionRecord(
@@ -37,7 +38,9 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             $targetKey,
             $title,
             $report,
-            $this->now()
+            $this->now(),
+            $agentKey,
+            null
         );
         $this->sessions[$session->id] = $session;
 
@@ -54,7 +57,7 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         return $session;
     }
 
-    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey): ?TianjiSessionRecord
+    public function findLatest(int $userId, int $appId, string $targetType, string $targetKey, string $agentKey = ''): ?TianjiSessionRecord
     {
         $found = null;
         foreach ($this->sessions as $session) {
@@ -64,12 +67,33 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             if ($session->targetType !== $targetType || $session->targetKey !== $targetKey) {
                 continue;
             }
+            if ($agentKey !== '' && $session->agentKey !== $agentKey) {
+                continue;
+            }
             if ($found === null || $session->id > $found->id) {
                 $found = $session;
             }
         }
 
         return $found;
+    }
+
+    public function saveInputs(int $sessionId, array $inputs): void
+    {
+        $session = $this->sessions[$sessionId];
+        $report = isset($inputs['report']) && is_array($inputs['report']) ? $inputs['report'] : $session->report;
+        $this->sessions[$sessionId] = new TianjiSessionRecord(
+            $session->id,
+            $session->userId,
+            $session->appId,
+            $session->targetType,
+            $session->targetKey,
+            $session->title,
+            $report,
+            $this->now(),
+            $session->agentKey,
+            $inputs
+        );
     }
 
     public function saveReport(int $sessionId, array $report): void
@@ -83,7 +107,9 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             $session->targetKey,
             $session->title,
             $report,
-            $this->now()
+            $this->now(),
+            $session->agentKey,
+            $session->inputs
         );
     }
 
@@ -128,7 +154,9 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
             $session->targetKey,
             $session->title,
             $session->report,
-            $message->createdAt
+            $message->createdAt,
+            $session->agentKey,
+            $session->inputs
         );
 
         return $message;

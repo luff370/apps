@@ -14,6 +14,8 @@ class TianjiSessionRecord
         public readonly string $title,
         public readonly ?array $report,
         public readonly string $updatedAt,
+        public readonly string $agentKey = '',
+        public readonly ?array $inputs = null,
     ) {
     }
 }
