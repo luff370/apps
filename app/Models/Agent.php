@@ -4,7 +4,7 @@ namespace App\Models;
 
 class Agent extends BaseModel
 {
-    protected $table = 'agents';
+    protected $table = 'ai_agents';
 
     protected $fillable = [
         'app_id',
