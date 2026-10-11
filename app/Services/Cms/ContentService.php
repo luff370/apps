@@ -178,7 +178,7 @@ class ContentService extends Service
             //                break;
             case Article::TypeCollectionType:
                 $info['content'];
-                $info['course_list'] = ArticleCourse::query()->where('nid', $info['id'])->orderBy('lesson_number')->get();
+                $info['course_list'] = ArticleCourse::query()->where('nid', $info['id'])->orderBy('lesson_number')->orderBy('id')->get();
                 break;
         }
 

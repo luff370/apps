@@ -16,6 +16,9 @@ Route::name('cms')->prefix('cms')->namespace('Cms')->group(function () {
 
     // 生成课程
     Route::post('course/generate', 'CourseController@generate');
+    // 单条课节
+    Route::post('course', 'CourseController@save');
+    Route::put('course/{id}', 'CourseController@save');
     // 课程值修改
     Route::put('course/{id}/{field}/{value}', 'CourseController@setFieldValue');
     // 课节删除
