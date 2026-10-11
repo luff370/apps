@@ -57,6 +57,9 @@ class SystemMenusSeeder extends Seeder
             if (in_array('cms-article-category', $grantedAuth, true) && isset($this->authToId['cms-category-create'])) {
                 $next[] = $this->authToId['cms-category-create'];
             }
+            if (in_array('admin-app-apps', $grantedAuth, true) && isset($this->authToId['apps-create'])) {
+                $next[] = $this->authToId['apps-create'];
+            }
             if (array_intersect($grantedAuth, ['admin-app', 'app-payments']) && isset($this->authToId['app-pay-contacts'])) {
                 $next[] = $this->authToId['app-pay-contacts'];
             }
@@ -274,7 +277,15 @@ class SystemMenusSeeder extends Seeder
                 'is_header' => 1,
                 'unique_auth' => 'admin-app',
                 'children' => [
-                    ['menu_name' => '应用列表', 'sort' => 99, 'menu_path' => '/admin/app/apps/index', 'unique_auth' => 'admin-app-apps'],
+                    [
+                        'menu_name' => '应用列表',
+                        'sort' => 99,
+                        'menu_path' => '/admin/app/apps/index',
+                        'unique_auth' => 'admin-app-apps',
+                        'children' => [
+                            ['menu_name' => '添加应用', 'is_show' => 0, 'menu_path' => '', 'unique_auth' => 'apps-create'],
+                        ],
+                    ],
                     ['menu_name' => 'API混淆管理', 'sort' => 95, 'menu_path' => '/admin/app/obfuscation/index', 'unique_auth' => 'app-obfuscation'],
                     [
                         'menu_name' => '广告管理',
