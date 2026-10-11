@@ -140,11 +140,11 @@ Route::middleware($deviceEnv)->group(function () {
         function (\Illuminate\Routing\Router $route) {
             $route->post('dialogue', 'ChatAiController@task');
             // 智能体对话
-            $route->post('agent/message', 'TianjiChatController@message');
+            $route->post('agent/message', 'AgentChatController@message');
             // 智能体对话列表
-            $route->post('agent/sessions', 'TianjiChatController@sessions');
+            $route->post('agent/sessions', 'AgentChatController@sessions');
             // 智能体对话记录
-            $route->post('agent/history', 'TianjiChatController@history');
+            $route->post('agent/history', 'AgentChatController@history');
             $route->post('content/evaluate', 'ChatAiController@evaluate');
             $route->post('imageToImage', 'ChatAiController@imageToImage');
             $route->post('getImages', 'ChatAiController@getImages');

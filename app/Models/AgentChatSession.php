@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-class TianjiChatSession extends BaseModel
+class AgentChatSession extends BaseModel
 {
-    protected $table = 'tianji_chat_sessions';
+    protected $table = 'agent_chat_sessions';
 
     protected $fillable = [
         'app_id',

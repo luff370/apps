@@ -2,12 +2,12 @@
 
 namespace Tests\Unit;
 
-use App\Services\Tianji\EloquentTianjiChatRepository;
+use App\Services\Agent\EloquentAgentChatRepository;
 use Illuminate\Support\Facades\DB;
 use PDO;
 use Tests\TestCase;
 
-class EloquentTianjiChatRepositoryTest extends TestCase
+class EloquentAgentChatRepositoryTest extends TestCase
 {
     protected function setUp(): void
     {
@@ -33,11 +33,15 @@ class EloquentTianjiChatRepositoryTest extends TestCase
             '--path' => 'database/migrations/2026_10_11_190000_drop_session_target_columns_and_refresh_agent_api.php',
             '--force' => true,
         ]);
+        $this->artisan('migrate', [
+            '--path' => 'database/migrations/2026_10_11_200000_rename_tianji_tables_to_agent.php',
+            '--force' => true,
+        ]);
     }
 
     public function test_it_stores_a_report_and_returns_messages_in_order(): void
     {
-        $repository = new EloquentTianjiChatRepository();
+        $repository = new EloquentAgentChatRepository();
         $session = $repository->createSession(7, 10048, 'ziwei', null, '我的事业');
         $repository->saveReport($session->id, ['官禄宫' => '武曲']);
         $repository->addMessage($session->id, 'user', '我的事业怎么样', 0, 0, 0, false, true);

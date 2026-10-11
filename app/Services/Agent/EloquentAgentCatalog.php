@@ -1,15 +1,15 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-use App\Models\TianjiAgent;
+use App\Models\Agent;
 
-class EloquentTianjiAgentCatalog implements TianjiAgentCatalog
+class EloquentAgentCatalog implements AgentCatalog
 {
     /** 按应用和标识读取启用中的智能体。提示词或知识为空时视为未配置。 */
     public function findEnabled(int $appId, string $key): ?array
     {
-        $agent = TianjiAgent::query()
+        $agent = Agent::query()
             ->where('app_id', $appId)
             ->where('agent_key', $key)
             ->where('status', 1)

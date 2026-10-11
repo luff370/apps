@@ -2,15 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Services\Tianji\TianjiChatException;
-use App\Services\Tianji\TianjiChatService;
+use App\Services\Agent\AgentChatException;
+use App\Services\Agent\AgentChatService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class TianjiChatController extends Controller
+class AgentChatController extends Controller
 {
     /** 流式发送一轮智能体对话。参数错误先返回 JSON，生成过程用 SSE 推送。 */
-    public function message(Request $request, TianjiChatService $service)
+    public function message(Request $request, AgentChatService $service)
     {
         $input = [
             'user_id' => authUserId(),
@@ -24,7 +24,7 @@ class TianjiChatController extends Controller
 
         try {
             $turn = $service->prepare($input);
-        } catch (TianjiChatException $e) {
+        } catch (AgentChatException $e) {
             return $this->fail($e->getMessage(), null, $e->status);
         }
 
@@ -33,20 +33,20 @@ class TianjiChatController extends Controller
                 $service->play($turn, function (string $event, array $data) {
                     $this->writeEvent($event, $data);
                 });
-            } catch (TianjiChatException $e) {
+            } catch (AgentChatException $e) {
                 $this->writeEvent('error', ['status' => $e->status, 'msg' => $e->getMessage()]);
             }
         });
     }
 
     /** 列出当前用户最近的智能体对话。 */
-    public function sessions(TianjiChatService $service)
+    public function sessions(AgentChatService $service)
     {
         return $this->respond(fn () => $service->sessions(authUserId(), $this->appId()));
     }
 
     /** 读取一条智能体对话的历史消息和已保存参数。 */
-    public function history(Request $request, TianjiChatService $service)
+    public function history(Request $request, AgentChatService $service)
     {
         return $this->respond(function () use ($request, $service) {
             return $service->history(authUserId(), $this->appId(), (int) $request->input('session_id'));
@@ -58,7 +58,7 @@ class TianjiChatController extends Controller
     {
         try {
             return $this->success($callback());
-        } catch (TianjiChatException $e) {
+        } catch (AgentChatException $e) {
             return $this->fail($e->getMessage(), null, $e->status);
         }
     }

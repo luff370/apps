@@ -2,10 +2,10 @@
 
 namespace Tests\Support;
 
-use App\Services\Tianji\ChatCompletionClient;
-use App\Services\Tianji\TianjiChatException;
+use App\Services\Agent\ChatCompletionClient;
+use App\Services\Agent\AgentChatException;
 
-class FakeTianjiChatClient implements ChatCompletionClient
+class FakeAgentChatClient implements ChatCompletionClient
 {
     public array $calls = [];
 
@@ -18,7 +18,7 @@ class FakeTianjiChatClient implements ChatCompletionClient
         $this->calls[] = $messages;
         $content = array_shift($this->replies);
         if (!is_string($content)) {
-            throw new TianjiChatException('测试回复已用完');
+            throw new AgentChatException('测试回复已用完');
         }
 
         $length = mb_strlen($content);

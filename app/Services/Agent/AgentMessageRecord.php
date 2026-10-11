@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-class TianjiMessageRecord
+class AgentMessageRecord
 {
-    /** 一条天纪对话消息的内存视图。 */
+    /** 一条智能体对话消息的内存视图。 */
     public function __construct(
         public readonly int $id,
         public readonly int $sessionId,

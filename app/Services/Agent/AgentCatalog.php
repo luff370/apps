@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-interface TianjiAgentCatalog
+interface AgentCatalog
 {
     /**
      * 读取某个应用下已启用的智能体。

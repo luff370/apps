@@ -2,12 +2,12 @@
 
 namespace App\Providers;
 
-use App\Services\Tianji\ChatCompletionClient;
-use App\Services\Tianji\DeepSeekChatClient;
-use App\Services\Tianji\EloquentTianjiAgentCatalog;
-use App\Services\Tianji\EloquentTianjiChatRepository;
-use App\Services\Tianji\TianjiAgentCatalog;
-use App\Services\Tianji\TianjiChatRepository;
+use App\Services\Agent\ChatCompletionClient;
+use App\Services\Agent\DeepSeekChatClient;
+use App\Services\Agent\EloquentAgentCatalog;
+use App\Services\Agent\EloquentAgentChatRepository;
+use App\Services\Agent\AgentCatalog;
+use App\Services\Agent\AgentChatRepository;
 use Illuminate\Support\ServiceProvider;
 use App\Support\Services\GroupDataService;
 use App\Support\Services\SystemConfigService;
@@ -26,8 +26,8 @@ class AppServiceProvider extends ServiceProvider
             return new GroupDataService;
         });
         $this->app->bind(ChatCompletionClient::class, DeepSeekChatClient::class);
-        $this->app->bind(TianjiChatRepository::class, EloquentTianjiChatRepository::class);
-        $this->app->bind(TianjiAgentCatalog::class, EloquentTianjiAgentCatalog::class);
+        $this->app->bind(AgentChatRepository::class, EloquentAgentChatRepository::class);
+        $this->app->bind(AgentCatalog::class, EloquentAgentCatalog::class);
     }
 
     /**

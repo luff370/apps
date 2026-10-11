@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-use App\Models\TianjiChatMessage;
-use App\Models\TianjiChatSession;
+use App\Models\AgentChatMessage;
+use App\Models\AgentChatSession;
 use Illuminate\Support\Facades\DB;
 
-class EloquentTianjiChatRepository implements TianjiChatRepository
+class EloquentAgentChatRepository implements AgentChatRepository
 {
     /** 新建一条智能体对话。 */
     public function createSession(
@@ -15,8 +15,8 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
         string $agentKey,
         ?array $report,
         string $title
-    ): TianjiSessionRecord {
-        $session = TianjiChatSession::query()->create([
+    ): AgentSessionRecord {
+        $session = AgentChatSession::query()->create([
             'user_id' => $userId,
             'app_id' => $appId,
             'agent_key' => $agentKey,
@@ -28,9 +28,9 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     }
 
     /** 按用户和应用读取对话，不属于当前用户时返回空。 */
-    public function findOwned(int $sessionId, int $userId, int $appId): ?TianjiSessionRecord
+    public function findOwned(int $sessionId, int $userId, int $appId): ?AgentSessionRecord
     {
-        $session = TianjiChatSession::query()
+        $session = AgentChatSession::query()
             ->where('id', $sessionId)
             ->where('user_id', $userId)
             ->where('app_id', $appId)
@@ -40,9 +40,9 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     }
 
     /** 查找同一用户、应用和智能体下最近的一条对话。 */
-    public function findLatest(int $userId, int $appId, string $agentKey): ?TianjiSessionRecord
+    public function findLatest(int $userId, int $appId, string $agentKey): ?AgentSessionRecord
     {
-        $session = TianjiChatSession::query()
+        $session = AgentChatSession::query()
             ->where('user_id', $userId)
             ->where('app_id', $appId)
             ->where('agent_key', $agentKey)
@@ -55,7 +55,7 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     /** 保存或替换这份资料的程序计算报告。 */
     public function saveReport(int $sessionId, array $report): void
     {
-        $session = TianjiChatSession::query()->find($sessionId);
+        $session = AgentChatSession::query()->find($sessionId);
         if (!$session) {
             return;
         }
@@ -67,7 +67,7 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     /** 保存智能体声明的额外参数，并同步其中的 report 字段。 */
     public function saveInputs(int $sessionId, array $inputs): void
     {
-        $session = TianjiChatSession::query()->find($sessionId);
+        $session = AgentChatSession::query()->find($sessionId);
         if (!$session) {
             return;
         }
@@ -82,14 +82,14 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     /** 按更新时间倒序列出对话。 */
     public function listSessions(int $userId, int $appId, int $limit): array
     {
-        return TianjiChatSession::query()
+        return AgentChatSession::query()
             ->where('user_id', $userId)
             ->where('app_id', $appId)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->limit($limit)
             ->get()
-            ->map(fn (TianjiChatSession $session) => $this->sessionRecord($session))
+            ->map(fn (AgentChatSession $session) => $this->sessionRecord($session))
             ->all();
     }
 
@@ -103,8 +103,8 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
         int $totalTokens,
         bool $corrected,
         bool $valid
-    ): TianjiMessageRecord {
-        $message = TianjiChatMessage::query()->create([
+    ): AgentMessageRecord {
+        $message = AgentChatMessage::query()->create([
             'session_id' => $sessionId,
             'role' => $role,
             'content' => $content,
@@ -114,7 +114,7 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
             'corrected' => $corrected,
             'valid' => $valid,
         ]);
-        TianjiChatSession::query()->where('id', $sessionId)->update(['updated_at' => now()]);
+        AgentChatSession::query()->where('id', $sessionId)->update(['updated_at' => now()]);
 
         return $this->messageRecord($message);
     }
@@ -122,13 +122,13 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     /** 按时间正序返回最近若干条消息。 */
     public function messages(int $sessionId, int $limit): array
     {
-        return TianjiChatMessage::query()
+        return AgentChatMessage::query()
             ->where('session_id', $sessionId)
             ->orderByDesc('id')
             ->limit($limit)
             ->get()
             ->reverse()
-            ->map(fn (TianjiChatMessage $message) => $this->messageRecord($message))
+            ->map(fn (AgentChatMessage $message) => $this->messageRecord($message))
             ->values()
             ->all();
     }
@@ -140,9 +140,9 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     }
 
     /** 把会话模型转成对话记录。 */
-    private function sessionRecord(TianjiChatSession $session): TianjiSessionRecord
+    private function sessionRecord(AgentChatSession $session): AgentSessionRecord
     {
-        return new TianjiSessionRecord(
+        return new AgentSessionRecord(
             (int) $session->id,
             (int) $session->user_id,
             (int) $session->app_id,
@@ -155,9 +155,9 @@ class EloquentTianjiChatRepository implements TianjiChatRepository
     }
 
     /** 把消息模型转成消息记录。 */
-    private function messageRecord(TianjiChatMessage $message): TianjiMessageRecord
+    private function messageRecord(AgentChatMessage $message): AgentMessageRecord
     {
-        return new TianjiMessageRecord(
+        return new AgentMessageRecord(
             (int) $message->id,
             (int) $message->session_id,
             (string) $message->role,

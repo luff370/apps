@@ -1,13 +1,13 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-class TianjiChatService
+class AgentChatService
 {
     public function __construct(
-        private TianjiChatRepository $repository,
+        private AgentChatRepository $repository,
         private ChatCompletionClient $client,
-        private TianjiAgentCatalog $agents,
+        private AgentCatalog $agents,
     ) {
     }
 
@@ -43,14 +43,14 @@ class TianjiChatService
      *     content: string,
      *     report?: array|string|null
      * }  $input
-     * @return array{session: TianjiSessionRecord, content: string, messages: array<int, array{role: string, content: string}>}
+     * @return array{session: AgentSessionRecord, content: string, messages: array<int, array{role: string, content: string}>}
      */
     public function prepare(array $input): array
     {
         $userId = (int) ($input['user_id'] ?? 0);
         $appId = (int) ($input['app_id'] ?? 0);
         if ($userId <= 0) {
-            throw new TianjiChatException('请先登录');
+            throw new AgentChatException('请先登录');
         }
 
         $content = trim((string) ($input['content'] ?? ''));
@@ -61,7 +61,7 @@ class TianjiChatService
         if ($inputs !== ($session->inputs ?? [])) {
             $this->repository->saveInputs($session->id, $inputs);
         }
-        $history = $this->repository->messages($session->id, (int) config('tianji.history_messages', 20));
+        $history = $this->repository->messages($session->id, (int) config('agent_chat.history_messages', 20));
 
         return [
             'session' => $session,
@@ -74,7 +74,7 @@ class TianjiChatService
     /**
      * 流式生成回答，保存消息，并通过 $emit 推出增量。
      *
-     * @param  array{session: TianjiSessionRecord, content: string, messages: array<int, array{role: string, content: string}>}  $turn
+     * @param  array{session: AgentSessionRecord, content: string, messages: array<int, array{role: string, content: string}>}  $turn
      * @param  callable(string, array): void|null  $emit
      */
     public function play(array $turn, ?callable $emit = null): array
@@ -127,10 +127,10 @@ class TianjiChatService
     public function sessions(int $userId, int $appId): array
     {
         if ($userId <= 0) {
-            throw new TianjiChatException('请先登录');
+            throw new AgentChatException('请先登录');
         }
 
-        $limit = (int) config('tianji.session_list_limit', 20);
+        $limit = (int) config('agent_chat.session_list_limit', 20);
         $list = [];
         foreach ($this->repository->listSessions($userId, $appId, $limit) as $session) {
             $list[] = [
@@ -149,16 +149,16 @@ class TianjiChatService
     public function history(int $userId, int $appId, int $sessionId): array
     {
         if ($userId <= 0) {
-            throw new TianjiChatException('请先登录');
+            throw new AgentChatException('请先登录');
         }
 
         $session = $this->repository->findOwned($sessionId, $userId, $appId);
         if (!$session) {
-            throw new TianjiChatException('对话不存在');
+            throw new AgentChatException('对话不存在');
         }
 
         $messages = [];
-        $limit = (int) config('tianji.history_read_limit', 100);
+        $limit = (int) config('agent_chat.history_read_limit', 100);
         foreach ($this->repository->messages($session->id, $limit) as $message) {
             $messages[] = [
                 'id' => $message->id,
@@ -183,14 +183,14 @@ class TianjiChatService
     }
 
     /** 按 session_id 续接，否则按智能体续接最近一次对话或新建。 */
-    private function resolveSession(array $input, int $userId, int $appId, string $content): TianjiSessionRecord
+    private function resolveSession(array $input, int $userId, int $appId, string $content): AgentSessionRecord
     {
         $agentKey = trim((string) ($input['agent_key'] ?? ''));
         $sessionId = (int) ($input['session_id'] ?? 0);
         if ($sessionId > 0) {
             $session = $this->repository->findOwned($sessionId, $userId, $appId);
             if (!$session) {
-                throw new TianjiChatException('对话不存在');
+                throw new AgentChatException('对话不存在');
             }
             $this->assertSameAgent($session, $agentKey);
 
@@ -198,7 +198,7 @@ class TianjiChatService
         }
 
         if ($agentKey === '' || $this->agents->findEnabled($appId, $agentKey) === null) {
-            throw new TianjiChatException($agentKey === '' ? '请指定智能体' : '当前应用未配置该智能体');
+            throw new AgentChatException($agentKey === '' ? '请指定智能体' : '当前应用未配置该智能体');
         }
 
         $existing = !empty($input['new_session'])
@@ -220,12 +220,12 @@ class TianjiChatService
     /**
      * 组装系统提示、最近对话和本轮资料。
      *
-     * @param  TianjiMessageRecord[]  $history
+     * @param  AgentMessageRecord[]  $history
      * @param  array<string, mixed>  $inputs
      * @param  array{system_prompt: string, knowledge: string, inputs?: array}  $agent
      * @return array<int, array{role: string, content: string}>
      */
-    private function buildMessages(TianjiSessionRecord $session, string $question, array $inputs, array $history, array $agent): array
+    private function buildMessages(AgentSessionRecord $session, string $question, array $inputs, array $history, array $agent): array
     {
         $messages = [[
             'role' => 'system',
@@ -287,7 +287,7 @@ class TianjiChatService
         $first = $this->client->stream($messages, function (string $delta) use ($emit) {
             $emit('delta', ['content' => $delta]);
         }, $temperature);
-        $answer = TianjiReplyValidator::assess($first['content']);
+        $answer = AgentReplyValidator::assess($first['content']);
         $usage = $this->usage($first);
         if ($answer['valid']) {
             return [$answer, $usage, false];
@@ -301,7 +301,7 @@ class TianjiChatService
         }, $temperature);
 
         return [
-            TianjiReplyValidator::assess($second['content']),
+            AgentReplyValidator::assess($second['content']),
             $this->addUsage($usage, $this->usage($second)),
             true,
         ];
@@ -337,7 +337,7 @@ class TianjiChatService
             if (array_key_exists($key, $payload) && $payload[$key] !== null && $payload[$key] !== '') {
                 $result[$key] = $this->normalizeInput($field, $payload[$key]);
             } elseif (!empty($field['required']) && !array_key_exists($key, $result)) {
-                throw new TianjiChatException(((string) ($field['name'] ?? $key)) . '不能为空');
+                throw new AgentChatException(((string) ($field['name'] ?? $key)) . '不能为空');
             }
         }
 
@@ -353,22 +353,22 @@ class TianjiChatService
                 $value = json_decode($value, true);
             }
             if (!is_array($value)) {
-                throw new TianjiChatException($name . '格式不正确');
+                throw new AgentChatException($name . '格式不正确');
             }
             $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
-            if (strlen($encoded) > (int) config('tianji.max_input_bytes', 200000)) {
-                throw new TianjiChatException($name . '过大');
+            if (strlen($encoded) > (int) config('agent_chat.max_input_bytes', 200000)) {
+                throw new AgentChatException($name . '过大');
             }
 
             return $value;
         }
 
         if (is_array($value)) {
-            throw new TianjiChatException($name . '格式不正确');
+            throw new AgentChatException($name . '格式不正确');
         }
         $text = trim((string) $value);
         if (mb_strlen($text) > 8000) {
-            throw new TianjiChatException($name . '过长');
+            throw new AgentChatException($name . '过长');
         }
 
         return $text;
@@ -377,33 +377,33 @@ class TianjiChatService
     /** 问题不能为空，且不超过配置的长度。 */
     private function assertContent(string $content): void
     {
-        $max = (int) config('tianji.max_content_length', 2000);
+        $max = (int) config('agent_chat.max_content_length', 2000);
         if ($content === '') {
-            throw new TianjiChatException('请输入问题');
+            throw new AgentChatException('请输入问题');
         }
         if (mb_strlen($content) > $max) {
-            throw new TianjiChatException('问题过长');
+            throw new AgentChatException('问题过长');
         }
     }
 
     /** 续接时传入的智能体必须和会话一致。 */
-    private function assertSameAgent(TianjiSessionRecord $session, mixed $requested): void
+    private function assertSameAgent(AgentSessionRecord $session, mixed $requested): void
     {
         $requested = trim((string) $requested);
         if ($requested !== '' && $requested !== $session->agentKey) {
-            throw new TianjiChatException('对话与智能体不一致');
+            throw new AgentChatException('对话与智能体不一致');
         }
     }
 
     /**
      * @return array{name: string, key: string, system_prompt: string, knowledge: string, temperature: float|null}
      */
-    private function agentFor(TianjiSessionRecord $session): array
+    private function agentFor(AgentSessionRecord $session): array
     {
         $key = $session->agentKey;
         $agent = $this->agents->findEnabled($session->appId, $key);
         if ($agent === null) {
-            throw new TianjiChatException('当前应用未配置该智能体');
+            throw new AgentChatException('当前应用未配置该智能体');
         }
 
         return $agent;
@@ -418,20 +418,20 @@ class TianjiChatService
         if (is_string($report)) {
             $decoded = json_decode($report, true);
             if (!is_array($decoded)) {
-                throw new TianjiChatException('程序计算报告必须是 JSON 对象');
+                throw new AgentChatException('程序计算报告必须是 JSON 对象');
             }
             $report = $decoded;
         }
         if (!is_array($report) || $report === [] || array_is_list($report)) {
-            throw new TianjiChatException('程序计算报告必须是 JSON 对象');
+            throw new AgentChatException('程序计算报告必须是 JSON 对象');
         }
 
         $encoded = json_encode($report, JSON_UNESCAPED_UNICODE);
         if ($encoded === false) {
-            throw new TianjiChatException('程序计算报告无法读取');
+            throw new AgentChatException('程序计算报告无法读取');
         }
-        if (strlen($encoded) > (int) config('tianji.max_report_bytes', 30000)) {
-            throw new TianjiChatException('程序计算报告过大');
+        if (strlen($encoded) > (int) config('agent_chat.max_report_bytes', 30000)) {
+            throw new AgentChatException('程序计算报告过大');
         }
 
         return $report;

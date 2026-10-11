@@ -2,7 +2,7 @@
 
 namespace Tests\Support;
 
-class TianjiChatFixtures
+class AgentChatFixtures
 {
     public static function skillReply(): string
     {

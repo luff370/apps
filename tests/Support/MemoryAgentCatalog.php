@@ -2,9 +2,9 @@
 
 namespace Tests\Support;
 
-use App\Services\Tianji\TianjiAgentCatalog;
+use App\Services\Agent\AgentCatalog;
 
-class MemoryTianjiAgentCatalog implements TianjiAgentCatalog
+class MemoryAgentCatalog implements AgentCatalog
 {
     /** @param  array<int, array{app_id: int, key: string, system_prompt: string, knowledge: string, temperature: float|null}>  $agents */
     public function __construct(private ?array $agents = null)

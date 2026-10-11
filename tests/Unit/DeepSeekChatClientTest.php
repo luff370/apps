@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Services\Tianji\DeepSeekChatClient;
-use App\Services\Tianji\TianjiChatException;
+use App\Services\Agent\DeepSeekChatClient;
+use App\Services\Agent\AgentChatException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -44,7 +44,7 @@ class DeepSeekChatClientTest extends TestCase
         config(['chatai.channels.deepseek.api_key' => '']);
         Http::fake();
 
-        $this->expectException(TianjiChatException::class);
+        $this->expectException(AgentChatException::class);
         $this->expectExceptionMessage('智能对话暂未开通');
         try {
             (new DeepSeekChatClient())->complete([['role' => 'user', 'content' => '你好']]);
@@ -60,7 +60,7 @@ class DeepSeekChatClientTest extends TestCase
             'https://api.deepseek.com/*' => Http::response(['error' => ['message' => 'bad key']], 401),
         ]);
 
-        $this->expectException(TianjiChatException::class);
+        $this->expectException(AgentChatException::class);
         $this->expectExceptionMessage('智能对话暂时不可用');
         (new DeepSeekChatClient())->complete([['role' => 'user', 'content' => '你好']]);
     }
@@ -72,7 +72,7 @@ class DeepSeekChatClientTest extends TestCase
             throw new ConnectionException('timed out');
         });
 
-        $this->expectException(TianjiChatException::class);
+        $this->expectException(AgentChatException::class);
         $this->expectExceptionMessage('智能对话暂时不可用');
         (new DeepSeekChatClient())->complete([['role' => 'user', 'content' => '你好']]);
     }
@@ -83,7 +83,7 @@ class DeepSeekSseParserTest extends TestCase
     public function test_it_emits_deltas_when_chunks_split_a_line(): void
     {
         $deltas = '';
-        $parser = new \App\Services\Tianji\DeepSeekSseParser(function (string $delta) use (&$deltas) {
+        $parser = new \App\Services\Agent\DeepSeekSseParser(function (string $delta) use (&$deltas) {
             $deltas .= $delta;
         });
 

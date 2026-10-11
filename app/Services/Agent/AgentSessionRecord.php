@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-class TianjiSessionRecord
+class AgentSessionRecord
 {
     /** 一条智能体对话的内存视图。 */
     public function __construct(

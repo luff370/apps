@@ -2,16 +2,16 @@
 
 namespace Tests\Support;
 
-use App\Services\Tianji\TianjiChatRepository;
-use App\Services\Tianji\TianjiMessageRecord;
-use App\Services\Tianji\TianjiSessionRecord;
+use App\Services\Agent\AgentChatRepository;
+use App\Services\Agent\AgentMessageRecord;
+use App\Services\Agent\AgentSessionRecord;
 
-class MemoryTianjiChatRepository implements TianjiChatRepository
+class MemoryAgentChatRepository implements AgentChatRepository
 {
-    /** @var array<int, TianjiSessionRecord> */
+    /** @var array<int, AgentSessionRecord> */
     public array $sessions = [];
 
-    /** @var array<int, TianjiMessageRecord> */
+    /** @var array<int, AgentMessageRecord> */
     public array $messages = [];
 
     private int $sessionId = 0;
@@ -26,9 +26,9 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         string $agentKey,
         ?array $report,
         string $title
-    ): TianjiSessionRecord {
+    ): AgentSessionRecord {
         $this->sessionId++;
-        $session = new TianjiSessionRecord(
+        $session = new AgentSessionRecord(
             $this->sessionId,
             $userId,
             $appId,
@@ -43,7 +43,7 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         return $session;
     }
 
-    public function findOwned(int $sessionId, int $userId, int $appId): ?TianjiSessionRecord
+    public function findOwned(int $sessionId, int $userId, int $appId): ?AgentSessionRecord
     {
         $session = $this->sessions[$sessionId] ?? null;
         if (!$session || $session->userId !== $userId || $session->appId !== $appId) {
@@ -53,7 +53,7 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         return $session;
     }
 
-    public function findLatest(int $userId, int $appId, string $agentKey): ?TianjiSessionRecord
+    public function findLatest(int $userId, int $appId, string $agentKey): ?AgentSessionRecord
     {
         $found = null;
         foreach ($this->sessions as $session) {
@@ -72,7 +72,7 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
     {
         $session = $this->sessions[$sessionId];
         $report = isset($inputs['report']) && is_array($inputs['report']) ? $inputs['report'] : $session->report;
-        $this->sessions[$sessionId] = new TianjiSessionRecord(
+        $this->sessions[$sessionId] = new AgentSessionRecord(
             $session->id,
             $session->userId,
             $session->appId,
@@ -87,7 +87,7 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
     public function saveReport(int $sessionId, array $report): void
     {
         $session = $this->sessions[$sessionId];
-        $this->sessions[$sessionId] = new TianjiSessionRecord(
+        $this->sessions[$sessionId] = new AgentSessionRecord(
             $session->id,
             $session->userId,
             $session->appId,
@@ -103,9 +103,9 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
     {
         $rows = array_values(array_filter(
             $this->sessions,
-            fn (TianjiSessionRecord $session) => $session->userId === $userId && $session->appId === $appId
+            fn (AgentSessionRecord $session) => $session->userId === $userId && $session->appId === $appId
         ));
-        usort($rows, fn (TianjiSessionRecord $a, TianjiSessionRecord $b) => [$b->updatedAt, $b->id] <=> [$a->updatedAt, $a->id]);
+        usort($rows, fn (AgentSessionRecord $a, AgentSessionRecord $b) => [$b->updatedAt, $b->id] <=> [$a->updatedAt, $a->id]);
 
         return array_slice($rows, 0, $limit);
     }
@@ -119,9 +119,9 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         int $totalTokens,
         bool $corrected,
         bool $valid
-    ): TianjiMessageRecord {
+    ): AgentMessageRecord {
         $this->messageId++;
-        $message = new TianjiMessageRecord(
+        $message = new AgentMessageRecord(
             $this->messageId,
             $sessionId,
             $role,
@@ -132,7 +132,7 @@ class MemoryTianjiChatRepository implements TianjiChatRepository
         );
         $this->messages[] = $message;
         $session = $this->sessions[$sessionId];
-        $this->sessions[$sessionId] = new TianjiSessionRecord(
+        $this->sessions[$sessionId] = new AgentSessionRecord(
             $session->id,
             $session->userId,
             $session->appId,

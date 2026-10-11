@@ -4,7 +4,7 @@ namespace App\Services\Cms;
 
 use App\Exceptions\AdminException;
 use App\Models\SystemApp;
-use App\Models\TianjiAgent;
+use App\Models\Agent;
 use App\Services\Service;
 
 class AgentService extends Service
@@ -15,7 +15,7 @@ class AgentService extends Service
         [$page, $limit] = $this->getPageValue();
         $page = max($page, 1);
         $limit = min(max($limit, 1), 50);
-        $query = TianjiAgent::query()->orderByDesc('id');
+        $query = Agent::query()->orderByDesc('id');
         if (($where['app_id'] ?? '') !== '' && $where['app_id'] !== 'all') {
             $query->where('app_id', (int) $where['app_id']);
         }
@@ -33,7 +33,7 @@ class AgentService extends Service
         $count = (clone $query)->count();
         $rows = $query->offset(($page - 1) * $limit)->limit($limit)->get();
         $apps = SystemApp::query()->pluck('name', 'id');
-        $list = $rows->map(function (TianjiAgent $agent) use ($apps) {
+        $list = $rows->map(function (Agent $agent) use ($apps) {
             return [
                 'id' => $agent->id,
                 'app_id' => $agent->app_id,
@@ -54,7 +54,7 @@ class AgentService extends Service
 
     public function find(int $id): array
     {
-        $agent = TianjiAgent::query()->find($id);
+        $agent = Agent::query()->find($id);
         if (!$agent) {
             throw new AdminException('智能体不存在');
         }
@@ -78,7 +78,7 @@ class AgentService extends Service
     {
         $id = (int) ($data['id'] ?? 0);
         $payload = $this->payload($data);
-        $exists = TianjiAgent::query()
+        $exists = Agent::query()
             ->where('app_id', $payload['app_id'])
             ->where('agent_key', $payload['agent_key'])
             ->when($id > 0, fn ($query) => $query->where('id', '<>', $id))
@@ -88,7 +88,7 @@ class AgentService extends Service
         }
 
         if ($id > 0) {
-            $agent = TianjiAgent::query()->find($id);
+            $agent = Agent::query()->find($id);
             if (!$agent) {
                 throw new AdminException('智能体不存在');
             }
@@ -97,12 +97,12 @@ class AgentService extends Service
             return;
         }
 
-        TianjiAgent::query()->create($payload);
+        Agent::query()->create($payload);
     }
 
     public function remove(int $id): void
     {
-        $agent = TianjiAgent::query()->find($id);
+        $agent = Agent::query()->find($id);
         if (!$agent) {
             throw new AdminException('智能体不存在');
         }
@@ -111,7 +111,7 @@ class AgentService extends Service
 
     public function setStatus(int $id, int $status): void
     {
-        $agent = TianjiAgent::query()->find($id);
+        $agent = Agent::query()->find($id);
         if (!$agent) {
             throw new AdminException('智能体不存在');
         }

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
 class DeepSeekSseParser
 {

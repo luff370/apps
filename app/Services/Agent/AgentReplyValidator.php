@@ -1,8 +1,8 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
-class TianjiReplyValidator
+class AgentReplyValidator
 {
     public const DISCLAIMER = '说明：内容仅供传统文化研究和自我观察参考';
 

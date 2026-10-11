@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
-class TianjiAgent extends BaseModel
+class Agent extends BaseModel
 {
-    protected $table = 'tianji_agents';
+    protected $table = 'agents';
 
     protected $fillable = [
         'app_id',

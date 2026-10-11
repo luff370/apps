@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Tianji;
+namespace App\Services\Agent;
 
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -14,7 +14,7 @@ class DeepSeekChatClient implements ChatCompletionClient
         $apiKey = (string) ($config['api_key'] ?? '');
         if ($apiKey === '') {
             logger()->error('deepseek api key missing');
-            throw new TianjiChatException('智能对话暂未开通', 503);
+            throw new AgentChatException('智能对话暂未开通', 503);
         }
 
         $baseUrl = rtrim((string) ($config['base_url'] ?? 'https://api.deepseek.com'), '/');
@@ -30,18 +30,18 @@ class DeepSeekChatClient implements ChatCompletionClient
                 ]);
         } catch (ConnectionException $e) {
             logger()->error('deepseek connection failed', ['message' => $e->getMessage()]);
-            throw new TianjiChatException('智能对话暂时不可用', 503);
+            throw new AgentChatException('智能对话暂时不可用', 503);
         }
 
         if (!$response->successful()) {
             logger()->error('deepseek chat failed', ['status' => $response->status()]);
-            throw new TianjiChatException('智能对话暂时不可用', 503);
+            throw new AgentChatException('智能对话暂时不可用', 503);
         }
 
         $content = $response->json('choices.0.message.content');
         if (!is_string($content) || trim($content) === '') {
             logger()->error('deepseek chat returned empty content');
-            throw new TianjiChatException('智能对话暂时不可用', 503);
+            throw new AgentChatException('智能对话暂时不可用', 503);
         }
 
         return [
@@ -60,7 +60,7 @@ class DeepSeekChatClient implements ChatCompletionClient
         $apiKey = (string) ($config['api_key'] ?? '');
         if ($apiKey === '') {
             logger()->error('deepseek api key missing');
-            throw new TianjiChatException('智能对话暂未开通', 503);
+            throw new AgentChatException('智能对话暂未开通', 503);
         }
 
         $content = '';
@@ -113,15 +113,15 @@ class DeepSeekChatClient implements ChatCompletionClient
 
         if ($ok === false || $errno !== 0) {
             logger()->error('deepseek connection failed', ['message' => $error]);
-            throw new TianjiChatException('智能对话暂时不可用', 503);
+            throw new AgentChatException('智能对话暂时不可用', 503);
         }
         if ($status >= 400 || $status === 0) {
             logger()->error('deepseek chat failed', ['status' => $status]);
-            throw new TianjiChatException('智能对话暂时不可用', 503);
+            throw new AgentChatException('智能对话暂时不可用', 503);
         }
         if (trim($content) === '') {
             logger()->error('deepseek chat returned empty content');
-            throw new TianjiChatException('智能对话暂时不可用', 503);
+            throw new AgentChatException('智能对话暂时不可用', 503);
         }
 
         return [

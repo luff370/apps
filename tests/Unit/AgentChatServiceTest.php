@@ -2,22 +2,22 @@
 
 namespace Tests\Unit;
 
-use App\Services\Tianji\TianjiChatException;
-use App\Services\Tianji\TianjiChatService;
-use Tests\Support\MemoryTianjiAgentCatalog;
+use App\Services\Agent\AgentChatException;
+use App\Services\Agent\AgentChatService;
+use Tests\Support\MemoryAgentCatalog;
 use Illuminate\Support\Facades\Route;
-use Tests\Support\FakeTianjiChatClient;
-use Tests\Support\MemoryTianjiChatRepository;
-use Tests\Support\TianjiChatFixtures;
+use Tests\Support\FakeAgentChatClient;
+use Tests\Support\MemoryAgentChatRepository;
+use Tests\Support\AgentChatFixtures;
 use Tests\TestCase;
 
-class TianjiChatServiceTest extends TestCase
+class AgentChatServiceTest extends TestCase
 {
     public function test_it_remembers_a_skill_conversation_and_only_sends_ziwei_knowledge(): void
     {
-        $client = new FakeTianjiChatClient([
-            TianjiChatFixtures::skillReply(),
-            TianjiChatFixtures::skillReply(),
+        $client = new FakeAgentChatClient([
+            AgentChatFixtures::skillReply(),
+            AgentChatFixtures::skillReply(),
         ]);
         [$service, $repository] = $this->service($client);
 
@@ -48,19 +48,19 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_rejects_a_skill_when_the_app_has_no_agent(): void
     {
-        $client = new FakeTianjiChatClient([]);
-        $service = new TianjiChatService(new MemoryTianjiChatRepository(), $client, new MemoryTianjiAgentCatalog([]));
+        $client = new FakeAgentChatClient([]);
+        $service = new AgentChatService(new MemoryAgentChatRepository(), $client, new MemoryAgentCatalog([]));
 
-        $this->expectException(TianjiChatException::class);
+        $this->expectException(AgentChatException::class);
         $this->expectExceptionMessage('当前应用未配置该智能体');
         $service->send($this->input('紫微是什么'));
     }
 
     public function test_it_keeps_a_computed_report_for_later_turns(): void
     {
-        $client = new FakeTianjiChatClient([
-            TianjiChatFixtures::dataReply(),
-            TianjiChatFixtures::dataReply(),
+        $client = new FakeAgentChatClient([
+            AgentChatFixtures::dataReply(),
+            AgentChatFixtures::dataReply(),
         ]);
         [$service] = $this->service($client);
         $report = ['命宫' => '紫微', '官禄宫' => '武曲', '财帛宫' => '天府'];
@@ -83,7 +83,7 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_corrects_a_malformed_reply_once(): void
     {
-        $client = new FakeTianjiChatClient(['你好', TianjiChatFixtures::skillReply()]);
+        $client = new FakeAgentChatClient(['你好', AgentChatFixtures::skillReply()]);
         [$service] = $this->service($client);
 
         $result = $service->send($this->input('紫微是什么'));
@@ -104,7 +104,7 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_streams_deltas_and_replaces_a_malformed_reply(): void
     {
-        $client = new FakeTianjiChatClient(['你好', TianjiChatFixtures::skillReply()]);
+        $client = new FakeAgentChatClient(['你好', AgentChatFixtures::skillReply()]);
         [$service] = $this->service($client);
         $events = [];
 
@@ -133,8 +133,8 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_requires_a_computed_report_before_calling_the_model(): void
     {
-        $client = new FakeTianjiChatClient([]);
-        $service = new TianjiChatService(new MemoryTianjiChatRepository(), $client, new MemoryTianjiAgentCatalog([[
+        $client = new FakeAgentChatClient([]);
+        $service = new AgentChatService(new MemoryAgentChatRepository(), $client, new MemoryAgentCatalog([[
             'app_id' => 10048,
             'name' => '紫微',
             'key' => 'ziwei',
@@ -153,7 +153,7 @@ class TianjiChatServiceTest extends TestCase
         try {
             $service->send($this->input('我的事业怎么样'));
             $this->fail('缺少报告时应拒绝');
-        } catch (TianjiChatException $e) {
+        } catch (AgentChatException $e) {
             $this->assertSame('排盘报告不能为空', $e->getMessage());
         }
 
@@ -162,13 +162,13 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_rejects_skills_outside_ziwei(): void
     {
-        $client = new FakeTianjiChatClient([]);
+        $client = new FakeAgentChatClient([]);
         [$service] = $this->service($client);
 
         try {
             $service->send($this->input('泰卦怎么看', 'iching'));
             $this->fail('未配置的智能体应拒绝');
-        } catch (TianjiChatException $e) {
+        } catch (AgentChatException $e) {
             $this->assertSame('当前应用未配置该智能体', $e->getMessage());
         }
 
@@ -177,7 +177,7 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_rejects_a_different_agent_on_the_same_session(): void
     {
-        $client = new FakeTianjiChatClient([TianjiChatFixtures::skillReply()]);
+        $client = new FakeAgentChatClient([AgentChatFixtures::skillReply()]);
         [$service] = $this->service($client);
         $created = $service->send($this->input('紫微是什么'));
 
@@ -190,19 +190,19 @@ class TianjiChatServiceTest extends TestCase
                 'content' => '看看事业',
             ]);
             $this->fail('智能体不一致时应拒绝');
-        } catch (TianjiChatException $e) {
+        } catch (AgentChatException $e) {
             $this->assertSame('对话与智能体不一致', $e->getMessage());
         }
     }
 
     public function test_it_limits_model_history_and_starts_a_fresh_session_when_asked(): void
     {
-        config(['tianji.history_messages' => 2]);
-        $client = new FakeTianjiChatClient([
-            TianjiChatFixtures::skillReply(),
-            TianjiChatFixtures::skillReply(),
-            TianjiChatFixtures::skillReply(),
-            TianjiChatFixtures::skillReply(),
+        config(['agent_chat.history_messages' => 2]);
+        $client = new FakeAgentChatClient([
+            AgentChatFixtures::skillReply(),
+            AgentChatFixtures::skillReply(),
+            AgentChatFixtures::skillReply(),
+            AgentChatFixtures::skillReply(),
         ]);
         [$service] = $this->service($client);
 
@@ -224,16 +224,16 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_it_hides_another_users_session(): void
     {
-        $client = new FakeTianjiChatClient([TianjiChatFixtures::skillReply()]);
+        $client = new FakeAgentChatClient([AgentChatFixtures::skillReply()]);
         [$service] = $this->service($client);
         $created = $service->send($this->input('紫微是什么'));
 
-        $this->expectException(TianjiChatException::class);
+        $this->expectException(AgentChatException::class);
         $this->expectExceptionMessage('对话不存在');
         $service->history(8, 10048, $created['session_id']);
     }
 
-    public function test_tianji_routes_are_registered(): void
+    public function test_agent_chat_routes_are_registered(): void
     {
         $uris = collect(Route::getRoutes())->map(fn ($route) => $route->uri())->all();
 
@@ -244,15 +244,15 @@ class TianjiChatServiceTest extends TestCase
 
     public function test_container_resolves_the_chat_service(): void
     {
-        $this->assertInstanceOf(TianjiChatService::class, $this->app->make(TianjiChatService::class));
+        $this->assertInstanceOf(AgentChatService::class, $this->app->make(AgentChatService::class));
     }
 
-    private function service(FakeTianjiChatClient $client): array
+    private function service(FakeAgentChatClient $client): array
     {
-        $repository = new MemoryTianjiChatRepository();
+        $repository = new MemoryAgentChatRepository();
 
         return [
-            new TianjiChatService($repository, $client, new MemoryTianjiAgentCatalog()),
+            new AgentChatService($repository, $client, new MemoryAgentCatalog()),
             $repository,
         ];
     }

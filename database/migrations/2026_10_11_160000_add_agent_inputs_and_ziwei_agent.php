@@ -2,9 +2,9 @@
 
 use App\Models\SystemApiInterface;
 use App\Models\SystemApp;
-use App\Models\TianjiAgent;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -41,11 +41,11 @@ return new class extends Migration
         if (!SystemApp::query()->where('id', 10025)->exists()) {
             return;
         }
-        if (TianjiAgent::query()->where('app_id', 10025)->where('agent_key', 'ziwei')->exists()) {
+        if (DB::table('tianji_agents')->where('app_id', 10025)->where('agent_key', 'ziwei')->exists()) {
             return;
         }
 
-        TianjiAgent::query()->create([
+        DB::table('tianji_agents')->insert([
             'app_id' => 10025,
             'name' => '紫微排盘',
             'agent_key' => 'ziwei',
@@ -67,13 +67,15 @@ KNOWLEDGE,
             'temperature' => 0.3,
             'status' => 1,
             'remark' => '本地排盘报告上的简短解答。report 可选，个人分析时传入。',
-            'inputs' => [[
+            'inputs' => json_encode([[
                 'key' => 'report',
                 'name' => '排盘报告',
                 'type' => 'object',
                 'required' => false,
                 'desc' => '用户在应用本地已经排好的命盘报告。分析个人事业、感情、财运时传入，同一对话后续可省略。',
-            ]],
+            ]], JSON_UNESCAPED_UNICODE),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
