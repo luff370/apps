@@ -9,6 +9,7 @@ use App\Dao\Order\MemberOrderDao;
 use App\Models\User;
 use App\Models\SystemApp;
 use App\Exceptions\RequestException;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class MemberOrderService extends Service
@@ -148,24 +149,68 @@ class MemberOrderService extends Service
                 throw new RequestException('退款金额不能大于订单金额');
             }
 
-            $order->refund_status = $totalRefundPrice >= $payPrice ? MemberOrder::REFUND_STATUS_REFUNDED : MemberOrder::REFUND_STATUS_PARTIAL;
+            $fullyRefunded = $totalRefundPrice >= $payPrice;
+            $order->refund_status = $fullyRefunded ? MemberOrder::REFUND_STATUS_REFUNDED : MemberOrder::REFUND_STATUS_PARTIAL;
             $order->refund_price = $totalRefundPrice;
             $order->refund_time = time();
-            $order->member_status = MemberOrder::MEMBER_STATUS_EXPIRED;
             if (trim((string)($data['remark'] ?? '')) !== '') {
                 $order->remark = trim((string)$data['remark']);
             }
-            $order->save();
 
-            $user = User::query()->where('id', $order->user_id)->lockForUpdate()->first();
-            if ($user) {
-                $user->is_vip = 0;
-                $user->vip_type = 0;
-                $user->overdue_time = time();
-                $user->expires_date = now()->toDateTimeString();
-                $user->save();
+            // 部分退款只记金额。整单退完才扣掉这一单的会员时长，仍未过期则保持会员有效。
+            if ($fullyRefunded) {
+                $user = User::query()->where('id', $order->user_id)->lockForUpdate()->first();
+                if ($user) {
+                    $this->rewindMemberExpiry($user, $order);
+                    $user->save();
+                }
             }
+
+            $order->save();
         });
+    }
+
+    /**
+     * 从当前到期时间扣掉本单时长。扣完仍未到期则不改会员状态。
+     */
+    private function rewindMemberExpiry(User $user, MemberOrder $order): void
+    {
+        $base = (int) $user->overdue_time;
+        if ($base <= 0) {
+            $base = time();
+        }
+
+        $overdueTime = Carbon::createFromTimestamp($base);
+        $quantity = (int) $order->quantity;
+        switch ($order->member_type) {
+            case 'year':
+                $overdueTime->subYears($quantity);
+                break;
+            case 'quarter':
+                $overdueTime->subMonths($quantity * 3);
+                break;
+            case 'month':
+                $overdueTime->subMonths($quantity);
+                break;
+            case 'week':
+                $overdueTime->subWeeks($quantity);
+                break;
+            case 'day':
+                $overdueTime->subDays($quantity);
+                break;
+            default:
+                if ((int) $order->vip_day > 0) {
+                    $overdueTime->subDays((int) $order->vip_day);
+                }
+                break;
+        }
+
+        $user->overdue_time = $overdueTime->unix();
+        $user->expires_date = $overdueTime->toDateTimeString();
+        if ($user->overdue_time < time()) {
+            $user->is_vip = 0;
+            $order->member_status = MemberOrder::MEMBER_STATUS_EXPIRED;
+        }
     }
 
     /**
