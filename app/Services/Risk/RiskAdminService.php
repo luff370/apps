@@ -224,11 +224,24 @@ class RiskAdminService extends Service
     public function deviceList(array $filter): array
     {
         [$page, $limit] = $this->getPageValue();
-        $query = $this->dao->latestDeviceQuery($filter);
-        $count = (clone $query)->count();
+        if ($this->usesFullDeviceSnapshot($filter)) {
+            $ids = $this->latestDeviceIdList();
+            rsort($ids);
+            $count = count($ids);
+            $pageIds = array_slice($ids, max(0, ($page - 1) * $limit), $limit);
+            $rows = $pageIds === []
+                ? collect()
+                : RiskProbeLog::query()->whereIn('id', $pageIds)->get(RiskProbeLog::adminListColumns())->sortByDesc('id')->values();
+        } else {
+            $query = $this->dao->latestDeviceQuery($filter);
+            $count = (clone $query)->count();
+            $rows = $count > 0
+                ? (clone $query)->orderByDesc('id')->forPage($page, $limit)->get(RiskProbeLog::adminListColumns())
+                : collect();
+        }
+
         $list = [];
-        if ($count > 0) {
-            $rows = (clone $query)->orderByDesc('id')->forPage($page, $limit)->get(RiskProbeLog::adminListColumns());
+        if ($count > 0 && $rows->isNotEmpty()) {
             $apps = DeviceEnvRiskView::appNameMap();
             $channels = DeviceEnvRiskView::channelMap();
             $identities = [];
@@ -249,6 +262,23 @@ class RiskAdminService extends Service
         }
 
         return compact('list', 'count');
+    }
+
+    /**
+     * 未筛选时每台设备的最新 id 只从 rpl_device_snapshot 取出，计数不再回表。
+     *
+     * @return array<int, int>
+     */
+    private function latestDeviceIdList(): array
+    {
+        $rows = DB::select(
+            "SELECT MAX(id) AS id
+            FROM risk_probe_logs FORCE INDEX (rpl_device_snapshot)
+            WHERE status = 'ok' AND device_identity > ''
+            GROUP BY device_identity"
+        );
+
+        return array_map(fn ($row) => (int) $row->id, $rows);
     }
 
     public function deviceDetail(int $id): array
