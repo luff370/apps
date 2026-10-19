@@ -100,7 +100,11 @@ class ContentService extends Service
      */
     public function save(array $data)
     {
-        return \DB::transaction(function () use ($data) {
+        $copyFrom = (int) ($data['copy_from'] ?? 0);
+        unset($data['copy_from']);
+
+        return \DB::transaction(function () use ($data, $copyFrom) {
+            $isNew = empty($data['id']);
             $data['column'] = ContentCategory::query()->where('id', $data['cate_id'])->value('column');
 
             if (!empty($data['id'])) {
@@ -144,6 +148,11 @@ class ContentService extends Service
                     ]);
                 case Article::TypeCollectionType: // 合集课程
                     ArticleContent::query()->where('nid', $nid)->updateOrCreate(['nid' => $nid], ['content' => $data['content']]);
+                    // AI生成没有 break，会落到这里；课节只在真正的合集课程上处理
+                    if ((int) $data['type'] === Article::TypeCollectionType && $isNew && $copyFrom > 0) {
+                        $this->copyArticleCourses($copyFrom, (int) $nid);
+                        break;
+                    }
                     // 判断是B站数据来源，生成课节数据
                     if ($data['source'] == 'bilibili' && !empty($data['code'])) {
                         $this->articleCourseService()->generateBilibiliCourse($nid, $data['code']);
@@ -153,6 +162,46 @@ class ContentService extends Service
 
             return $info;
         });
+    }
+
+    /**
+     * 复制合集时，把原文章下的课节挂到新文章上。
+     */
+    private function copyArticleCourses(int $fromNid, int $toNid): void
+    {
+        if ($fromNid <= 0 || $toNid <= 0 || $fromNid === $toNid) {
+            return;
+        }
+
+        $courses = ArticleCourse::query()
+            ->where('nid', $fromNid)
+            ->orderBy('lesson_number')
+            ->orderBy('id')
+            ->get();
+
+        if ($courses->isEmpty()) {
+            return;
+        }
+
+        $now = now();
+        $rows = [];
+        foreach ($courses as $course) {
+            $rows[] = [
+                'nid' => $toNid,
+                'lesson_number' => $course->lesson_number,
+                'title' => $course->title,
+                'image' => $course->image,
+                'url' => $course->url,
+                'duration' => $course->duration,
+                'source' => $course->source,
+                'code' => $course->code,
+                'is_enable' => $course->is_enable,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+
+        ArticleCourse::query()->insert($rows);
     }
 
     /**

@@ -67,6 +67,7 @@ class ContentController extends Controller
             ['source', ''],
             ['is_return_limit', ''],
             ['return_limit_values', ''],
+            ['copy_from', 0],
         ]);
         $this->service->save($data);
 
