@@ -87,7 +87,7 @@ class SystemApp extends Model
         return [
             'ios' => '苹果',
             'android' => '安卓',
-            'hangmen' => '鸿蒙',
+            'hongmeng' => '鸿蒙',
         ];
     }
 
@@ -97,6 +97,7 @@ class SystemApp extends Model
             'ios' => '苹果',
             'google' => '谷歌',
             'huawei' => '华为',
+            'hongmeng' => '鸿蒙',
             'rongyao' => '荣耀',
             'xiaomi' => '小米',
             'oppo' => 'OPPO',
