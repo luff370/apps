@@ -72,6 +72,10 @@ class AuthController extends Controller
             return $this->fail('该账号已注销，如需使用请联系客服');
         }
 
+        if ($user->isLocked()) {
+            return $this->fail(User::LOCKED_MESSAGE);
+        }
+
         if (md5($request->get('password')) != $user['password']) {
             return $this->fail('密码错误，请确认');
         }
@@ -112,6 +116,10 @@ class AuthController extends Controller
                 'update_time' => time(),
             ];
             $user = User::query()->create($userRegData);
+        }
+
+        if ($user->isLocked()) {
+            return $this->fail(User::LOCKED_MESSAGE);
         }
 
         $this->bindArchiveUser((int) $user['id']);

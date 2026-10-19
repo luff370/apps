@@ -112,6 +112,13 @@ class User extends Model
 		'update_time'
 	];
 
+    public const LOCKED_MESSAGE = '该账号已锁定，如需使用请联系客服';
+
+    public function isLocked(): bool
+    {
+        return (string) $this->status === '0';
+    }
+
     public static function vipTypeMap()
     {
         return [

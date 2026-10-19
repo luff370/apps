@@ -37,9 +37,18 @@ class AuthService extends Service
             ->where('third_user_id', $thirdInfo['third_user_id'])
             ->first();
         if ($thirdUser) {
+            $boundUser = $thirdUser->user;
+            if ($boundUser && $boundUser->isLocked()) {
+                throw new AuthException(User::LOCKED_MESSAGE);
+            }
             $this->bindArchiveUser((int) $thirdUser['user']['id'], (string) $uuid, (int) $appId);
             // 生成token
             return Token::generate(['user_id' => $thirdUser['user']['id'], 'login_type' => $type, 'is_reg' => 1]);
+        }
+
+        $userInfo = User::query()->where('app_id', $appId)->where('uuid', $uuid)->first();
+        if ($userInfo && $userInfo->isLocked()) {
+            throw new AuthException(User::LOCKED_MESSAGE);
         }
 
         try {
@@ -47,7 +56,6 @@ class AuthService extends Service
             // 默认头像
             $thirdInfo['avatar'] = !empty($thirdInfo['avatar']) ? $thirdInfo['avatar'] : 'http://novel-store.qaqzz.com/default_boy.png';
             // 未注册，通过uuid获取用户信息进行绑定操作
-            $userInfo = User::query()->where('app_id', $appId)->where('uuid', $uuid)->first();
             if (empty($userInfo)) {
                 $userRegData = [
                     'uuid' => $uuid,
