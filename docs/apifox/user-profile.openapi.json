@@ -1,0 +1,388 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "用户档案",
+    "description": "客户端用户档案保存、修改、分页列表。\n\n路由不强制登录。已登录时用 Token 解析 user_id，并把同设备尚未绑定的档案写回该用户；未登录时按 Uuid + App-Id 归属。\n\n数量上限：非会员默认 10 条（USER_ARCHIVE_GUEST_LIMIT），会员默认 5000 条（USER_ARCHIVE_MEMBER_LIMIT）。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://{host}/api",
+      "variables": {
+        "host": {
+          "default": "example.com",
+          "description": "接口域名"
+        }
+      }
+    }
+  ],
+  "tags": [
+    {
+      "name": "用户/用户中心",
+      "description": "保存、修改、分页列表。斜杠表示父目录/子目录，对应现有「用户 → 用户中心」。"
+    }
+  ],
+  "paths": {
+    "/user/profile": {
+      "post": {
+        "tags": ["用户/用户中心"],
+        "x-apifox-folder": "用户/用户中心",
+        "summary": "用户档案保存",
+        "description": "新增一条档案。user_id、uuid、app_id、version、market_channel 由服务端从请求头写入，请求体里的同名字段会被覆盖。\n\nbirth_date 兼容旧端把历法写在时间前面的格式，例如「农历 1980/01/26 12:00」。此时若 calendar 为空，会从该前缀解析历法。",
+        "operationId": "userProfileSave",
+        "parameters": [
+          { "$ref": "#/components/parameters/AppId" },
+          { "$ref": "#/components/parameters/PackageName" },
+          { "$ref": "#/components/parameters/Uuid" },
+          { "$ref": "#/components/parameters/AppVersion" },
+          { "$ref": "#/components/parameters/MarketChannel" },
+          { "$ref": "#/components/parameters/Token" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProfileSaveRequest" },
+              "example": {
+                "name": "张三",
+                "gender": "男",
+                "calendar": "公历",
+                "birth_date": "1980-01-26 12:00:00",
+                "birth_place": "北京市",
+                "save_to_archive": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "保存成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileItemResponse" },
+                "example": {
+                  "status": 200,
+                  "msg": "success",
+                  "data": {
+                    "id": 1,
+                    "name": "张三",
+                    "gender": "男",
+                    "calendar": "公历",
+                    "birth_date": "1980-01-26 12:00:00",
+                    "birth_place": "北京市",
+                    "save_to_archive": true,
+                    "created_at": "2026-10-01 12:00:00",
+                    "updated_at": "2026-10-01 12:00:00"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Fail" }
+        }
+      }
+    },
+    "/user/profile/update": {
+      "post": {
+        "tags": ["用户/用户中心"],
+        "x-apifox-folder": "用户/用户中心",
+        "summary": "用户档案修改",
+        "description": "按 id 修改当前设备或当前用户名下的档案。id 小于等于 0、档案不存在、或不属于当前用户/设备时返回「档案不存在」。\n\n不会改 uuid、app_id。档案已绑定 user_id 时，未登录请求不会把 user_id 清成 0。仅当请求体包含 save_to_archive 时才更新该字段。",
+        "operationId": "userProfileUpdate",
+        "parameters": [
+          { "$ref": "#/components/parameters/AppId" },
+          { "$ref": "#/components/parameters/PackageName" },
+          { "$ref": "#/components/parameters/Uuid" },
+          { "$ref": "#/components/parameters/AppVersion" },
+          { "$ref": "#/components/parameters/MarketChannel" },
+          { "$ref": "#/components/parameters/Token" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProfileUpdateRequest" },
+              "example": {
+                "id": 1,
+                "name": "张三",
+                "gender": "女",
+                "calendar": "农历",
+                "birth_date": "1980-01-26 12:00:00",
+                "birth_place": "上海市",
+                "save_to_archive": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "修改成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileItemResponse" },
+                "example": {
+                  "status": 200,
+                  "msg": "success",
+                  "data": {
+                    "id": 1,
+                    "name": "张三",
+                    "gender": "女",
+                    "calendar": "农历",
+                    "birth_date": "1980-01-26 12:00:00",
+                    "birth_place": "上海市",
+                    "save_to_archive": false,
+                    "created_at": "2026-10-01 12:00:00",
+                    "updated_at": "2026-10-01 12:10:00"
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Fail" }
+        }
+      }
+    },
+    "/user/profile/list": {
+      "post": {
+        "tags": ["用户/用户中心"],
+        "x-apifox-folder": "用户/用户中心",
+        "summary": "用户档案分页列表",
+        "description": "按 id 倒序。已登录（Token 有效，或 Uuid + App-Id 能匹配到用户）时，返回该用户档案，以及同 Uuid 下尚未绑定用户的档案。未登录时只按 Uuid + App-Id 查询。\n\npage、limit 也可放在 Query。limit 最小 1、最大 50，缺省 15。",
+        "operationId": "userProfileList",
+        "parameters": [
+          { "$ref": "#/components/parameters/AppId" },
+          { "$ref": "#/components/parameters/PackageName" },
+          { "$ref": "#/components/parameters/Uuid" },
+          { "$ref": "#/components/parameters/AppVersion" },
+          { "$ref": "#/components/parameters/MarketChannel" },
+          { "$ref": "#/components/parameters/Token" }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ProfileListRequest" },
+              "example": {
+                "page": 1,
+                "limit": 15
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProfileListResponse" },
+                "example": {
+                  "status": 200,
+                  "msg": "success",
+                  "data": {
+                    "count": 1,
+                    "page": 1,
+                    "limit": 15,
+                    "list": [
+                      {
+                        "id": 1,
+                        "name": "张三",
+                        "gender": "男",
+                        "calendar": "公历",
+                        "birth_date": "1980-01-26 12:00:00",
+                        "birth_place": "北京市",
+                        "save_to_archive": true,
+                        "created_at": "2026-10-01 12:00:00",
+                        "updated_at": "2026-10-01 12:00:00"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/Fail" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "AppId": {
+        "name": "App-Id",
+        "in": "header",
+        "required": false,
+        "description": "应用 ID。与 Package-Name 二选一：没有本头时，用包名映射应用 ID。两者都没有时返回「缺少应用信息」。",
+        "schema": { "type": "string", "example": "10001" }
+      },
+      "PackageName": {
+        "name": "Package-Name",
+        "in": "header",
+        "required": false,
+        "description": "应用包名。未传 App-Id 时用于映射应用 ID。",
+        "schema": { "type": "string", "example": "com.example.app" }
+      },
+      "Uuid": {
+        "name": "Uuid",
+        "in": "header",
+        "required": false,
+        "description": "设备唯一标识。未登录时用于归属档案；已登录时用于把同设备未绑定档案写回用户。也可由 Device-Env 中的 uuid 提供。",
+        "schema": { "type": "string", "example": "550e8400-e29b-41d4-a716-446655440000" }
+      },
+      "AppVersion": {
+        "name": "App-Version",
+        "in": "header",
+        "required": true,
+        "description": "应用版本。缺失时返回「缺少应用版本」。也可由 Device-Env 中的 app_version 提供。保存时写入档案 version。",
+        "schema": { "type": "string", "example": "1.0.0" }
+      },
+      "MarketChannel": {
+        "name": "Market-Channel",
+        "in": "header",
+        "required": true,
+        "description": "应用市场。缺失时返回「缺少市场渠道」。服务端会转成小写后写入档案。也可由 Device-Env 中的 market_channel 提供。",
+        "schema": {
+          "type": "string",
+          "example": "huawei",
+          "enum": ["ios", "google", "huawei", "hongmeng", "rongyao", "xiaomi", "oppo", "vivo", "yingyongbao", "baidu", "pp", "uc", "360"]
+        }
+      },
+      "Token": {
+        "name": "Token",
+        "in": "header",
+        "required": false,
+        "description": "登录令牌。有效时解析 user_id，保存成功后会把同设备未绑定档案绑定到该用户。无效或缺失时按未登录处理，不拦截请求。也可由 Device-Env 中的 token 提供。",
+        "schema": { "type": "string" }
+      }
+    },
+    "schemas": {
+      "ProfileSaveRequest": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 32, "description": "姓名" },
+          "gender": {
+            "type": "string",
+            "description": "性别。1 / male / 男 存为「男」；2 / female / 女 存为「女」。空值按「男」。",
+            "example": "男"
+          },
+          "calendar": {
+            "type": "string",
+            "description": "历法。1 / solar / 公历 存为「公历」；2 / lunar / 农历 存为「农历」。也可从 birth_date 前缀解析（农历、公历、阴历、阳历、lunar、solar）。",
+            "example": "公历"
+          },
+          "birth_date": {
+            "type": "string",
+            "description": "出生时间。支持 1980-01-26 12:00:00、1980/01/26 12:00、1980年01月26日 12:00，以及「农历 1980/01/26 12:00」。入库格式 Y-m-d H:i:s。无法解析时存 null，响应为空字符串。",
+            "example": "1980-01-26 12:00:00"
+          },
+          "birth_place": { "type": "string", "description": "出生地" },
+          "save_to_archive": {
+            "description": "是否保存档案。true、1、\"1\"、yes、on 记为已保存，其余记为未保存。新增时缺省为未保存。响应里是布尔值。",
+            "oneOf": [
+              { "type": "boolean" },
+              { "type": "integer", "enum": [0, 1] },
+              { "type": "string" }
+            ],
+            "example": 1
+          }
+        }
+      },
+      "ProfileUpdateRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": ["id"],
+            "properties": {
+              "id": { "type": "integer", "minimum": 1, "description": "档案 ID" }
+            }
+          },
+          { "$ref": "#/components/schemas/ProfileSaveRequest" }
+        ]
+      },
+      "ProfileListRequest": {
+        "type": "object",
+        "properties": {
+          "page": { "type": "integer", "minimum": 1, "default": 1, "description": "页码，小于 1 时按 1" },
+          "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 15, "description": "每页条数，超过 50 按 50" }
+        }
+      },
+      "ProfileItem": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "description": "档案 ID" },
+          "name": { "type": "string", "description": "姓名" },
+          "gender": { "type": "string", "description": "性别，男或女", "example": "男" },
+          "calendar": { "type": "string", "description": "历法，公历或农历", "example": "公历" },
+          "birth_date": { "type": "string", "description": "出生时间，Y-m-d H:i:s，空则为空字符串" },
+          "birth_place": { "type": "string", "description": "出生地" },
+          "save_to_archive": { "type": "boolean", "description": "是否保存档案" },
+          "created_at": { "type": "string", "description": "创建时间" },
+          "updated_at": { "type": "string", "description": "更新时间" }
+        }
+      },
+      "ProfileItemResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "msg": { "type": "string", "example": "success" },
+          "data": { "$ref": "#/components/schemas/ProfileItem" }
+        }
+      },
+      "ProfileListResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 200 },
+          "msg": { "type": "string", "example": "success" },
+          "data": {
+            "type": "object",
+            "properties": {
+              "count": { "type": "integer", "description": "总条数" },
+              "page": { "type": "integer", "description": "当前页" },
+              "limit": { "type": "integer", "description": "每页条数" },
+              "list": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/ProfileItem" }
+              }
+            }
+          }
+        }
+      },
+      "FailResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "integer", "example": 400 },
+          "code": { "type": "integer", "example": 400, "description": "业务异常（档案不存在、数量上限）响应里没有 code" },
+          "msg": { "type": "string" },
+          "data": { "nullable": true }
+        }
+      }
+    },
+    "responses": {
+      "Fail": {
+        "description": "失败。常见 msg：缺少应用信息、缺少应用版本、缺少市场渠道、档案不存在、非会员最多保存10条档案、会员档案数量已达上限、保存失败，请稍后重试。",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/FailResponse" },
+            "examples": {
+              "missingIdentity": {
+                "summary": "缺少身份信息",
+                "value": { "status": 400, "code": 400, "msg": "缺少应用信息", "data": null }
+              },
+              "notFound": {
+                "summary": "档案不存在",
+                "value": { "status": 400, "msg": "档案不存在" }
+              },
+              "limit": {
+                "summary": "数量上限",
+                "value": { "status": 400, "msg": "非会员最多保存10条档案" }
+              },
+              "saveFailed": {
+                "summary": "保存异常",
+                "value": { "status": 400, "code": 400, "msg": "保存失败，请稍后重试", "data": null }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
