@@ -2,11 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Models\SystemApp;
 use App\Services\User\UserWhitelistService;
 use Illuminate\Console\Command;
 use Illuminate\Database\Connection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
 
 class WhitelistNonMemberAccess extends Command
 {
@@ -19,6 +19,7 @@ class WhitelistNonMemberAccess extends Command
                             {--since=2026-10-17 : 起始日期，从当天 00:00:00 起}
                             {--type=3 : 1屏蔽广告 2免费试用 3两者}
                             {--dry-run : 只统计，不删除、不写入、不刷新缓存}
+                            {--delete-only : 只删除本命令已写入的批次和回填日志，不重新写入}
                             {--force : 跳过确认直接执行}';
 
     protected $description = '删除上一批非会员白名单，按起始时间后的新增用户重写 IP、设备白名单';
@@ -45,17 +46,24 @@ class WhitelistNonMemberAccess extends Command
         $db = DB::connection();
         $database = $db->selectOne('SELECT DATABASE() AS db')->db;
         $this->info("database={$database} app={$appId} channel={$channel} version={$version} since={$since} type={$type}");
-        $this->line('新增用户：user_uuids 首次出现 >= ' . $since . "，渠道 {$channel}，版本为 {$version} 或历史空版本，且这段时间有 {$version} 访问");
+        $this->line("新增用户与统计一致：user_uuids 每个 uuid 一行，created_at 为首次出现；app={$appId} 渠道 {$channel}，created_at >= {$since}。不看 users 注册表。IP、设备取这些 uuid 在 {$version} 的访问");
 
+        foreach ($remarks as $item) {
+            $this->line("删除备注：{$item}");
+        }
         $removing = $this->rowsToRemove($db, $appId, $channel, $version, $remarks);
         foreach ($removing as $row) {
-            $this->warn("将删除 {$row->way} {$row->c} 条，创建时间 {$row->min_at} ~ {$row->max_at}，备注精确匹配上一批或本命令批次");
+            $this->warn("将删除 {$row->way} {$row->c} 条，创建时间 {$row->min_at} ~ {$row->max_at}");
         }
         if ($removing === []) {
             $this->info('没有需要删除的旧批次');
         }
 
-        $this->prepareNewUsers($db, $appId, $channel, $version, $since);
+        if ($this->option('delete-only')) {
+            return $this->deleteOnly($db, $appId, $channel, $version, $since, $remarks, $removing, $dryRun);
+        }
+
+        $this->prepareNewUsers($db, $appId, $channel, $since);
         [$ipRows, $deviceRows, $newUuid] = $this->collect($db, $appId, $channel, $version, $since);
         $removingIp = $this->removingContents($db, 'ip', $appId, $channel, $version, $remarks);
         $removingDevice = $this->removingContents($db, 'device', $appId, $channel, $version, $remarks);
@@ -108,6 +116,60 @@ class WhitelistNonMemberAccess extends Command
         return self::SUCCESS;
     }
 
+    private function deleteOnly(Connection $db, int $appId, string $channel, string $version, string $since, array $remarks, array $removing, bool $dryRun): int
+    {
+        $removingIp = $this->removingContents($db, 'ip', $appId, $channel, $version, $remarks);
+        $removingDevice = $this->removingContents($db, 'device', $appId, $channel, $version, $remarks);
+        $logCount = $this->logCount($db, $removingIp, 'ip', $appId, $channel, $version, $since)
+            + $this->logCount($db, $removingDevice, 'device', $appId, $channel, $version, $since);
+        $this->info("将删除回填访问日志 {$logCount} 条");
+
+        if ($dryRun) {
+            $this->info('预览结束，未删除');
+
+            return self::SUCCESS;
+        }
+
+        if ($removing === []) {
+            return self::SUCCESS;
+        }
+
+        if (!$this->option('force') && !$this->confirm('确认只删除这些批次？不会重新写入')) {
+            $this->info('已取消');
+
+            return self::SUCCESS;
+        }
+
+        $db->transaction(function () use ($db, $removingIp, $removingDevice, $appId, $channel, $version, $since, $remarks) {
+            $this->deleteBatchLogs($db, $removingIp, $removingDevice, $appId, $channel, $version, $since);
+            $deleted = $this->deleteBatch($db, $appId, $channel, $version, $remarks);
+            $this->info("已删除白名单 {$deleted} 条");
+        });
+
+        UserWhitelistService::cacheForIp();
+        UserWhitelistService::cacheForDevice();
+        $this->info('删除完成，缓存已刷新');
+
+        return self::SUCCESS;
+    }
+
+    private function logCount(Connection $db, array $contents, string $way, int $appId, string $channel, string $version, string $since): int
+    {
+        $total = 0;
+        foreach (array_chunk(array_keys($contents), 500) as $chunk) {
+            $total += $db->table('user_whitelist_log')
+                ->where('app_id', $appId)
+                ->where('market_channel', $channel)
+                ->where('version', $version)
+                ->where('source_type', $way)
+                ->where('created_at', '>=', $since)
+                ->whereIn('source', $chunk)
+                ->count();
+        }
+
+        return $total;
+    }
+
     private function since(): string
     {
         $since = trim((string) $this->option('since'));
@@ -156,28 +218,19 @@ class WhitelistNonMemberAccess extends Command
             ->all();
     }
 
-    private function prepareNewUsers(Connection $db, int $appId, string $channel, string $version, string $since): void
+    private function prepareNewUsers(Connection $db, int $appId, string $channel, string $since): void
     {
         $db->unprepared('SET SESSION group_concat_max_len = 8192');
         $db->unprepared('DROP TEMPORARY TABLE IF EXISTS tmp_wm_new_uuid');
         $db->unprepared("CREATE TEMPORARY TABLE tmp_wm_new_uuid (uuid varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL PRIMARY KEY) ENGINE=InnoDB");
 
-        if (Schema::hasColumn('user_uuids', 'version')) {
-            $db->affectingStatement(
-                "INSERT IGNORE INTO tmp_wm_new_uuid (uuid)
-                 SELECT uuid FROM user_uuids
-                 WHERE app_id = ? AND market_channel = ? AND created_at >= ? AND (version = ? OR version = '')",
-                [$appId, $channel, $since, $version]
-            );
-
-            return;
-        }
-
+        $channels = SystemApp::marketChannelAliases($channel);
+        $placeholders = implode(', ', array_fill(0, count($channels), '?'));
         $db->affectingStatement(
-            'INSERT IGNORE INTO tmp_wm_new_uuid (uuid)
+            "INSERT IGNORE INTO tmp_wm_new_uuid (uuid)
              SELECT uuid FROM user_uuids
-             WHERE app_id = ? AND market_channel = ? AND created_at >= ?',
-            [$appId, $channel, $since]
+             WHERE app_id = ? AND market_channel IN ({$placeholders}) AND created_at >= ?",
+            array_merge([$appId], $channels, [$since])
         );
     }
 
