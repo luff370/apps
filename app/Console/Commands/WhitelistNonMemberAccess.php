@@ -10,7 +10,10 @@ use Illuminate\Support\Facades\DB;
 
 class WhitelistNonMemberAccess extends Command
 {
-    private const LEGACY_REMARK = 'huawei 2.5.20 2026-10-17 00:00:00 起非会员批量加入';
+    private const LEGACY_REMARKS = [
+        'huawei 2.5.20 2026-10-17 00:00:00 起非会员批量加入',
+        'huawei 2.5.20 2026-10-17 00:00:00 起新增用户批量加入',
+    ];
 
     protected $signature = 'app:whitelist-non-member-access
                             {--app-id=10059 : 应用ID}
@@ -22,7 +25,7 @@ class WhitelistNonMemberAccess extends Command
                             {--delete-only : 只删除本命令已写入的批次和回填日志，不重新写入}
                             {--force : 跳过确认直接执行}';
 
-    protected $description = '删除上一批非会员白名单，按起始时间后的新增用户重写 IP、设备白名单';
+    protected $description = '按起始时间后的新增且非会员 uuid 重写 IP、设备白名单';
 
     public function handle(): int
     {
@@ -33,8 +36,8 @@ class WhitelistNonMemberAccess extends Command
         $type = (int) $this->option('type');
         $dryRun = (bool) $this->option('dry-run');
         $platform = $this->platform($channel);
-        $remark = "{$channel} {$version} {$since} 起新增用户批量加入";
-        $remarks = array_values(array_unique([self::LEGACY_REMARK, $remark]));
+        $remark = "{$channel} {$version} {$since} 起新增非会员批量加入";
+        $remarks = array_values(array_unique([...self::LEGACY_REMARKS, $remark]));
 
         if (!in_array($type, [1, 2, 3], true)) {
             $this->error('type 只能是 1、2、3');
@@ -46,7 +49,7 @@ class WhitelistNonMemberAccess extends Command
         $db = DB::connection();
         $database = $db->selectOne('SELECT DATABASE() AS db')->db;
         $this->info("database={$database} app={$appId} channel={$channel} version={$version} since={$since} type={$type}");
-        $this->line("新增用户与统计一致：user_uuids 每个 uuid 一行，created_at 为首次出现；app={$appId} 渠道 {$channel}，created_at >= {$since}。不看 users 注册表。IP、设备取这些 uuid 在 {$version} 的访问");
+        $this->line("同时满足：user_uuids 新增（app={$appId} 渠道 {$channel}，created_at >= {$since}），且 users 中该 uuid 不是会员。IP、设备取这些 uuid 在 {$version} 的访问");
 
         foreach ($remarks as $item) {
             $this->line("删除备注：{$item}");
@@ -226,12 +229,18 @@ class WhitelistNonMemberAccess extends Command
 
         $channels = SystemApp::marketChannelAliases($channel);
         $placeholders = implode(', ', array_fill(0, count($channels), '?'));
-        $db->affectingStatement(
+        $inserted = $db->affectingStatement(
             "INSERT IGNORE INTO tmp_wm_new_uuid (uuid)
              SELECT uuid FROM user_uuids
              WHERE app_id = ? AND market_channel IN ({$placeholders}) AND created_at >= ?",
             array_merge([$appId], $channels, [$since])
         );
+        $members = $db->affectingStatement(
+            'DELETE n FROM tmp_wm_new_uuid n
+             INNER JOIN users u ON u.app_id = ? AND u.uuid = n.uuid AND u.is_vip = 1',
+            [$appId]
+        );
+        $this->info('新增uuid=' . $inserted . "，其中会员排除={$members}，保留=" . ($inserted - $members));
     }
 
     private function collect(Connection $db, int $appId, string $channel, string $version, string $since): array
