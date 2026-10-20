@@ -14,6 +14,7 @@ use Carbon\Carbon;
  * @property int $app_id
  * @property string $uuid
  * @property string $market_channel
+ * @property string $version
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -25,6 +26,7 @@ class UserUuid extends BaseModel
         'app_id',
         'uuid',
         'market_channel',
+        'version',
     ];
 
     protected $casts = [

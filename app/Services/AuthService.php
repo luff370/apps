@@ -64,6 +64,7 @@ class AuthService extends Service
                     'os_version' => $this->getOsVersion(),
                     'package_name' => $this->getAppPackageName(),
                     'market_channel'=>$this->getMarketChannel(),
+                    'app_version'=>(string) $this->getAppVersion(),
                     'device_sn'=>$this->getDevice(),
                     'nickname' => $thirdInfo['nickname'],
                     'avatar' => $thirdInfo['avatar'],

@@ -39,6 +39,7 @@ namespace App\Models;
  * @property string $os_version
  * @property string $package_name
  * @property string $market_channel
+ * @property string $app_version
  * @property string|null $terminal
  * @property string $status
  * @property bool $is_del
@@ -102,6 +103,7 @@ class User extends Model
 		'os_version',
 		'package_name',
 		'market_channel',
+		'app_version',
 		'terminal',
 		'device_sn',
 		'status',
