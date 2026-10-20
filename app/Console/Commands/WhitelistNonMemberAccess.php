@@ -152,8 +152,8 @@ class WhitelistNonMemberAccess extends Command
 
         $ipRows = $db->select(
             "SELECT l.ip AS content,
-                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.device = '' OR CHAR_LENGTH(l.device) > 64, NULL, l.device) ORDER BY l.id DESC SEPARATOR CHAR(31)), CHAR(31), 1) AS source_device,
-                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.region = '', NULL, l.region) ORDER BY l.id DESC SEPARATOR CHAR(31)), CHAR(31), 1) AS source_region
+                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.device = '' OR CHAR_LENGTH(l.device) > 64, NULL, l.device) ORDER BY l.id DESC SEPARATOR '|#|'), '|#|', 1) AS source_device,
+                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.region = '', NULL, l.region) ORDER BY l.id DESC SEPARATOR '|#|'), '|#|', 1) AS source_region
              FROM user_access_log l
              LEFT JOIN tmp_wm_vip_uuid v ON v.uuid = l.uuid
              LEFT JOIN tmp_wm_vip_ip vi ON vi.ip = l.ip
@@ -163,8 +163,8 @@ class WhitelistNonMemberAccess extends Command
         );
         $deviceRows = $db->select(
             "SELECT l.device AS content,
-                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.ip = '', NULL, l.ip) ORDER BY l.id DESC SEPARATOR CHAR(31)), CHAR(31), 1) AS source_ip,
-                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.region = '', NULL, l.region) ORDER BY l.id DESC SEPARATOR CHAR(31)), CHAR(31), 1) AS source_region
+                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.ip = '', NULL, l.ip) ORDER BY l.id DESC SEPARATOR '|#|'), '|#|', 1) AS source_ip,
+                    SUBSTRING_INDEX(GROUP_CONCAT(IF(l.region = '', NULL, l.region) ORDER BY l.id DESC SEPARATOR '|#|'), '|#|', 1) AS source_region
              FROM user_access_log l
              LEFT JOIN tmp_wm_vip_uuid v ON v.uuid = l.uuid
              LEFT JOIN tmp_wm_vip_device vd ON vd.device = l.device
