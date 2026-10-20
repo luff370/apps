@@ -559,6 +559,13 @@ class UserWhitelistService extends Service
 
     public static function whitelistUserAccessLog(array $data): \Illuminate\Database\Eloquent\Model
     {
+        // uuid/device 客户端可不传；表字段非空，空值落成空串，避免 IP/地区命中后写日志把接口打成 500
+        foreach (['uuid', 'device', 'source'] as $field) {
+            if (!isset($data[$field]) || $data[$field] === null) {
+                $data[$field] = '';
+            }
+        }
+
         return UserWhitelistLog::query()->create($data);
     }
 
