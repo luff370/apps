@@ -2,22 +2,22 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Models\AppVersion;
-use App\Services\App\AppNoticeService;
-use App\Services\App\AppsService;
-use App\Services\App\AppApiObfuscationService;
 use Ramsey\Uuid\Uuid;
+use App\Models\AppVersion;
 use App\Models\DeviceToken;
 use Illuminate\Http\Request;
+use App\Jobs\RecordUserStat;
+use App\Jobs\RecordAccessLog;
+use App\Services\App\AppsService;
+use App\Jobs\RecordAutoWhitelist;
+use App\Services\App\AppNoticeService;
 use Illuminate\Support\Facades\Storage;
 use App\Support\Services\AppConfigService;
 use App\Services\User\UserWhitelistService;
 use App\Services\System\AppVersionServices;
-use App\Jobs\RecordAccessLog;
-use App\Jobs\RecordAutoWhitelist;
-use App\Jobs\RecordUserStat;
-use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\SystemConfigService;
+use App\Services\App\AppApiObfuscationService;
+use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\AgreementUrlAliasService;
 
 class CommonController extends Controller
@@ -97,6 +97,11 @@ class CommonController extends Controller
         }
         $data = array_merge($data, $userWhiteList);
 
+        // 白名单免广告免会员用户统一为审核状态
+        if (!empty($data['is_free_ad']) || !empty($data['is_free_member'])) {
+            $data['is_audit'] = 1;
+        }
+
         // 记录访问日志、用户新增/活跃：响应发出后再写，避免拖慢主接口
         RecordAccessLog::dispatchAfterResponse(
             0,
@@ -120,17 +125,18 @@ class CommonController extends Controller
         return $this->success($data);
     }
 
-    public function appUpdate(Request $request){
+    public function appUpdate(Request $request)
+    {
         $appId = $this->getAppId();
         $appVersion = $this->getAppVersion();
         $appChannel = $this->getMarketChannel();
 
         $returnData = [
-            'last_version'=>$appVersion,
-            'is_new'=>0,
-            'info'=>'',
-            'force_Update'=>0,
-            'downloadUrl'=>''
+            'last_version' => $appVersion,
+            'is_new' => 0,
+            'info' => '',
+            'force_Update' => 0,
+            'downloadUrl' => '',
         ];
 
         $lastVersion = AppVersion::query()
@@ -138,15 +144,15 @@ class CommonController extends Controller
             ->where('platform', $appChannel)
             ->where('audit_status', 1)
             ->where('status', 1)
-            ->orderBy('version','desc')
+            ->orderBy('version', 'desc')
             ->first();
-        if (!empty($lastVersion) && $appVersion != $lastVersion['version']){
+        if (!empty($lastVersion) && $appVersion != $lastVersion['version']) {
             $returnData = [
-                'last_version'=>$lastVersion['version'],
-                'is_new'=>1,
-                'info'=>$lastVersion['info'],
-                'force_Update'=>$lastVersion['is_force'],
-                'downloadUrl'=>$lastVersion['url']
+                'last_version' => $lastVersion['version'],
+                'is_new' => 1,
+                'info' => $lastVersion['info'],
+                'force_Update' => $lastVersion['is_force'],
+                'downloadUrl' => $lastVersion['url'],
             ];
         }
 
