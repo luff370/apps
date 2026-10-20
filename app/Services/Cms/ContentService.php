@@ -3,6 +3,7 @@
 namespace App\Services\Cms;
 
 use App\Models\Article;
+use App\Models\SystemApp;
 use App\Services\Service;
 use App\Dao\Cms\ContentDao;
 use App\Models\ArticleCourse;
@@ -56,11 +57,13 @@ class ContentService extends Service
         $list = [];
         if ($count > 0) {
             $list = $this->dao->getAll($args, ['*'], ['sort' => 'desc', 'id' => 'desc'], ['cate'], $limit, $page);
+            $apps = SystemApp::query()->pluck('name', 'id');
 
             foreach ($list as &$item) {
                 $item['type_name'] = $typeMap[$item['type']] ?? '';
                 $item['source_name'] = $sourceMap[$item['source']] ?? '';
                 $item['cate_name'] = $item['cate']['title'] ?? '';
+                $item['app_name'] = $apps[$item['app_id']] ?? '';
                 $item['preview_url'] = url(sprintf('/article/%s', $item['id']));
             }
         }
@@ -105,7 +108,7 @@ class ContentService extends Service
 
         return \DB::transaction(function () use ($data, $copyFrom) {
             $isNew = empty($data['id']);
-            $data['column'] = ContentCategory::query()->where('id', $data['cate_id'])->value('column');
+            $data['column'] = $this->resolveColumn($data);
 
             if (!empty($data['id'])) {
                 $info = $this->dao->newQuery()->findOrFail($data['id']);
@@ -162,6 +165,23 @@ class ContentService extends Service
 
             return $info;
         });
+    }
+
+    /**
+     * 栏目只取当前应用下所选分类，不沿用原文栏目。
+     */
+    private function resolveColumn(array $data): string
+    {
+        $category = ContentCategory::query()
+            ->where('id', (int) ($data['cate_id'] ?? 0))
+            ->where('app_id', (int) ($data['app_id'] ?? 0))
+            ->first(['column']);
+
+        if (!$category) {
+            throw new AdminException('请选择文章分类');
+        }
+
+        return (string) $category->column;
     }
 
     /**
