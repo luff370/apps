@@ -15,6 +15,7 @@ class RechargeStatisticsController extends Controller
      * 前端充值统计页顶部漏斗指标调用这个接口。
      * registered_users 为注册人数，new_users 为新增人数（与用户统计相同的 UUID 口径），
      * new_recharge_users 为新增充值人数，另有活跃、下单、支付、试用、续费、取消等汇总。
+     * 带 version 时：活跃按访问日志按天去重后相加，新增按首次 UUID 版本，注册按注册时应用版本。
      */
     public function summary(Request $request, OperationStatisticsService $service): JsonResponse
     {

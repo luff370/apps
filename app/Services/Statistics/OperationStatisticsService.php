@@ -8,6 +8,7 @@ use App\Models\MemberOrder;
 use App\Models\SubscriptionOrder;
 use App\Models\SystemApp;
 use App\Models\User;
+use App\Models\UserAccessLog;
 use App\Models\UserStatistic;
 use App\Models\UserUuid;
 use Carbon\Carbon;
@@ -56,13 +57,11 @@ class OperationStatisticsService
     {
         [$start, $end] = $this->dateRange($filter, true);
         $rechargeFilter = $this->rechargeFilter($filter);
-        $hasOrderDimensionFilter = $this->hasOrderDimensionFilter($rechargeFilter);
-        $hasVersionFilter = !empty($rechargeFilter['version']);
         $orderQuery = $this->memberOrders($start, $end, $rechargeFilter);
         $paidOrderQuery = $this->paidMemberOrders($start, $end, $rechargeFilter);
-        $activeUsers = $hasVersionFilter ? null : $this->activeUsers($start, $end, $rechargeFilter);
-        $registeredUsers = $hasVersionFilter ? null : $this->newUsers($start, $end, $rechargeFilter);
-        $newUsers = $hasVersionFilter ? null : $this->newUuidUsers($start, $end, $rechargeFilter);
+        $activeUsers = $this->activeUsers($start, $end, $rechargeFilter);
+        $registeredUsers = $this->newUsers($start, $end, $rechargeFilter);
+        $newUsers = $this->newUuidUsers($start, $end, $rechargeFilter);
         $newRechargeUsers = $this->newRechargeUsers($start, $end, $rechargeFilter);
 
         $orderUsers = (clone $orderQuery)->distinct('user_id')->count('user_id');
@@ -81,23 +80,23 @@ class OperationStatisticsService
         $cancel = $this->cancelStats($start, $end, $rechargeFilter);
 
         return [
-            'registered_users' => $hasVersionFilter ? '--' : $registeredUsers,
-            'new_users' => $hasVersionFilter ? '--' : $newUsers,
+            'registered_users' => $registeredUsers,
+            'new_users' => $newUsers,
             'new_recharge_users' => $newRechargeUsers,
-            'active_users' => $hasVersionFilter ? '--' : $activeUsers,
-            'active_index' => $hasVersionFilter ? '--' : $this->rate($activeUsers, max($registeredUsers, 1), false),
+            'active_users' => $activeUsers,
+            'active_index' => $this->rate($activeUsers, max($registeredUsers, 1), false),
             'order_users' => $orderUsers,
             'order_count' => $orderCount,
             'order_amount' => $orderAmount,
-            'order_rate' => $hasVersionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
-            'order_conversion_rate' => $hasVersionFilter ? '--' : $this->rate($orderUsers, $activeUsers),
+            'order_rate' => $this->rate($orderUsers, $activeUsers),
+            'order_conversion_rate' => $this->rate($orderUsers, $activeUsers),
             'paid_users' => $paidUsers,
             'paid_count' => $paidCount,
             'paid_amount' => $paidAmount,
-            'pay_rate' => $hasVersionFilter ? '--' : $this->rate($paidUsers, $activeUsers),
+            'pay_rate' => $this->rate($paidUsers, $activeUsers),
             'pay_conversion_rate' => $this->rate($paidUsers, $orderUsers),
             'trial_users' => $trialUsers,
-            'trial_rate' => $hasVersionFilter ? '--' : $this->rate($trialUsers, $activeUsers),
+            'trial_rate' => $this->rate($trialUsers, $activeUsers),
             'renew_users' => $renew['users'],
             'renew_amount' => $renew['amount'],
             'renew_rate' => $this->rate($renew['users'], $trialUsers),
@@ -890,7 +889,7 @@ class OperationStatisticsService
     }
 
     /**
-     * 订单表可按渠道/版本筛选；新增、活跃已支持渠道，仅版本维度仍无日表口径。
+     * 订阅订单没有渠道和版本，筛选时回查会员订单。
      */
     private function hasOrderDimensionFilter(array $filter): bool
     {
@@ -918,10 +917,11 @@ class OperationStatisticsService
                 'app_id' => (int)($filter['app_id'] ?? 0),
                 'app_ids' => array_values(array_filter(array_map('intval', $filter['app_ids'] ?? []))),
                 'market_channel' => trim((string)($filter['market_channel'] ?? '')),
+                'version' => trim((string)($filter['version'] ?? '')),
             ];
         }
 
-        return ['app_id' => $filter, 'app_ids' => [], 'market_channel' => ''];
+        return ['app_id' => $filter, 'app_ids' => [], 'market_channel' => '', 'version' => ''];
     }
 
     private function applyRechargeFilter(Builder $query, array $filter): Builder
@@ -945,6 +945,7 @@ class OperationStatisticsService
 
     /**
      * 新增人数：区间内首次出现的客户端 UUID，口径与用户统计一致。
+     * 带版本时按首次出现时写入的 version 筛选，历史空版本不计入。
      */
     private function newUuidUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
@@ -958,11 +959,13 @@ class OperationStatisticsService
                 $filter['market_channel'] !== '',
                 fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
             )
+            ->when($filter['version'] !== '', fn (Builder $query) => $query->where('version', $filter['version']))
             ->count();
     }
 
     /**
      * 注册人数：按 users.reg_time 现查，口径与用户统计一致。
+     * 带版本时只计注册当时写入的 app_version，历史空版本不计入。
      */
     private function newUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
@@ -976,23 +979,52 @@ class OperationStatisticsService
                 $filter['market_channel'] !== '',
                 fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
             )
+            ->when($filter['version'] !== '', fn (Builder $query) => $query->where('app_version', $filter['version']))
             ->count();
     }
 
     /**
      * 活跃用户数。
      *
-     * 只读 user_statistics 日表。未指定渠道时用应用合计行（market_channel 为空），指定渠道时按应用市场筛选。
-     * 不再回退 user_access_log：app_info 写入时 user_id 多为 0，按 user_id 去重没有意义。
+     * 未选版本时只读 user_statistics 日表。未指定渠道时用应用合计行（market_channel 为空），指定渠道时按应用市场筛选。
+     * 选了版本时日表没有这一维，改为按天统计 user_access_log 里的去重 uuid 再相加，和日活累加口径一致。
+     * 去重用 uuid：app_info 写入时 user_id 多为 0。
      */
     private function activeUsers(Carbon $start, Carbon $end, int|array $filter): int
     {
         $filter = $this->normalizeUserFilter($filter);
+        if ($filter['version'] !== '') {
+            return $this->activeUsersFromAccessLog($start, $end, $filter);
+        }
 
         return (int) UserStatistic::query()
             ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
             ->tap(fn (Builder $query) => $this->applyUserStatisticFilter($query, $filter))
             ->sum('active_users_count');
+    }
+
+    /**
+     * 按版本统计活跃：每一天对 uuid 去重，再把各天相加。
+     *
+     * 同一个人在多天出现会按天数累计，和日表 SUM(active_users_count) 一致，而不是整段日期只算一次。
+     */
+    private function activeUsersFromAccessLog(Carbon $start, Carbon $end, array $filter): int
+    {
+        $dailyCounts = UserAccessLog::query()
+            ->where('uuid', '<>', '')
+            ->whereBetween('created_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()])
+            ->when($filter['app_id'] > 0, fn (Builder $query) => $query->where('app_id', $filter['app_id']))
+            ->when(!empty($filter['app_ids']), fn (Builder $query) => $query->whereIn('app_id', $filter['app_ids']))
+            ->where('version', $filter['version'])
+            ->when(
+                $filter['market_channel'] !== '',
+                fn (Builder $query) => $query->whereIn('market_channel', SystemApp::marketChannelAliases($filter['market_channel']))
+            )
+            ->selectRaw('DATE(created_at) as date_value, COUNT(DISTINCT uuid) as active_users')
+            ->groupByRaw('DATE(created_at)')
+            ->pluck('active_users');
+
+        return (int) $dailyCounts->sum();
     }
 
     /**

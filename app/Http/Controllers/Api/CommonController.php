@@ -113,7 +113,8 @@ class CommonController extends Controller
         RecordUserStat::dispatchAfterResponse(
             $this->getUuid(),
             $this->getAppId(),
-            $this->getMarketChannel()
+            $this->getMarketChannel(),
+            $this->getAppVersion()
         );
 
         return $this->success($data);

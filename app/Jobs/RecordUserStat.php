@@ -18,6 +18,7 @@ class RecordUserStat
         public $uuid,
         public $appId,
         public $marketChannel = '',
+        public $version = '',
     ) {
     }
 
@@ -28,12 +29,13 @@ class RecordUserStat
         }
 
         try {
-            $service->recordAppInfoVisit($this->uuid, $this->appId, $this->marketChannel);
+            $service->recordAppInfoVisit($this->uuid, $this->appId, $this->marketChannel, $this->version);
         } catch (\Throwable $exception) {
             logger()->error('用户统计失败：' . $exception->getMessage(), [
                 'uuid' => $this->uuid,
                 'app_id' => $this->appId,
                 'market_channel' => $this->marketChannel,
+                'version' => $this->version,
             ]);
         }
     }

@@ -89,7 +89,7 @@ class UserStatisticsService extends Service
     /**
      * app_info 入口：记当天活跃，并把首次出现的 uuid 记为新增用户。
      */
-    public function recordAppInfoVisit($uuid, $appId, $marketChannel = ''): void
+    public function recordAppInfoVisit($uuid, $appId, $marketChannel = '', $version = ''): void
     {
         $uuid = trim((string)$uuid);
         $appId = (int)$appId;
@@ -98,12 +98,14 @@ class UserStatisticsService extends Service
         }
 
         $marketChannel = $this->normalizeMarketChannel($marketChannel);
+        $version = trim((string)$version);
         $this->userActiveStat($uuid, $appId, $marketChannel);
 
         $inserted = UserUuid::query()->insertOrIgnore([
             'app_id' => $appId,
             'uuid' => $uuid,
             'market_channel' => $marketChannel,
+            'version' => $version,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
