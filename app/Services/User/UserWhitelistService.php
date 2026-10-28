@@ -5,12 +5,14 @@ namespace App\Services\User;
 use App\Models\User;
 use App\Models\SystemApp;
 use App\Services\Service;
+use App\Support\Utils\Token;
 use App\Models\UserWhitelist;
 use App\Models\UserWhitelistLog;
 use App\Exceptions\AdminException;
 use App\Dao\User\UserWhitelistDao;
 use App\Support\Traits\ExcelTrait;
 use App\Support\Services\FormOptions;
+use App\Support\Services\ClientRequestContext;
 use App\Support\Services\FormBuilder as Form;
 
 /**
@@ -566,7 +568,52 @@ class UserWhitelistService extends Service
             }
         }
 
+        if ((int) ($data['user_id'] ?? 0) <= 0) {
+            $data['user_id'] = self::resolveLogUserId((int) ($data['app_id'] ?? 0), (string) $data['uuid']);
+        }
+
         return UserWhitelistLog::query()->create($data);
+    }
+
+    /**
+     * app/info 不走登录中间件，请求里通常只有 Token 或 uuid。
+     * Token 对得上当前登录用户；没有 Token 时按应用 + uuid 找未删除用户。
+     */
+    private static function resolveLogUserId(int $appId, string $uuid): int
+    {
+        try {
+            $userId = self::userIdFromRequestToken();
+            if ($userId > 0) {
+                return $userId;
+            }
+
+            if ($appId <= 0 || $uuid === '') {
+                return 0;
+            }
+
+            return (int) User::query()
+                ->where('app_id', $appId)
+                ->where('uuid', $uuid)
+                ->where('is_del', 0)
+                ->orderByDesc('id')
+                ->value('id');
+        } catch (\Throwable $exception) {
+            logger()->error('白名单日志解析用户ID失败：' . $exception->getMessage(), [
+                'app_id' => $appId,
+                'uuid' => $uuid,
+            ]);
+
+            return 0;
+        }
+    }
+
+    private static function userIdFromRequestToken(): int
+    {
+        if (!app()->bound('request')) {
+            return 0;
+        }
+
+        return Token::cachedUserId(ClientRequestContext::token(request()));
     }
 
     public static function conversionTypeToArr(int $type): array

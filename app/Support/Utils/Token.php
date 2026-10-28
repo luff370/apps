@@ -34,6 +34,25 @@ class Token
     }
 
     /**
+     * 只读缓存里的用户 ID。缓存不存在时返回 0，不续期、不按 uuid 重建 token。
+     */
+    public static function cachedUserId(?string $token): int
+    {
+        if ($token === null || $token === '') {
+            return 0;
+        }
+
+        $jsonData = cache(self::cacheKey($token));
+        if (empty($jsonData)) {
+            return 0;
+        }
+
+        $data = json_decode($jsonData, true);
+
+        return (int) ($data['user_id'] ?? 0);
+    }
+
+    /**
      * @throws \App\Exceptions\AuthException
      */
     public static function verify($token)
