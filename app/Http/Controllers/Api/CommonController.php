@@ -98,9 +98,9 @@ class CommonController extends Controller
         $data = array_merge($data, $userWhiteList);
 
         // 白名单免广告免会员用户统一为审核状态
-        if (!empty($data['is_free_ad']) || !empty($data['is_free_member'])) {
-            $data['is_audit'] = 1;
-        }
+        // if (!empty($data['is_free_ad']) || !empty($data['is_free_member'])) {
+        //     $data['is_audit'] = 1;
+        // }
 
         // 记录访问日志、用户新增/活跃：响应发出后再写，避免拖慢主接口
         RecordAccessLog::dispatchAfterResponse(
