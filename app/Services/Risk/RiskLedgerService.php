@@ -48,8 +48,14 @@ class RiskLedgerService
             return;
         }
 
+        // 主键插入占位。对不存在的行 SELECT FOR UPDATE 会锁住主键间隙，
+        // 相邻 source_log_id 落在同一间隙，随后的 INSERT 互相等待，触发 1213。
         DB::transaction(function () use ($log, $logId) {
-            if (DB::table('risk_ledger_applied')->where('source_log_id', $logId)->lockForUpdate()->exists()) {
+            $claimed = DB::table('risk_ledger_applied')->insertOrIgnore([
+                'source_log_id' => $logId,
+                'applied_at' => now(),
+            ]);
+            if ($claimed === 0) {
                 return;
             }
             $occurredAt = Carbon::parse($log->created_at)->timezone('Asia/Shanghai');
@@ -78,12 +84,7 @@ class RiskLedgerService
             } elseif ($ip !== '') {
                 $this->touchActivity($ip, $occurredAt);
             }
-
-            DB::table('risk_ledger_applied')->insert([
-                'source_log_id' => $logId,
-                'applied_at' => now(),
-            ]);
-        });
+        }, 3);
     }
 
     public function caughtUp(): bool
@@ -127,15 +128,11 @@ class RiskLedgerService
 
     private function markUnclassified(string $day): void
     {
-        $row = DB::table('risk_day_flags')->where('day', $day)->lockForUpdate()->first();
-        if ($row) {
-            DB::table('risk_day_flags')->where('day', $day)->update([
-                'unclassified_logs' => (int) $row->unclassified_logs + 1,
-            ]);
-
-            return;
-        }
-        DB::table('risk_day_flags')->insert(['day' => $day, 'unclassified_logs' => 1]);
+        DB::statement(
+            'INSERT INTO `risk_day_flags` (`day`, `unclassified_logs`) VALUES (?, 1)
+             ON DUPLICATE KEY UPDATE `unclassified_logs` = `unclassified_logs` + 1',
+            [$day]
+        );
     }
 
     private function intake(RiskProbeLog $log, string $ip, string $device, string $decision, Carbon $occurredAt): void
