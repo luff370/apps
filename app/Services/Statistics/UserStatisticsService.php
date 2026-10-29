@@ -297,6 +297,60 @@ class UserStatisticsService extends Service
         return $list;
     }
 
+    /** 所选应用的全部渠道，空渠道日统计是应用合计，不能作为渠道再次累加。 */
+    public function reportByChannel(array $filter): array
+    {
+        [$start, $end, $appId] = $this->reportFilter($filter);
+        if ($appId <= 0) {
+            return [];
+        }
+
+        $newRows = $this->channelCounts($this->newUuidQuery($start, $end, $appId, ''), 'COUNT(*)');
+        $registeredRows = $this->channelCounts($this->registeredQuery($start, $end, $appId, ''), 'COUNT(*)');
+        $activeRows = $this->channelCounts(
+            UserStatistic::query()->where('app_id', $appId)
+                ->whereBetween('date', [$start->format('Y-m-d'), $end->format('Y-m-d')])
+                ->where('market_channel', '<>', ''),
+            'SUM(active_users_count)'
+        );
+
+        $channels = array_unique(array_merge(array_keys($newRows), array_keys($registeredRows), array_keys($activeRows)));
+        $list = [];
+        foreach ($channels as $channel) {
+            $newUsers = $newRows[$channel] ?? 0;
+            $registeredUsers = $registeredRows[$channel] ?? 0;
+            $list[] = [
+                'market_channel' => (string)$channel,
+                'channel_name' => SystemApp::marketChannelDisplayName((string)$channel) ?: '未知渠道',
+                'active_users' => $activeRows[$channel] ?? 0,
+                'new_users' => $newUsers,
+                'registered_users' => $registeredUsers,
+                'register_rate' => $this->registerRate($registeredUsers, $newUsers),
+            ];
+        }
+        usort($list, fn (array $left, array $right) =>
+            $right['active_users'] <=> $left['active_users']
+            ?: $right['new_users'] <=> $left['new_users']
+            ?: strcmp($left['market_channel'], $right['market_channel'])
+        );
+
+        return $list;
+    }
+
+    private function channelCounts($query, string $aggregate): array
+    {
+        $rows = $query->selectRaw("market_channel, {$aggregate} as value")
+            ->groupBy('market_channel')->pluck('value', 'market_channel');
+        $counts = [];
+        foreach ($rows as $channel => $value) {
+            $channel = $this->normalizeMarketChannel($channel);
+            $channel = SystemApp::marketChannelAliases($channel)[0] ?? $channel;
+            $counts[$channel] = ($counts[$channel] ?? 0) + (int)$value;
+        }
+
+        return $counts;
+    }
+
     private function reportFilter(array $filter): array
     {
         $start = Carbon::today();

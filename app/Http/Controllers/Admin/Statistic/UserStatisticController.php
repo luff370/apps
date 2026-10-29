@@ -33,6 +33,13 @@ class UserStatisticController extends Controller
         return $this->success($service->reportByApp($this->reportFilter($request)));
     }
 
+    public function getChannelList(Request $request, UserStatisticsService $service): JsonResponse
+    {
+        $request->validate(['app_id' => 'required|integer|min:1']);
+
+        return $this->success($service->reportByChannel($this->reportFilter($request)));
+    }
+
     private function reportFilter(Request $request): array
     {
         return $request->only([

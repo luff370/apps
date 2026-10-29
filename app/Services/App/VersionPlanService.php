@@ -275,8 +275,8 @@ class VersionPlanService extends Service
             'version' => (string)$task['version'],
             'owner_name' => (string)($task['owner_name'] ?? ''),
             'status' => (string)($task['status'] ?? '待提交'),
-            'submitted_at' => $this->dateOrNull($task['submitted_at'] ?? null),
-            'listed_at' => $this->dateOrNull($task['listed_at'] ?? null),
+            'submitted_at' => $this->dateTimeOrNull($task['submitted_at'] ?? null),
+            'listed_at' => $this->dateTimeOrNull($task['listed_at'] ?? null),
             'remark' => (string)($task['remark'] ?? ''),
             'is_force' => (int)($task['is_force'] ?? 0),
             'force' => $this->normalizeForce($task['force'] ?? []),
@@ -369,8 +369,8 @@ class VersionPlanService extends Service
             'version' => (string)$task->version,
             'owner_name' => (string)$task->owner_name,
             'status' => (string)$task->status,
-            'submitted_at' => $this->dateText($task->submitted_at),
-            'listed_at' => $this->dateText($task->listed_at),
+            'submitted_at' => $this->dateTimeText($task->submitted_at),
+            'listed_at' => $this->dateTimeText($task->listed_at),
             'remark' => (string)($task->remark ?? ''),
             'is_force' => (int)$task->is_force,
             'force' => $this->normalizeForce($task->force ?? []),
@@ -413,6 +413,12 @@ class VersionPlanService extends Service
     private function dateText($value): string
     {
         return empty($value) ? '' : date('Y-m-d', strtotime((string)$value));
+    }
+
+    private function dateTimeOrNull($value): ?string
+    {
+        // 兼容历史纯日期数据，按本地时间保存到分钟，不引入时区转换。
+        return empty($value) ? null : Carbon::parse($value)->second(0)->format('Y-m-d H:i:s');
     }
 
     private function dateTimeText($value): string

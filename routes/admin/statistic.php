@@ -15,6 +15,8 @@ Route::name('statistic')->prefix('statistic')->namespace('Statistic')->group( fu
     //按应用列表
     Route::get('user/get_app_list', 'UserStatisticController@getAppList');
 
+    Route::get('user/get_channel_list', 'UserStatisticController@getChannelList');
+
     //微信用户
     Route::get('user/get_wechat', 'UserStatisticController@getWechat');
 
