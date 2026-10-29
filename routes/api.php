@@ -30,6 +30,7 @@ Route::middleware(['token_auth'])->post('user/behavior/report', 'UserBehaviorCon
 Route::any('read_task/completed/{ch}', 'ReadTaskController@completedTaskCallback');
 
 Route::middleware($deviceEnv)->group(function () {
+    Route::post('risk/activity-events/batch', 'RiskActivityController@batch');
     // 应用基础信息
     Route::post('app/info', 'CommonController@appInfo');
     // 应用版本更新

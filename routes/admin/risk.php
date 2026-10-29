@@ -28,4 +28,25 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
     Route::post('list', 'RiskController@listStore');
     Route::put('list/{id}', 'RiskController@listUpdate');
     Route::delete('list/{id}', 'RiskController@listDestroy');
+
+    Route::get('probability/summary', 'RiskLedgerController@summary');
+    Route::get('probability/trends', 'RiskLedgerController@trends');
+    Route::get('probability/app-ranking', 'RiskLedgerController@ranking');
+
+    Route::get('releases', 'RiskLedgerController@releaseList');
+    Route::get('release-rules', 'RiskLedgerController@rules');
+    Route::get('releases/{id}', 'RiskLedgerController@releaseDetail');
+    Route::post('releases/{id}/revoke', 'RiskLedgerController@revoke');
+
+    Route::get('ip-dossiers', 'RiskLedgerController@dossiers');
+    Route::get('ip-dossiers/{id}', 'RiskLedgerController@dossier');
+    Route::get('ip-dossiers/{id}/relations', 'RiskLedgerController@relations');
+    Route::get('ip-dossiers/{id}/timeline', 'RiskLedgerController@timeline');
+
+    Route::get('monitor-accounts', 'RiskLedgerController@monitorAccounts');
+    Route::post('monitor-accounts', 'RiskLedgerController@storeMonitorAccount');
+    Route::match(['post', 'patch'], 'monitor-accounts/{id}', 'RiskLedgerController@updateMonitorAccount');
+    Route::delete('monitor-accounts/{id}', 'RiskLedgerController@destroyMonitorAccount');
+
+    Route::get('publishing-monitor', 'RiskLedgerController@publishingBoard');
 });

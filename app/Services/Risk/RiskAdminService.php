@@ -745,14 +745,17 @@ class RiskAdminService extends Service
             return [];
         }
 
-        $ranked = User::query()
+        $rows = User::query()
             ->select('uuid', 'account')
-            ->selectRaw('ROW_NUMBER() OVER (PARTITION BY uuid ORDER BY id DESC) as rn')
             ->whereIn('uuid', $identities)
-            ->where('is_del', 0);
-        $rows = DB::query()->fromSub($ranked, 'ranked_accounts')->where('rn', '<=', $limit)->get();
+            ->where('is_del', 0)
+            ->orderByDesc('id')
+            ->get();
         $map = [];
         foreach ($rows as $row) {
+            if (count($map[$row->uuid] ?? []) >= $limit) {
+                continue;
+            }
             $map[$row->uuid][] = $row->account;
         }
 

@@ -71,6 +71,9 @@ class SystemMenusSeeder extends Seeder
                 'admin-risk-graph',
                 'admin-risk-strategy',
                 'admin-risk-list',
+                'admin-risk-probability',
+                'admin-risk-releases',
+                'admin-risk-publishing-monitor',
             ];
             if (array_intersect($grantedAuth, ['admin-app', 'admin-user', 'admin-index-index'])) {
                 foreach ($riskAuths as $auth) {
@@ -160,12 +163,15 @@ class SystemMenusSeeder extends Seeder
                 'is_header' => 1,
                 'unique_auth' => 'admin-risk',
                 'children' => [
-                    ['menu_name' => '风控概览', 'methods' => 'GET', 'sort' => 6, 'menu_path' => '/admin/risk/overview', 'unique_auth' => 'admin-risk-overview'],
+                    ['menu_name' => '风控概览', 'methods' => 'GET', 'sort' => 12, 'menu_path' => '/admin/risk/overview', 'unique_auth' => 'admin-risk-overview'],
+                    ['menu_name' => '风控概率', 'methods' => 'GET', 'sort' => 11, 'menu_path' => '/admin/risk/probability', 'unique_auth' => 'admin-risk-probability'],
+                    ['menu_name' => '风控名单', 'methods' => 'GET', 'sort' => 10, 'menu_path' => '/admin/risk/list', 'unique_auth' => 'admin-risk-list'],
+                    ['menu_name' => '释放记录', 'methods' => 'GET', 'sort' => 9, 'menu_path' => '/admin/risk/releases', 'unique_auth' => 'admin-risk-releases'],
+                    ['menu_name' => '上架监控', 'methods' => 'GET', 'sort' => 8, 'menu_path' => '/admin/risk/publishing-monitor', 'unique_auth' => 'admin-risk-publishing-monitor'],
                     ['menu_name' => '设备画像', 'methods' => 'GET', 'sort' => 5, 'menu_path' => '/admin/risk/device', 'unique_auth' => 'admin-risk-device'],
                     ['menu_name' => '风险事件', 'methods' => 'GET', 'sort' => 4, 'menu_path' => '/admin/risk/event', 'unique_auth' => 'admin-risk-event'],
                     ['menu_name' => '关联分析', 'methods' => 'GET', 'sort' => 3, 'menu_path' => '/admin/risk/graph', 'unique_auth' => 'admin-risk-graph'],
                     ['menu_name' => '策略配置', 'methods' => 'GET', 'sort' => 2, 'menu_path' => '/admin/risk/strategy', 'unique_auth' => 'admin-risk-strategy'],
-                    ['menu_name' => '名单管理', 'methods' => 'GET', 'sort' => 1, 'menu_path' => '/admin/risk/list', 'unique_auth' => 'admin-risk-list'],
                 ],
             ],
             [

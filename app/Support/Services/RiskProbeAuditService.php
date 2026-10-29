@@ -41,7 +41,7 @@ class RiskProbeAuditService
              * - status=error：保存验签/解密/重放失败，便于排查异常客户端；
              * - nonce 不保存明文，只保存 SHA-256，避免数据库泄露后被直接用于重放。
              */
-            RiskProbeLog::query()->create([
+            $log = RiskProbeLog::query()->create([
                 'package_name' => $context['package_name'] ?: null,
                 'app_id' => is_numeric($context['app_id'] ?? null) ? (int) $context['app_id'] : null,
                 'route' => $this->originalRoute($request),
@@ -71,6 +71,11 @@ class RiskProbeAuditService
                 'user_uuid' => ClientRequestContext::uuid($request),
                 'device_sn' => ClientRequestContext::deviceSn($request),
             ]);
+            try {
+                app(\App\Services\Risk\RiskLedgerService::class)->applyLog($log);
+            } catch (Throwable $ledgerError) {
+                report($ledgerError);
+            }
         } catch (Throwable $e) {
             // 风控审计不可用不能拖垮业务接口。
             report($e);
