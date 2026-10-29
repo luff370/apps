@@ -13,6 +13,7 @@ use App\Jobs\RecordAutoWhitelist;
 use App\Services\App\AppNoticeService;
 use Illuminate\Support\Facades\Storage;
 use App\Support\Services\AppConfigService;
+use App\Support\Services\ClientRequestContext;
 use App\Services\User\UserWhitelistService;
 use App\Services\System\AppVersionServices;
 use App\Support\Services\SystemConfigService;
@@ -113,7 +114,8 @@ class CommonController extends Controller
             $this->getDevice(),
             $this->getClientIp(),
             $request->path(),
-            $data
+            $data,
+            ClientRequestContext::token($request)
         );
         RecordUserStat::dispatchAfterResponse(
             $this->getUuid(),

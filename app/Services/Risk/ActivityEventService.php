@@ -16,7 +16,8 @@ class ActivityEventService
     public function ingest(Request $request): array
     {
         $appId = (int) (ClientRequestContext::appId($request) ?: 0);
-        $device = (string) (ClientRequestContext::deviceSn($request) ?: '');
+        // 与 risk_probe_logs.device_identity / 台账保持 UUID 优先、Device-Sn 兜底。
+        $device = (string) (ClientRequestContext::uuid($request) ?: ClientRequestContext::deviceSn($request) ?: '');
         if ($appId <= 0 || $device === '') {
             return ['accepted' => 0, 'duplicated' => 0, 'rejected' => 1, 'message' => '缺少可信的应用或设备身份'];
         }
@@ -64,7 +65,7 @@ class ActivityEventService
                 'event_id' => $eventId,
                 'app_id' => $appId,
                 'device_identity' => $device,
-                'install_id' => (string) ($event['install_id'] ?? $device),
+                'install_id' => (string) (ClientRequestContext::deviceSn($request) ?: $device),
                 'session_id' => $sessionId,
                 'user_id' => $userId !== '' ? $userId : null,
                 'version_name' => ClientRequestContext::appVersion($request),

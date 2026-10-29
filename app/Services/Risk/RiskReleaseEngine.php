@@ -330,7 +330,7 @@ class RiskReleaseEngine
         $occurred = Carbon::parse($row->occurred_at)->getTimestamp();
         $received = Carbon::parse($row->received_at)->getTimestamp();
 
-        return $received - $occurred <= ReleaseRule::ONLINE_SKEW_SECONDS;
+        return abs($received - $occurred) <= ReleaseRule::ONLINE_SKEW_SECONDS;
     }
 
     /**

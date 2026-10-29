@@ -58,7 +58,8 @@ class UsageWindow
                     }
                 }
             }
-            if (!empty($event['interaction'])) {
+            // 后台或锁屏上报不能刷新有效交互时间，也不能触发达标后的释放。
+            if (!empty($event['interaction']) && $event['foreground'] && $event['screen_interactive']) {
                 $lastInteraction = $event['at'];
                 if ($frozen === null && $thresholdAt !== null && $event['at'] > $thresholdAt) {
                     $frozen = [

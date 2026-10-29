@@ -7,6 +7,7 @@ use App\Services\Risk\Ledger\ReasonCatalog;
 use App\Services\Risk\Ledger\ReleaseRule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class RiskReleaseQuery
 {
@@ -16,9 +17,15 @@ class RiskReleaseQuery
         $this->apply($query, $filter);
         $count = (clone $query)->count();
         $rows = $query->orderByDesc('released_at')->orderByDesc('id')->forPage($page, $limit)->get();
+        $ids = $rows->pluck('id')->all();
+        $scopes = $ids === [] ? collect() : DB::table('risk_release_scopes')->whereIn('release_id', $ids)->get()->groupBy('release_id');
+        $latestRevocations = DB::table('risk_revocations')->whereIn('release_id', $ids)
+            ->selectRaw('MAX(id) as id')->groupBy('release_id');
+        $revocations = $ids === [] ? collect() : DB::table('risk_revocations')
+            ->whereIn('id', $latestRevocations)->get()->keyBy('release_id');
         $list = [];
         foreach ($rows as $row) {
-            $list[] = $this->present($row, false);
+            $list[] = $this->present($row, false, $scopes->get($row->id, collect()), $revocations->get($row->id));
         }
 
         return [
@@ -99,9 +106,12 @@ class RiskReleaseQuery
         }
     }
 
-    private function present(object $row, bool $full): array
+    private function present(object $row, bool $full, ?Collection $scopes = null, ?object $revocation = null): array
     {
-        $scopes = DB::table('risk_release_scopes')->where('release_id', $row->id)->get();
+        if ($scopes === null) {
+            $scopes = DB::table('risk_release_scopes')->where('release_id', $row->id)->get();
+            $revocation = DB::table('risk_revocations')->where('release_id', $row->id)->orderByDesc('id')->first();
+        }
         $apps = [];
         $devices = [];
         $markets = [];
@@ -123,7 +133,6 @@ class RiskReleaseQuery
             }
         }
         $releasedAt = Carbon::parse($row->released_at)->timezone('Asia/Shanghai');
-        $revocation = DB::table('risk_revocations')->where('release_id', $row->id)->orderByDesc('id')->first();
         $evidence = json_decode((string) $row->evidence, true) ?: [];
         $payload = [
             'id' => (string) $row->id,

@@ -61,6 +61,22 @@ class RiskLedgerRulesTest extends TestCase
         $this->assertLessThanOrEqual(300, $idleResult['effective_seconds']);
     }
 
+    public function test_background_or_locked_interaction_cannot_trigger_release(): void
+    {
+        foreach (['foreground', 'screen_interactive'] as $field) {
+            $events = [];
+            for ($i = 0; $i <= 60; $i++) {
+                $events[] = $this->point($i * 30, $i, 'session-a');
+            }
+            $background = $this->point(1830, 61, 'session-a');
+            $background[$field] = false;
+            $events[] = $background;
+            $this->assertFalse(UsageWindow::measure($events)['qualified'], $field);
+            $events[] = $this->point(1860, 62, 'session-a');
+            $this->assertTrue(UsageWindow::measure($events)['qualified'], $field);
+        }
+    }
+
     public function test_partial_release_keeps_ip_active_until_every_scope_is_gone(): void
     {
         $events = [

@@ -25,6 +25,7 @@ class RecordAccessLog
         public $ip,
         public $source,
         public $returnData = [],
+        public ?string $token = null,
     ) {
     }
 
@@ -46,6 +47,7 @@ class RecordAccessLog
                 $this->ip,
                 $this->source,
                 $this->returnData,
+                $this->token,
             );
         } catch (\Throwable $exception) {
             logger()->error('访问日志失败：' . $exception->getMessage(), [

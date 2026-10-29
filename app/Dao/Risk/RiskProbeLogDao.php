@@ -6,6 +6,7 @@ use App\Dao\BaseDao;
 use App\Models\RiskProbeLog;
 use App\Support\Services\DeviceEnvRiskView;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class RiskProbeLogDao extends BaseDao
 {
@@ -65,11 +66,28 @@ class RiskProbeLogDao extends BaseDao
 
     public function latestDeviceIds(array $where = []): Builder
     {
-        return $this->search($where)
-            ->whereNotNull('device_identity')
-            ->where('device_identity', '!=', '')
+        $query = $this->search($where);
+        $index = $this->snapshotIndex($where);
+        if ($index !== null && DB::connection()->getDriverName() === 'mysql') {
+            $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`' . $index . '`)'));
+        }
+
+        return $query
+            ->where('device_identity', '>', '')
             ->selectRaw('MAX(id) as id')
             ->groupBy('device_identity');
+    }
+
+    /** 只有应用筛选时可按设备索引直接分组；其他筛选交给优化器选择。 */
+    public function snapshotIndex(array $where): ?string
+    {
+        foreach (['market_channel', 'version', 'time', 'decision', 'risk_level', 'event_type', 'keyword'] as $key) {
+            if (!empty($where[$key])) {
+                return null;
+            }
+        }
+
+        return empty($where['app_id']) ? 'rpl_device_snapshot' : 'rpl_app_device_snapshot';
     }
 
     public function latestDeviceQuery(array $where = []): Builder
