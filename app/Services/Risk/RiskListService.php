@@ -20,6 +20,13 @@ class RiskListService extends Service
         $this->dao = $dao;
     }
 
+    public function getPageValue(): array
+    {
+        [$page, $limit] = parent::getPageValue();
+
+        return [max(1, $page), max(1, min(100, $limit))];
+    }
+
     public function tidyListData($list)
     {
         $apps = SystemApp::idToNameMap();
@@ -40,11 +47,11 @@ class RiskListService extends Service
     public function updateForm(int $id): array
     {
         $info = $this->dao->get($id);
-        if (!$info) {
+        if (! $info) {
             throw new AdminException(100026);
         }
 
-        return create_form('编辑名单', $this->formFields($info->toArray()), url('/admin/risk/list/' . $id), 'PUT');
+        return create_form('编辑名单', $this->formFields($info->toArray()), url('/admin/risk/list/'.$id), 'PUT');
     }
 
     public function saveRow(array $data, ?int $id = null): void
@@ -73,7 +80,7 @@ class RiskListService extends Service
 
     public function setField(int $id, string $field, $value): void
     {
-        if (!in_array($field, ['status', 'decision', 'remark'], true)) {
+        if (! in_array($field, ['status', 'decision', 'remark'], true)) {
             throw new AdminException('不支持的字段');
         }
         $this->dao->update($id, [$field => $value]);
@@ -96,7 +103,7 @@ class RiskListService extends Service
             (string) ($probe['device_sn'] ?? ''),
             is_numeric($meta['app_id'] ?? null) ? (int) $meta['app_id'] : 0
         );
-        if (!$hit) {
+        if (! $hit) {
             return $decision;
         }
 

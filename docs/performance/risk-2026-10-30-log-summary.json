@@ -1,0 +1,97 @@
+{
+  "files": [
+    "laravel-2026-10-29.log",
+    "laravel-2026-10-30.log"
+  ],
+  "note": "Per-SQL log timings, not HTTP request durations; older records may predate code changes",
+  "routes": [
+    {
+      "method": "GET",
+      "route": "/admin/risk/overview",
+      "sql_statements": 160,
+      "max_sql_ms": 4830.0,
+      "median_sql_ms": 6.66,
+      "total_sql_ms": 35140.39
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/device",
+      "sql_statements": 16,
+      "max_sql_ms": 4120.0,
+      "median_sql_ms": 2.74,
+      "total_sql_ms": 7264.31
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/graph/clusters",
+      "sql_statements": 315,
+      "max_sql_ms": 464.01,
+      "median_sql_ms": 1.18,
+      "total_sql_ms": 12684.37
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/event",
+      "sql_statements": 28,
+      "max_sql_ms": 326.17,
+      "median_sql_ms": 0.89,
+      "total_sql_ms": 1245.42
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/publishing-monitor",
+      "sql_statements": 20,
+      "max_sql_ms": 77.56,
+      "median_sql_ms": 1.44,
+      "total_sql_ms": 244.07
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/probability/app-ranking",
+      "sql_statements": 10,
+      "max_sql_ms": 3.37,
+      "median_sql_ms": 1.06,
+      "total_sql_ms": 11.01
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/probability/trends",
+      "sql_statements": 54,
+      "max_sql_ms": 3.35,
+      "median_sql_ms": 0.5,
+      "total_sql_ms": 49.97
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/probability/summary",
+      "sql_statements": 10,
+      "max_sql_ms": 3.35,
+      "median_sql_ms": 1.21,
+      "total_sql_ms": 11.33
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/monitor-accounts",
+      "sql_statements": 3,
+      "max_sql_ms": 2.44,
+      "median_sql_ms": 1.6,
+      "total_sql_ms": 5.53
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/releases",
+      "sql_statements": 6,
+      "max_sql_ms": 1.9,
+      "median_sql_ms": 1.02,
+      "total_sql_ms": 6.29
+    },
+    {
+      "method": "GET",
+      "route": "/admin/risk/ip-dossiers",
+      "sql_statements": 16,
+      "max_sql_ms": 1.81,
+      "median_sql_ms": 0.52,
+      "total_sql_ms": 10.77
+    }
+  ]
+}

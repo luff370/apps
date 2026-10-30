@@ -10,6 +10,7 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
     Route::get('device/{id}/graph', 'RiskController@deviceGraph');
     Route::get('device/{id}', 'RiskController@deviceDetail');
 
+    Route::get('event/count', 'RiskController@eventCount');
     Route::get('event', 'RiskController@events');
     Route::get('graph/clusters', 'RiskController@clusters');
 
@@ -39,6 +40,7 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
     Route::post('releases/{id}/revoke', 'RiskLedgerController@revoke');
 
     Route::get('ip-dossiers', 'RiskLedgerController@dossiers');
+    Route::get('ip-dossiers/options', 'RiskLedgerController@dossierOptions');
     Route::get('ip-dossiers/{id}', 'RiskLedgerController@dossier');
     Route::get('ip-dossiers/{id}/relations', 'RiskLedgerController@relations');
     Route::get('ip-dossiers/{id}/timeline', 'RiskLedgerController@timeline');

@@ -1,0 +1,1087 @@
+{
+    "generated_at": "2026-10-30T12:45:58+00:00",
+    "fixture": false,
+    "mysql": "9.0.1",
+    "anchor": "2026-10-29 23:59:59",
+    "inventory": {
+        "app_version_plan_tasks": {
+            "estimated_rows": 137,
+            "rows": 137,
+            "data_bytes": 65536,
+            "index_bytes_cached": 32768
+        },
+        "app_version_plans": {
+            "estimated_rows": 33,
+            "rows": 33,
+            "data_bytes": 16384,
+            "index_bytes_cached": 32768
+        },
+        "risk_activity_events": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_day_flags": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_intakes": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_ip_dossiers": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_ip_exits": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_ledger_applied": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_ledger_meta": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_lists": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 81920
+        },
+        "risk_monitor_accounts": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_probe_logs": {
+            "estimated_rows": 815158,
+            "rows": 957774,
+            "data_bytes": 1909456896,
+            "index_bytes_cached": 904331264
+        },
+        "risk_release_scopes": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_releases": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_revocations": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_scope_events": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_scopes": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_timeline": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "risk_visits": {
+            "estimated_rows": 0,
+            "rows": 0,
+            "data_bytes": 16384,
+            "index_bytes_cached": 0
+        },
+        "users": {
+            "estimated_rows": 296068,
+            "rows": 304604,
+            "data_bytes": 92913664,
+            "index_bytes_cached": 61603840
+        }
+    },
+    "queue": "sync",
+    "cache": "file",
+    "cursor": 0,
+    "source_max_id": 1991486,
+    "statement_timeout_ms": 5000,
+    "scope": "Laravel read-only service calls; excludes HTTP, authentication and frontend rendering",
+    "results": [
+        {
+            "id": "overview.app.lately30",
+            "module": "overview",
+            "run": 1,
+            "wall_ms": 5494.48,
+            "sql_ms": 5382.86,
+            "non_sql_ms": 111.62,
+            "queries": 9,
+            "result_count": null,
+            "complete": null,
+            "response_bytes": 5969,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 7,
+                "Handler_read_key": 24057,
+                "Handler_read_next": 1660650,
+                "Handler_read_rnd_next": 24746,
+                "Sort_rows": 663647
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select count(*) as aggregate from (select `client_ip`, COUNT(DISTINCT device_identity) as device_count from `risk_probe_logs` FORCE INDEX (`rpl_app_time_agg`) where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `client_ip` is not null and `client_ip` != ? and `device_identity` is not null and `device_identity` != ? group by `client_ip` having COUNT(DISTINCT device_identity) >= 3) as `farms`",
+                    "ms": 2715.8,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 267412,
+                            "filtered": 100,
+                            "Extra": null
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "rpl_app_time_agg",
+                            "key": "rpl_app_time_agg",
+                            "key_len": "259",
+                            "ref": null,
+                            "rows": 407579,
+                            "filtered": 65.61000061035156,
+                            "Extra": "Using where; Using index; Using filesort"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `l`.`id`, `l`.`risk_score`, `l`.`compliance_mode`, `l`.`ad_switch` from `risk_probe_logs` as `l` inner join (select MAX(id) as id, `device_identity` from `risk_probe_logs` where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `device_identity` > ? group by `device_identity`) as `d` on `l`.`device_identity` = `d`.`device_identity` and `l`.`id` = `d`.`id` where `l`.`status` = ? and `l`.`app_id` = ?",
+                    "ms": 2576.19,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 67923,
+                            "filtered": 100,
+                            "Extra": "Using where"
+                        },
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "l",
+                            "partitions": null,
+                            "type": "eq_ref",
+                            "possible_keys": "PRIMARY,risk_probe_logs_app_id_created_at_index,risk_probe_logs_status_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "PRIMARY",
+                            "key_len": "8",
+                            "ref": "d.id",
+                            "rows": 1,
+                            "filtered": 5,
+                            "Extra": "Using where"
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_status_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 16.66499900817871,
+                            "Extra": "Using where"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select DATE(created_at) as day, COUNT(DISTINCT CASE WHEN risk_score >= 70 THEN device_identity END) as high_risk, SUM(compliance_mode = 1) as blocked from `risk_probe_logs` FORCE INDEX (`rpl_app_time_agg`) where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `created_at` between ? and ? group by DATE(created_at)",
+                    "ms": 64.51,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "rpl_app_time_agg",
+                            "key": "rpl_app_time_agg",
+                            "key_len": "76",
+                            "ref": null,
+                            "rows": 139532,
+                            "filtered": 100,
+                            "Extra": "Using where; Using index; Using filesort"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "overview.app.lately30",
+            "module": "overview",
+            "run": 2,
+            "wall_ms": 4640.65,
+            "sql_ms": 4568.24,
+            "non_sql_ms": 72.41,
+            "queries": 9,
+            "result_count": null,
+            "complete": null,
+            "response_bytes": 5969,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 7,
+                "Handler_read_key": 24057,
+                "Handler_read_next": 1660650,
+                "Handler_read_rnd_next": 24746,
+                "Sort_rows": 663647
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select `l`.`id`, `l`.`risk_score`, `l`.`compliance_mode`, `l`.`ad_switch` from `risk_probe_logs` as `l` inner join (select MAX(id) as id, `device_identity` from `risk_probe_logs` where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `device_identity` > ? group by `device_identity`) as `d` on `l`.`device_identity` = `d`.`device_identity` and `l`.`id` = `d`.`id` where `l`.`status` = ? and `l`.`app_id` = ?",
+                    "ms": 2498.99,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 67923,
+                            "filtered": 100,
+                            "Extra": "Using where"
+                        },
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "l",
+                            "partitions": null,
+                            "type": "eq_ref",
+                            "possible_keys": "PRIMARY,risk_probe_logs_app_id_created_at_index,risk_probe_logs_status_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "PRIMARY",
+                            "key_len": "8",
+                            "ref": "d.id",
+                            "rows": 1,
+                            "filtered": 5,
+                            "Extra": "Using where"
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_status_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 16.66499900817871,
+                            "Extra": "Using where"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select count(*) as aggregate from (select `client_ip`, COUNT(DISTINCT device_identity) as device_count from `risk_probe_logs` FORCE INDEX (`rpl_app_time_agg`) where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `client_ip` is not null and `client_ip` != ? and `device_identity` is not null and `device_identity` != ? group by `client_ip` having COUNT(DISTINCT device_identity) >= 3) as `farms`",
+                    "ms": 1988.44,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 267412,
+                            "filtered": 100,
+                            "Extra": null
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "rpl_app_time_agg",
+                            "key": "rpl_app_time_agg",
+                            "key_len": "259",
+                            "ref": null,
+                            "rows": 407579,
+                            "filtered": 65.61000061035156,
+                            "Extra": "Using where; Using index; Using filesort"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select DATE(created_at) as day, COUNT(DISTINCT CASE WHEN risk_score >= 70 THEN device_identity END) as high_risk, SUM(compliance_mode = 1) as blocked from `risk_probe_logs` FORCE INDEX (`rpl_app_time_agg`) where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `created_at` between ? and ? group by DATE(created_at)",
+                    "ms": 63.87,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "rpl_app_time_agg",
+                            "key": "rpl_app_time_agg",
+                            "key_len": "76",
+                            "ref": null,
+                            "rows": 139532,
+                            "filtered": 100,
+                            "Extra": "Using where; Using index; Using filesort"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "overview.app.lately30",
+            "module": "overview",
+            "run": 3,
+            "wall_ms": 4255.41,
+            "sql_ms": 4183.73,
+            "non_sql_ms": 71.68,
+            "queries": 9,
+            "result_count": null,
+            "complete": null,
+            "response_bytes": 5969,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 7,
+                "Handler_read_key": 24057,
+                "Handler_read_next": 1660650,
+                "Handler_read_rnd_next": 24746,
+                "Sort_rows": 663647
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select `l`.`id`, `l`.`risk_score`, `l`.`compliance_mode`, `l`.`ad_switch` from `risk_probe_logs` as `l` inner join (select MAX(id) as id, `device_identity` from `risk_probe_logs` where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `device_identity` > ? group by `device_identity`) as `d` on `l`.`device_identity` = `d`.`device_identity` and `l`.`id` = `d`.`id` where `l`.`status` = ? and `l`.`app_id` = ?",
+                    "ms": 2554.81,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 67923,
+                            "filtered": 100,
+                            "Extra": "Using where"
+                        },
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "l",
+                            "partitions": null,
+                            "type": "eq_ref",
+                            "possible_keys": "PRIMARY,risk_probe_logs_app_id_created_at_index,risk_probe_logs_status_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "PRIMARY",
+                            "key_len": "8",
+                            "ref": "d.id",
+                            "rows": 1,
+                            "filtered": 5,
+                            "Extra": "Using where"
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_status_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 16.66499900817871,
+                            "Extra": "Using where"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select count(*) as aggregate from (select `client_ip`, COUNT(DISTINCT device_identity) as device_count from `risk_probe_logs` FORCE INDEX (`rpl_app_time_agg`) where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `client_ip` is not null and `client_ip` != ? and `device_identity` is not null and `device_identity` != ? group by `client_ip` having COUNT(DISTINCT device_identity) >= 3) as `farms`",
+                    "ms": 1546.62,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 267412,
+                            "filtered": 100,
+                            "Extra": null
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "rpl_app_time_agg",
+                            "key": "rpl_app_time_agg",
+                            "key_len": "259",
+                            "ref": null,
+                            "rows": 407579,
+                            "filtered": 65.61000061035156,
+                            "Extra": "Using where; Using index; Using filesort"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select DATE(created_at) as day, COUNT(DISTINCT CASE WHEN risk_score >= 70 THEN device_identity END) as high_risk, SUM(compliance_mode = 1) as blocked from `risk_probe_logs` FORCE INDEX (`rpl_app_time_agg`) where `status` = ? and `app_id` = ? and `created_at` between ? and ? and `created_at` between ? and ? group by DATE(created_at)",
+                    "ms": 65.57,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "rpl_app_time_agg",
+                            "key": "rpl_app_time_agg",
+                            "key_len": "76",
+                            "ref": null,
+                            "rows": 139532,
+                            "filtered": 100,
+                            "Extra": "Using where; Using index; Using filesort"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "device.channel",
+            "module": "device",
+            "run": 1,
+            "wall_ms": 4488.16,
+            "sql_ms": 4479.66,
+            "non_sql_ms": 8.5,
+            "queries": 6,
+            "result_count": 15081,
+            "complete": null,
+            "response_bytes": 12753,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 2,
+                "Handler_read_key": 71,
+                "Handler_read_next": 1909539,
+                "Handler_read_rnd_next": 15159,
+                "Sort_rows": 20
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select count(*) as aggregate from (select MAX(id) as id from `risk_probe_logs` where `status` = ? and `market_channel` = ? and `device_identity` > ? group by `device_identity`) as `devices`",
+                    "ms": 2241.52,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 13584,
+                            "filtered": 100,
+                            "Extra": null
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 3.3330001831054688,
+                            "Extra": "Using where"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select MAX(id) as id from `risk_probe_logs` where `status` = ? and `market_channel` = ? and `device_identity` > ? group by `device_identity` order by `id` desc limit 20 offset 0",
+                    "ms": 2230.06,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 3.3330001831054688,
+                            "Extra": "Using where; Using temporary; Using filesort"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `device_identity`, MIN(created_at) as first_at from `risk_probe_logs` where `status` = ? and `device_identity` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) group by `device_identity`",
+                    "ms": 3.69,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "1089",
+                            "ref": null,
+                            "rows": 911,
+                            "filtered": 100,
+                            "Extra": "Using where"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "device.channel",
+            "module": "device",
+            "run": 2,
+            "wall_ms": 4488.81,
+            "sql_ms": 4479.17,
+            "non_sql_ms": 9.64,
+            "queries": 6,
+            "result_count": 15081,
+            "complete": null,
+            "response_bytes": 12753,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 2,
+                "Handler_read_key": 71,
+                "Handler_read_next": 1909539,
+                "Handler_read_rnd_next": 15159,
+                "Sort_rows": 20
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select count(*) as aggregate from (select MAX(id) as id from `risk_probe_logs` where `status` = ? and `market_channel` = ? and `device_identity` > ? group by `device_identity`) as `devices`",
+                    "ms": 2248.72,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 13584,
+                            "filtered": 100,
+                            "Extra": null
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 3.3330001831054688,
+                            "Extra": "Using where"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select MAX(id) as id from `risk_probe_logs` where `status` = ? and `market_channel` = ? and `device_identity` > ? group by `device_identity` order by `id` desc limit 20 offset 0",
+                    "ms": 2224.29,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 3.3330001831054688,
+                            "Extra": "Using where; Using temporary; Using filesort"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `device_identity`, MIN(created_at) as first_at from `risk_probe_logs` where `status` = ? and `device_identity` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) group by `device_identity`",
+                    "ms": 3.87,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "1089",
+                            "ref": null,
+                            "rows": 911,
+                            "filtered": 100,
+                            "Extra": "Using where"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "device.channel",
+            "module": "device",
+            "run": 3,
+            "wall_ms": 4557.06,
+            "sql_ms": 4547.13,
+            "non_sql_ms": 9.93,
+            "queries": 6,
+            "result_count": 15081,
+            "complete": null,
+            "response_bytes": 12753,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 2,
+                "Handler_read_key": 71,
+                "Handler_read_next": 1909539,
+                "Handler_read_rnd_next": 15159,
+                "Sort_rows": 20
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select count(*) as aggregate from (select MAX(id) as id from `risk_probe_logs` where `status` = ? and `market_channel` = ? and `device_identity` > ? group by `device_identity`) as `devices`",
+                    "ms": 2315.49,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "PRIMARY",
+                            "table": "<derived2>",
+                            "partitions": null,
+                            "type": "ALL",
+                            "possible_keys": null,
+                            "key": null,
+                            "key_len": null,
+                            "ref": null,
+                            "rows": 13584,
+                            "filtered": 100,
+                            "Extra": null
+                        },
+                        {
+                            "id": 2,
+                            "select_type": "DERIVED",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 3.3330001831054688,
+                            "Extra": "Using where"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select MAX(id) as id from `risk_probe_logs` where `status` = ? and `market_channel` = ? and `device_identity` > ? group by `device_identity` order by `id` desc limit 20 offset 0",
+                    "ms": 2225.84,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "66",
+                            "ref": "const",
+                            "rows": 407579,
+                            "filtered": 3.3330001831054688,
+                            "Extra": "Using where; Using temporary; Using filesort"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `device_identity`, MIN(created_at) as first_at from `risk_probe_logs` where `status` = ? and `device_identity` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) group by `device_identity`",
+                    "ms": 3.7,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "risk_probe_logs_status_index,rpl_status_client_ip_id,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_device_snapshot",
+                            "key_len": "1089",
+                            "ref": null,
+                            "rows": 911,
+                            "filtered": 100,
+                            "Extra": "Using where"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "event.app.decision.verify",
+            "module": "event",
+            "run": 1,
+            "wall_ms": 1569.85,
+            "sql_ms": 1561.23,
+            "non_sql_ms": 8.62,
+            "queries": 4,
+            "result_count": 46,
+            "complete": null,
+            "response_bytes": 12563,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 1,
+                "Handler_read_key": 13,
+                "Handler_read_next": 702794,
+                "Handler_read_rnd_next": 72,
+                "Sort_rows": 0
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select `id`, `app_id`, `status`, `probe_v`, `platform`, `risk_score`, `risk_reasons`, `env_allows_ads`, `compliance_mode`, `ad_switch`, `client_ip`, `app_version`, `market_channel`, `user_uuid`, `device_sn`, `created_at` from `risk_probe_logs` where `status` = ? and `app_id` = ? and `compliance_mode` = ? and `ad_switch` = ? and `risk_score` >= ? order by `id` desc limit 20 offset 0",
+                    "ms": 1399.17,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_risk_score_created_at_index,risk_probe_logs_status_index,risk_probe_logs_compliance_mode_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,risk_probe_logs_risk_score_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "risk_probe_logs_status_index",
+                            "key_len": "66",
+                            "ref": null,
+                            "rows": 407579,
+                            "filtered": 0.34014877676963806,
+                            "Extra": "Using index condition; Using where; Backward index scan"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select count(*) as aggregate from `risk_probe_logs` where `status` = ? and `app_id` = ? and `compliance_mode` = ? and `ad_switch` = ? and `risk_score` >= ?",
+                    "ms": 158.44,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_risk_score_created_at_index,risk_probe_logs_status_index,risk_probe_logs_compliance_mode_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,risk_probe_logs_risk_score_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_app_device_snapshot",
+                            "key_len": "71",
+                            "ref": "const,const",
+                            "rows": 407579,
+                            "filtered": 0.6802975535392761,
+                            "Extra": "Using where; Using index"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `uuid`, `app_id`, MAX(id) as user_id from `users` where `uuid` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) and `app_id` in (?) group by `uuid`, `app_id`",
+                    "ms": 3.03,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "users",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "users_uuid_account_nickname_phone_idx,users_app_uuid_risk",
+                            "key": "users_uuid_account_nickname_phone_idx",
+                            "key_len": "258",
+                            "ref": null,
+                            "rows": 22,
+                            "filtered": 10,
+                            "Extra": "Using index condition; Using where; Using temporary"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "event.app.decision.verify",
+            "module": "event",
+            "run": 2,
+            "wall_ms": 1583.15,
+            "sql_ms": 1574.93,
+            "non_sql_ms": 8.22,
+            "queries": 4,
+            "result_count": 46,
+            "complete": null,
+            "response_bytes": 12563,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 1,
+                "Handler_read_key": 13,
+                "Handler_read_next": 702794,
+                "Handler_read_rnd_next": 72,
+                "Sort_rows": 0
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select `id`, `app_id`, `status`, `probe_v`, `platform`, `risk_score`, `risk_reasons`, `env_allows_ads`, `compliance_mode`, `ad_switch`, `client_ip`, `app_version`, `market_channel`, `user_uuid`, `device_sn`, `created_at` from `risk_probe_logs` where `status` = ? and `app_id` = ? and `compliance_mode` = ? and `ad_switch` = ? and `risk_score` >= ? order by `id` desc limit 20 offset 0",
+                    "ms": 1416.62,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_risk_score_created_at_index,risk_probe_logs_status_index,risk_probe_logs_compliance_mode_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,risk_probe_logs_risk_score_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "risk_probe_logs_status_index",
+                            "key_len": "66",
+                            "ref": null,
+                            "rows": 407579,
+                            "filtered": 0.34014877676963806,
+                            "Extra": "Using index condition; Using where; Backward index scan"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select count(*) as aggregate from `risk_probe_logs` where `status` = ? and `app_id` = ? and `compliance_mode` = ? and `ad_switch` = ? and `risk_score` >= ?",
+                    "ms": 157.03,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_risk_score_created_at_index,risk_probe_logs_status_index,risk_probe_logs_compliance_mode_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,risk_probe_logs_risk_score_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_app_device_snapshot",
+                            "key_len": "71",
+                            "ref": "const,const",
+                            "rows": 407579,
+                            "filtered": 0.6802975535392761,
+                            "Extra": "Using where; Using index"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `uuid`, `app_id`, MAX(id) as user_id from `users` where `uuid` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) and `app_id` in (?) group by `uuid`, `app_id`",
+                    "ms": 0.83,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "users",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "users_uuid_account_nickname_phone_idx,users_app_uuid_risk",
+                            "key": "users_uuid_account_nickname_phone_idx",
+                            "key_len": "258",
+                            "ref": null,
+                            "rows": 22,
+                            "filtered": 10,
+                            "Extra": "Using index condition; Using where; Using temporary"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "event.app.decision.verify",
+            "module": "event",
+            "run": 3,
+            "wall_ms": 1565.04,
+            "sql_ms": 1557.07,
+            "non_sql_ms": 7.97,
+            "queries": 4,
+            "result_count": 46,
+            "complete": null,
+            "response_bytes": 12563,
+            "memory_peak_mb": 75,
+            "status_delta": {
+                "Created_tmp_disk_tables": 0,
+                "Created_tmp_tables": 1,
+                "Handler_read_key": 13,
+                "Handler_read_next": 702794,
+                "Handler_read_rnd_next": 72,
+                "Sort_rows": 0
+            },
+            "error": null,
+            "top_sql": [
+                {
+                    "sql": "select `id`, `app_id`, `status`, `probe_v`, `platform`, `risk_score`, `risk_reasons`, `env_allows_ads`, `compliance_mode`, `ad_switch`, `client_ip`, `app_version`, `market_channel`, `user_uuid`, `device_sn`, `created_at` from `risk_probe_logs` where `status` = ? and `app_id` = ? and `compliance_mode` = ? and `ad_switch` = ? and `risk_score` >= ? order by `id` desc limit 20 offset 0",
+                    "ms": 1397.58,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_risk_score_created_at_index,risk_probe_logs_status_index,risk_probe_logs_compliance_mode_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,risk_probe_logs_risk_score_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "risk_probe_logs_status_index",
+                            "key_len": "66",
+                            "ref": null,
+                            "rows": 407579,
+                            "filtered": 0.34014877676963806,
+                            "Extra": "Using index condition; Using where; Backward index scan"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select count(*) as aggregate from `risk_probe_logs` where `status` = ? and `app_id` = ? and `compliance_mode` = ? and `ad_switch` = ? and `risk_score` >= ?",
+                    "ms": 158.09,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "risk_probe_logs",
+                            "partitions": null,
+                            "type": "ref",
+                            "possible_keys": "risk_probe_logs_app_id_created_at_index,risk_probe_logs_risk_score_created_at_index,risk_probe_logs_status_index,risk_probe_logs_compliance_mode_index,rpl_status_client_ip_id,risk_probe_logs_app_id_index,risk_probe_logs_risk_score_index,rpl_device_snapshot,rpl_farm_ip_agg,rpl_app_device_snapshot,rpl_app_time_agg",
+                            "key": "rpl_app_device_snapshot",
+                            "key_len": "71",
+                            "ref": "const,const",
+                            "rows": 407579,
+                            "filtered": 0.6802975535392761,
+                            "Extra": "Using where; Using index"
+                        }
+                    ]
+                },
+                {
+                    "sql": "select `uuid`, `app_id`, MAX(id) as user_id from `users` where `uuid` in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) and `app_id` in (?) group by `uuid`, `app_id`",
+                    "ms": 0.89,
+                    "failed": false,
+                    "plan": [
+                        {
+                            "id": 1,
+                            "select_type": "SIMPLE",
+                            "table": "users",
+                            "partitions": null,
+                            "type": "range",
+                            "possible_keys": "users_uuid_account_nickname_phone_idx,users_app_uuid_risk",
+                            "key": "users_uuid_account_nickname_phone_idx",
+                            "key_len": "258",
+                            "ref": null,
+                            "rows": 22,
+                            "filtered": 10,
+                            "Extra": "Using index condition; Using where; Using temporary"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

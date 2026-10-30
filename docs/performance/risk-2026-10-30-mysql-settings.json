@@ -1,0 +1,38 @@
+[
+    {
+        "Variable_name": "binlog_format",
+        "Value": "ROW"
+    },
+    {
+        "Variable_name": "innodb_buffer_pool_size",
+        "Value": "134217728"
+    },
+    {
+        "Variable_name": "innodb_flush_log_at_trx_commit",
+        "Value": "1"
+    },
+    {
+        "Variable_name": "join_buffer_size",
+        "Value": "262144"
+    },
+    {
+        "Variable_name": "max_connections",
+        "Value": "151"
+    },
+    {
+        "Variable_name": "max_heap_table_size",
+        "Value": "16777216"
+    },
+    {
+        "Variable_name": "sort_buffer_size",
+        "Value": "262144"
+    },
+    {
+        "Variable_name": "sync_binlog",
+        "Value": "1"
+    },
+    {
+        "Variable_name": "tmp_table_size",
+        "Value": "16777216"
+    }
+]

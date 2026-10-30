@@ -4,6 +4,7 @@ namespace App\Dao\Risk;
 
 use App\Dao\BaseDao;
 use App\Models\RiskProbeLog;
+use App\Services\Risk\Ledger\IpNormalizer;
 use App\Support\Services\DeviceEnvRiskView;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -19,25 +20,25 @@ class RiskProbeLogDao extends BaseDao
     {
         $query = $this->newQuery()->where('status', 'ok');
 
-        if (!empty($where['app_id'])) {
+        if (! empty($where['app_id'])) {
             $query->where('app_id', $where['app_id']);
         }
-        if (!empty($where['market_channel'])) {
+        if (! empty($where['market_channel'])) {
             $query->where('market_channel', $where['market_channel']);
         }
-        if (!empty($where['version'])) {
-            $query->where('app_version', 'like', '%' . $where['version'] . '%');
+        if (! empty($where['version'])) {
+            $query->where('app_version', 'like', '%'.$where['version'].'%');
         }
-        if (!empty($where['time'])) {
+        if (! empty($where['time'])) {
             $this->searchDate($query, 'created_at', $where['time']);
         }
-        if (!empty($where['decision'])) {
+        if (! empty($where['decision'])) {
             $this->scopeDecision($query, $where['decision']);
         }
-        if (!empty($where['risk_level'])) {
+        if (! empty($where['risk_level'])) {
             $this->scopeRiskLevel($query, $where['risk_level']);
         }
-        if (!empty($where['event_type'])) {
+        if (! empty($where['event_type'])) {
             if ($where['event_type'] === 'guard') {
                 $query->where(function (Builder $q) {
                     $q->where('env_allows_ads', false)->orWhere('compliance_mode', 1);
@@ -50,14 +51,25 @@ class RiskProbeLogDao extends BaseDao
                 });
             }
         }
-        if (!empty($where['keyword'])) {
-            $keyword = $where['keyword'];
+        if (isset($where['keyword']) && (string) $where['keyword'] !== '') {
+            $keyword = (string) $where['keyword'];
+            switch ($where['keyword_type'] ?? 'all') {
+                case 'device': return $query->where('device_identity', $keyword);
+                case 'install': return $query->where('device_sn', $keyword);
+                case 'ip':
+                    $ip = IpNormalizer::normalize($keyword);
+
+                    return $ip === '' ? $query->whereRaw('1 = 0') : $query->where('client_ip', $ip);
+                case 'ip_prefix': return $query->where('client_ip', 'like', addcslashes($keyword, '%_\\').'%');
+                case 'version': return $query->where('app_version', $keyword);
+                case 'reason': return $query->whereJsonContains('risk_reasons', $keyword);
+            }
             $query->where(function (Builder $q) use ($keyword) {
                 $q->where('user_uuid', $keyword)
                     ->orWhere('device_sn', $keyword)
-                    ->orWhere('app_version', 'like', $keyword . '%')
-                    ->orWhere('client_ip', 'like', $keyword . '%')
-                    ->orWhere('risk_reasons', 'like', '%' . $keyword . '%');
+                    ->orWhere('app_version', 'like', $keyword.'%')
+                    ->orWhere('client_ip', 'like', $keyword.'%')
+                    ->orWhere('risk_reasons', 'like', '%'.$keyword.'%');
             });
         }
 
@@ -67,9 +79,15 @@ class RiskProbeLogDao extends BaseDao
     public function latestDeviceIds(array $where = []): Builder
     {
         $query = $this->search($where);
-        $index = $this->snapshotIndex($where);
+        $coveredTime = ! empty($where['time'])
+            && ! in_array($where['decision'] ?? '', ['pass', 'verify', 'limit'], true)
+            && empty($where['keyword']) && empty($where['market_channel'])
+            && empty($where['version']) && empty($where['event_type']);
+        $index = $coveredTime
+            ? (empty($where['app_id']) ? 'rpl_farm_ip_agg' : 'rpl_app_time_agg')
+            : $this->snapshotIndex($where);
         if ($index !== null && DB::connection()->getDriverName() === 'mysql') {
-            $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`' . $index . '`)'));
+            $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`'.$index.'`)'));
         }
 
         return $query
@@ -78,16 +96,31 @@ class RiskProbeLogDao extends BaseDao
             ->groupBy('device_identity');
     }
 
-    /** 只有应用筛选时可按设备索引直接分组；其他筛选交给优化器选择。 */
+    /** 设备索引覆盖应用、评分和决策；非覆盖条件交给优化器选择。 */
     public function snapshotIndex(array $where): ?string
     {
-        foreach (['market_channel', 'version', 'time', 'decision', 'risk_level', 'event_type', 'keyword'] as $key) {
-            if (!empty($where[$key])) {
+        foreach (['market_channel', 'version', 'time', 'event_type', 'keyword'] as $key) {
+            if (! empty($where[$key])) {
                 return null;
             }
         }
 
         return empty($where['app_id']) ? 'rpl_device_snapshot' : 'rpl_app_device_snapshot';
+    }
+
+    public function eventQuery(array $where = [], bool $count = false): Builder
+    {
+        $query = $this->search($where);
+        // Only force a covering index when every predicate is available in it.
+        if (DB::connection()->getDriverName() === 'mysql'
+            && ($count || ! empty($where['decision']) || ! empty($where['risk_level']))
+            && empty($where['keyword']) && empty($where['market_channel'])
+            && empty($where['version']) && empty($where['event_type']) && empty($where['time'])) {
+            $index = empty($where['app_id']) ? 'rpl_device_snapshot' : 'rpl_app_device_snapshot';
+            $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`'.$index.'`)'));
+        }
+
+        return $query;
     }
 
     public function latestDeviceQuery(array $where = []): Builder
@@ -110,6 +143,7 @@ class RiskProbeLogDao extends BaseDao
     {
         if ($level === 'high') {
             $query->where('risk_score', '>=', 70);
+
             return;
         }
         $range = DeviceEnvRiskView::levelRange($level);

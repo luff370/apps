@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class PublishingMonitorService
 {
-    public function board(string $start, string $end, ?int $accountId): array
+    public function board(string $start, string $end, ?int $accountId, string $cursor = '', int $limit = 500): array
     {
         $startAt = Carbon::parse($start, 'Asia/Shanghai')->startOfDay();
         $endAt = Carbon::parse($end, 'Asia/Shanghai')->addDay()->startOfDay();
@@ -27,7 +27,7 @@ class PublishingMonitorService
         foreach ($plans as $plan) {
             $tasks = [];
             foreach ($plan->tasks as $task) {
-                if (!$task->submitted_at || !$task->version) {
+                if (! $task->submitted_at || ! $task->version) {
                     continue;
                 }
                 $submitted = Carbon::parse($task->submitted_at);
@@ -35,7 +35,7 @@ class PublishingMonitorService
                 if ($submitted->greaterThanOrEqualTo($endAt)) {
                     continue;
                 }
-                if ($listed && $listed->lt($startAt) && !in_array($task->status, ['审核中', '已提交'], true)) {
+                if ($listed && $listed->lt($startAt) && ! in_array($task->status, ['审核中', '已提交'], true)) {
                     continue;
                 }
                 $tasks[] = [
@@ -51,20 +51,22 @@ class PublishingMonitorService
                 continue;
             }
             $appId = (int) $plan->app_id;
-            $apps[$appId] = ['id' => $appId, 'name' => $names[$appId] ?? ('应用 ' . $appId)];
+            $apps[$appId] = ['id' => $appId, 'name' => $names[$appId] ?? ('应用 '.$appId)];
             $planPayload[$appId][] = [
                 'id' => (int) $plan->id,
                 'version' => (string) $plan->version,
                 'tasks' => $tasks,
             ];
         }
-        $events = $this->events(array_keys($apps), $accountValues, $startAt, $endAt);
-        $truncated = count($events) >= 5000;
+        $eventPage = $this->events(array_keys($apps), $accountValues, $startAt, $endAt, $cursor, max(1, min(1000, $limit)));
+        $events = $eventPage['list'];
 
         return [
             'as_of' => Carbon::now('Asia/Shanghai')->toIso8601String(),
             'timezone' => 'Asia/Shanghai',
-            'complete' => !$truncated,
+            'complete' => ! $eventPage['has_more'],
+            'has_more' => $eventPage['has_more'],
+            'next_cursor' => $eventPage['next_cursor'],
             'catalog' => SystemApp::marketChannelsMap(),
             'accounts' => $accounts->map(fn ($row) => [
                 'id' => (int) $row->id,
@@ -78,10 +80,10 @@ class PublishingMonitorService
         ];
     }
 
-    private function events(array $appIds, array $accounts, Carbon $startAt, Carbon $endAt): array
+    private function events(array $appIds, array $accounts, Carbon $startAt, Carbon $endAt, string $cursor, int $limit): array
     {
         if ($appIds === []) {
-            return [];
+            return ['list' => [], 'has_more' => false, 'next_cursor' => null];
         }
         $identityMap = [];
         if ($accounts !== []) {
@@ -94,27 +96,49 @@ class PublishingMonitorService
             foreach ($users as $user) {
                 $label = in_array($user->phone, $accounts, true) ? $user->phone : $user->account;
                 if ($user->uuid) {
-                    $identityMap[$user->app_id . ':' . $user->uuid] = $label;
+                    $identityMap[$user->app_id.':'.$user->uuid] = $label;
                 }
             }
         }
-        $rows = DB::table('risk_probe_logs')
+        $filter = ['start' => $startAt->toDateTimeString(), 'end' => $endAt->toDateTimeString(),
+            'apps' => json_encode($appIds), 'accounts' => json_encode($accounts)];
+        $position = RiskQueryCursor::decode($cursor, $filter);
+        $anchor = $position['anchor'] ?? (int) DB::table('risk_probe_logs')->max('id');
+        $query = DB::table('risk_probe_logs')
             ->whereIn('app_id', $appIds)
             ->where('status', 'ok')
             ->where('created_at', '>=', $startAt->toDateTimeString())
             ->where('created_at', '<', $endAt->toDateTimeString())
-            ->orderByDesc('id')
-            ->limit(5000)
-            ->get(['id', 'app_id', 'app_version', 'market_channel', 'created_at', 'client_ip', 'user_uuid', 'device_sn', 'risk_score', 'compliance_mode', 'ad_switch']);
+            ->where('id', '<=', $anchor)
+            ->when(! empty($position['before']), fn ($q) => $q->where('id', '<', $position['before']))
+            ->where(function ($q) use ($identityMap, $accounts) {
+                // Apply the same eligibility rule before LIMIT so quiet traffic cannot hide older events.
+                $q->where('compliance_mode', 1)->orWhere('ad_switch', 0)->orWhereNull('ad_switch')->orWhere('risk_score', '>=', 30);
+                if ($accounts !== []) {
+                    $q->orWhereIn('user_uuid', $accounts);
+                }
+                $byApp = [];
+                foreach ($identityMap as $key => $label) {
+                    [$appId, $uuid] = explode(':', $key, 2);
+                    $byApp[$appId][] = $uuid;
+                }
+                foreach ($byApp as $appId => $uuids) {
+                    $q->orWhere(fn ($inner) => $inner->where('app_id', $appId)->whereIn('user_uuid', $uuids));
+                }
+            });
+        $ids = (clone $query)->orderByDesc('id')->limit($limit + 1)->pluck('id')->all();
+        $hasMore = count($ids) > $limit;
+        $ids = array_slice($ids, 0, $limit);
+        $rows = $ids === [] ? collect() : DB::table('risk_probe_logs')->whereIn('id', $ids)->orderByDesc('id')->get(['id', 'app_id', 'app_version', 'market_channel', 'created_at', 'client_ip', 'user_uuid', 'device_sn', 'risk_score', 'compliance_mode', 'ad_switch']);
         $events = [];
         foreach ($rows as $row) {
             $device = $row->user_uuid ?: $row->device_sn;
-            $account = $identityMap[$row->app_id . ':' . $row->user_uuid] ?? '';
+            $account = $identityMap[$row->app_id.':'.$row->user_uuid] ?? '';
             if ($account === '' && in_array((string) $row->user_uuid, $accounts, true)) {
                 $account = (string) $row->user_uuid;
             }
             $risky = (int) $row->compliance_mode === 1 || (int) $row->ad_switch === 0 || (int) $row->risk_score >= 30;
-            if ($account === '' && !$risky) {
+            if ($account === '' && ! $risky) {
                 continue;
             }
             $events[] = [
@@ -133,6 +157,7 @@ class PublishingMonitorService
             ];
         }
 
-        return $events;
+        return ['list' => $events, 'has_more' => $hasMore,
+            'next_cursor' => $hasMore ? RiskQueryCursor::encode($filter, $anchor, (int) end($ids)) : null];
     }
 }

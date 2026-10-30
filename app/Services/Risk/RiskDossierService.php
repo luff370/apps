@@ -18,33 +18,36 @@ class RiskDossierService
     {
         $query = $this->filtered($filter, false);
         $counts = $this->stateCounts($filter);
-        $count = (clone $query)->count();
+        $count = $counts[in_array($filter['state'] ?? '', ['high', 'watch', 'released'], true) ? $filter['state'] : 'all'];
         $rows = $query->orderByDesc('last_activity_at')->orderBy('ip')
-            ->forPage($page, $limit)
+            ->forPage(max(1, $page), max(1, min(100, $limit)))
             ->get();
         $list = [];
         foreach ($rows as $row) {
-            $list[] = $this->present($row, false);
+            $list[] = $this->present($row, false, ! empty($filter['compact']));
         }
 
         return [
             'list' => $list,
             'count' => $count,
             'state_counts' => $counts,
-            'options' => $this->options(),
+            'options' => filter_var($filter['include_options'] ?? true, FILTER_VALIDATE_BOOLEAN) ? $this->options() : null,
             'as_of' => Carbon::now('Asia/Shanghai')->toIso8601String(),
             'complete' => $this->ledger->caughtUp(),
         ];
     }
 
-    public function detail(string $id): ?array
+    public function detail(string $id, bool $withRelations = true): ?array
     {
         $ip = IpNormalizer::ipFor($id);
         $row = $ip === '' ? null : DB::table('risk_ip_dossiers')->where('ip', $ip)->first();
-        if (!$row) {
+        if (! $row) {
             return null;
         }
-        $presented = $this->present($row, true);
+        $presented = $this->present($row, $withRelations, ! $withRelations);
+        if (! $withRelations) {
+            return $presented;
+        }
         $presented['scopes'] = DB::table('risk_scopes')->where('ip', $ip)->orderByDesc('id')->get()->map(function ($scope) {
             return [
                 'scope_id' => (int) $scope->id,
@@ -64,60 +67,84 @@ class RiskDossierService
 
     public function relations(string $id, string $kind, int $page, int $limit): array
     {
-        $detail = $this->detail($id);
-        if (!$detail) {
-            return ['list' => [], 'count' => 0];
+        $ip = IpNormalizer::ipFor($id);
+        $row = $ip === '' ? null : DB::table('risk_ip_dossiers')->where('ip', $ip)->first();
+        if (! $row) {
+            return ['list' => [], 'count' => 0, 'has_more' => false];
         }
-        $field = match ($kind) {
-            'devices' => 'devices',
-            'accounts' => 'accounts',
-            'tags' => 'tags',
-            default => 'apps',
-        };
-        $all = $detail[$field] ?? [];
-        $count = count($all);
+        $page = max(1, $page);
+        $limit = max(1, min(100, $limit));
+        if ($kind === 'devices' || $kind === 'accounts') {
+            $devices = $kind === 'devices';
+            $query = DB::table('risk_scopes')->where('ip', $ip);
+            if ($devices) {
+                $query->where('device_identity', '<>', '')
+                    ->selectRaw('device_identity, MIN(collected_at) as first_at, MAX(updated_at) as last_at, COUNT(DISTINCT app_id) as apps')
+                    ->groupBy('device_identity');
+            } else {
+                $query->whereNotNull('user_id')->where('user_id', '<>', '')
+                    ->selectRaw('app_id, user_id, MIN(collected_at) as first_at, MAX(updated_at) as last_at')
+                    ->groupBy('app_id', 'user_id');
+            }
+            $count = (int) DB::query()->fromSub(clone $query, 'relations')->count();
+            $query->orderBy($devices ? 'device_identity' : 'app_id');
+            if (! $devices) {
+                $query->orderBy('user_id');
+            }
+            $names = $devices ? [] : SystemApp::idToNameMap();
+            $list = $query->forPage($page, $limit)->get()->map(function ($item) use ($devices, $names) {
+                $base = ['first' => $item->first_at, 'last' => $item->last_at];
 
-        return [
-            'list' => array_slice($all, ($page - 1) * $limit, $limit),
-            'count' => $count,
-            'has_more' => $page * $limit < $count,
-        ];
+                return $devices ? $base + ['key' => $item->device_identity, 'name' => $item->device_identity, 'apps' => (int) $item->apps]
+                    : $base + ['key' => $item->app_id.':'.$item->user_id, 'name' => $item->user_id,
+                        'appId' => (string) $item->app_id, 'appName' => $names[(int) $item->app_id] ?? ('应用 '.$item->app_id)];
+            })->all();
+        } else {
+            // App/tag metadata is bounded by the dossier, never load device/account scopes.
+            $record = $this->present($row, false, true);
+            $all = $kind === 'tags' ? $record['tags'] : $this->appRelations($ip, $record['apps']);
+            $count = count($all);
+            $list = array_slice($all, ($page - 1) * $limit, $limit);
+        }
+
+        return ['list' => $list, 'count' => $count, 'has_more' => $page * $limit < $count];
     }
 
     public function timeline(string $id, array $filter, int $page, int $limit): ?array
     {
         $ip = IpNormalizer::ipFor($id);
-        if ($ip === '' || !DB::table('risk_ip_dossiers')->where('ip', $ip)->exists()) {
+        if ($ip === '' || ! DB::table('risk_ip_dossiers')->where('ip', $ip)->exists()) {
             return null;
         }
         $query = DB::table('risk_timeline')->where('ip', $ip);
-        if (!empty($filter['day'])) {
-            $query->where('occurred_at', '>=', $filter['day'] . ' 00:00:00')
-                ->where('occurred_at', '<', Carbon::parse($filter['day'])->addDay()->toDateString() . ' 00:00:00');
+        if (! empty($filter['day'])) {
+            $query->where('occurred_at', '>=', $filter['day'].' 00:00:00')
+                ->where('occurred_at', '<', Carbon::parse($filter['day'])->addDay()->toDateString().' 00:00:00');
         }
-        if (!empty($filter['app_id'])) {
+        if (! empty($filter['app_id'])) {
             $query->where('app_id', $filter['app_id']);
         }
-        if (!empty($filter['event_kind'])) {
-            $query->where('event_type', $filter['event_kind']);
+        if (! empty($filter['event_kind'])) {
+            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login'], 'manual' => ['auto_release', 'release_revoke']];
+            $query->whereIn('event_type', $kinds[$filter['event_kind']] ?? [$filter['event_kind']]);
         }
-        if (!empty($filter['reason_code'])) {
-            $query->where('reason_codes', 'like', '%"' . str_replace(['%', '_'], '', $filter['reason_code']) . '"%');
+        if (! empty($filter['reason_code'])) {
+            $query->whereJsonContains('reason_codes', (string) $filter['reason_code']);
         }
         $count = (clone $query)->count();
-        $rows = $query->orderByDesc('occurred_at')->orderByDesc('id')->forPage($page, $limit)->get();
+        $rows = $query->orderByDesc('occurred_at')->orderByDesc('id')->forPage(max(1, $page), max(1, min(100, $limit)))->get();
         $events = [];
         foreach ($rows as $row) {
             $events[] = $this->event($row);
         }
-        $days = DB::table('risk_timeline')
+        $days = filter_var($filter['include_days'] ?? true, FILTER_VALIDATE_BOOLEAN) ? DB::table('risk_timeline')
             ->where('ip', $ip)
-            ->selectRaw('DATE(occurred_at) as day')
+            ->selectRaw('DATE(occurred_at) as day, COUNT(*) as total')
             ->selectRaw("SUM(event_type IN ('risk_hit','intake','reintake')) as risk_count")
             ->selectRaw("SUM(event_type IN ('auto_release','release_revoke')) as action_count")
             ->groupBy(DB::raw('DATE(occurred_at)'))
             ->orderBy('day')
-            ->get();
+            ->get() : null;
 
         return [
             'list' => $events,
@@ -132,22 +159,23 @@ class RiskDossierService
         $query = DB::table('risk_ip_dossiers');
         $keyword = trim((string) ($filter['keyword'] ?? ''));
         if ($keyword !== '') {
-            $like = '%' . addcslashes($keyword, '%_\\') . '%';
-            $query->where(function ($inner) use ($like, $keyword) {
-                $inner->where('ip', 'like', $like)->orWhereExists(function ($sub) use ($like) {
-                    $sub->selectRaw('1')->from('risk_scopes')
-                        ->whereColumn('risk_scopes.ip', 'risk_ip_dossiers.ip')
-                        ->where(function ($scope) use ($like) {
-                            $scope->where('device_identity', 'like', $like)->orWhere('user_id', 'like', $like);
-                        });
+            $normalized = IpNormalizer::normalize($keyword);
+            if ($normalized !== '') {
+                $query->where('ip', $normalized);
+            } else {
+                $like = '%'.addcslashes($keyword, '%_\\').'%';
+                $query->where(function ($inner) use ($like) {
+                    $inner->where('ip', 'like', $like)->orWhereExists(function ($sub) use ($like) {
+                        $sub->selectRaw('1')->from('risk_scopes')
+                            ->whereColumn('risk_scopes.ip', 'risk_ip_dossiers.ip')
+                            ->where(function ($scope) use ($like) {
+                                $scope->where('device_identity', 'like', $like)->orWhere('user_id', 'like', $like);
+                            });
+                    });
                 });
-                $normalized = IpNormalizer::normalize($keyword);
-                if ($normalized !== '') {
-                    $inner->orWhere('ip', $normalized);
-                }
-            });
+            }
         }
-        if (!empty($filter['market_channel'])) {
+        if (! empty($filter['market_channel'])) {
             $channel = (string) $filter['market_channel'];
             $query->whereExists(function ($sub) use ($channel) {
                 $sub->selectRaw('1')->from('risk_scopes')
@@ -155,7 +183,7 @@ class RiskDossierService
                     ->where('market_channel', $channel);
             });
         }
-        if (!empty($filter['app_id'])) {
+        if (! empty($filter['app_id'])) {
             $appId = (int) $filter['app_id'];
             $query->whereExists(function ($sub) use ($appId) {
                 $sub->selectRaw('1')->from('risk_scopes')
@@ -163,13 +191,13 @@ class RiskDossierService
                     ->where('app_id', $appId);
             });
         }
-        if (!empty($filter['reason_code'])) {
+        if (! empty($filter['reason_code'])) {
             $code = preg_replace('/[^a-z0-9_]/', '', strtolower((string) $filter['reason_code']));
             if ($code !== '') {
-                $query->where('tags', 'like', '%"code":"' . $code . '"%');
+                $query->whereJsonContains('tags', ['code' => $code]);
             }
         }
-        if (!$ignoreState && !empty($filter['state']) && in_array($filter['state'], ['high', 'watch', 'released'], true)) {
+        if (! $ignoreState && ! empty($filter['state']) && in_array($filter['state'], ['high', 'watch', 'released'], true)) {
             $query->where('state', $filter['state']);
         }
 
@@ -187,14 +215,14 @@ class RiskDossierService
         $released = (int) ($rows['released'] ?? 0);
 
         return [
-            'all' => $high + $watch + $released,
+            'all' => (int) $rows->sum(),
             'high' => $high,
             'watch' => $watch,
             'released' => $released,
         ];
     }
 
-    private function options(): array
+    public function options(): array
     {
         $channels = SystemApp::marketChannelsMap();
         $names = SystemApp::idToNameMap();
@@ -208,12 +236,12 @@ class RiskDossierService
 
         return [
             'markets' => $markets->map(fn ($value) => ['value' => $value, 'label' => $channels[$value] ?? $value])->values(),
-            'apps' => $apps->map(fn ($id) => ['id' => (string) $id, 'name' => $names[(int) $id] ?? ('应用 ' . $id)])->values(),
+            'apps' => $apps->map(fn ($id) => ['id' => (string) $id, 'name' => $names[(int) $id] ?? ('应用 '.$id)])->values(),
             'tags' => $tags,
         ];
     }
 
-    private function present(object $row, bool $withRelations): array
+    private function present(object $row, bool $withRelations, bool $compact = false): array
     {
         $markets = $this->json($row->markets);
         $apps = $this->json($row->apps);
@@ -257,8 +285,8 @@ class RiskDossierService
             $record['accounts'] = $this->accounts($row->ip);
             $record['apps'] = $this->appRelations($row->ip, $record['apps']);
         } else {
-            $record['devices'] = array_fill(0, (int) $row->device_count, ['key' => '', 'name' => '']);
-            $record['accounts'] = array_fill(0, (int) $row->account_count, ['key' => '', 'name' => '']);
+            $record['devices'] = array_fill(0, $compact ? 0 : (int) $row->device_count, ['key' => '', 'name' => '']);
+            $record['accounts'] = array_fill(0, $compact ? 0 : (int) $row->account_count, ['key' => '', 'name' => '']);
         }
 
         return $record;
@@ -292,9 +320,9 @@ class RiskDossierService
         $list = [];
         foreach ($rows as $row) {
             $list[] = [
-                'key' => $row->app_id . ':' . $row->user_id,
+                'key' => $row->app_id.':'.$row->user_id,
                 'name' => $row->user_id,
-                'appName' => $names[(int) $row->app_id] ?? ('应用 ' . $row->app_id),
+                'appName' => $names[(int) $row->app_id] ?? ('应用 '.$row->app_id),
                 'appId' => (string) $row->app_id,
                 'first' => $row->first_at,
                 'last' => $row->last_at,
@@ -328,12 +356,12 @@ class RiskDossierService
         $risky = in_array($row->event_type, ['risk_hit', 'intake', 'reintake'], true);
 
         return [
-            'key' => 'id:' . $row->id,
+            'key' => 'id:'.$row->id,
             'id' => (string) $row->id,
             'ip' => $row->ip,
             'appKey' => $row->app_id ? (string) $row->app_id : '',
             'appId' => $row->app_id ? (string) $row->app_id : '',
-            'appName' => $row->app_name ?: ($row->app_id ? '应用 ' . $row->app_id : ''),
+            'appName' => $row->app_name ?: ($row->app_id ? '应用 '.$row->app_id : ''),
             'market' => (string) $row->market_channel,
             'device' => (string) $row->device_identity,
             'account' => (string) $row->user_id,

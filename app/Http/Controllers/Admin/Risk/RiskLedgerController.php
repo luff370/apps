@@ -60,13 +60,20 @@ class RiskLedgerController extends Controller
             'app_id' => request()->input('app_id', ''),
             'reason_code' => request()->input('reason_code', ''),
             'state' => request()->input('state', ''),
+            'compact' => request()->boolean('compact'),
+            'include_options' => request()->boolean('include_options', true),
         ], $page, $limit));
+    }
+
+    public function dossierOptions()
+    {
+        return $this->success($this->dossiers->options());
     }
 
     public function dossier($id)
     {
-        $data = $this->dossiers->detail((string) $id);
-        if (!$data) {
+        $data = $this->dossiers->detail((string) $id, request()->boolean('include_relations', true));
+        if (! $data) {
             return $this->fail('IP 档案不存在');
         }
 
@@ -87,6 +94,7 @@ class RiskLedgerController extends Controller
             'day' => (string) request()->input('day', ''),
             'app_id' => (string) request()->input('app_id', ''),
             'event_kind' => (string) request()->input('event_kind', ''),
+            'include_days' => request()->boolean('include_days', true),
             'reason_code' => (string) request()->input('reason_code', ''),
         ], $page, $limit);
         if ($data === null) {
@@ -117,7 +125,7 @@ class RiskLedgerController extends Controller
     public function releaseDetail($id)
     {
         $data = $this->releases->detail((int) $id);
-        if (!$data) {
+        if (! $data) {
             return $this->fail('释放记录不存在');
         }
 
@@ -186,13 +194,13 @@ class RiskLedgerController extends Controller
     {
         $end = (string) (request()->input('end_date') ?: Carbon::now('Asia/Shanghai')->toDateString());
         $days = (int) request()->input('days', 30);
-        if (!in_array($days, [30, 180, 365], true)) {
+        if (! in_array($days, [30, 180, 365], true)) {
             $days = 30;
         }
         $start = Carbon::parse($end, 'Asia/Shanghai')->subDays($days - 1)->toDateString();
         $accountId = request()->input('monitor_account_id');
 
-        return $this->success($this->publishing->board($start, $end, $accountId ? (int) $accountId : null));
+        return $this->success($this->publishing->board($start, $end, $accountId ? (int) $accountId : null, (string) request()->input('cursor', ''), (int) request()->input('limit', 500)));
     }
 
     private function dates(): array

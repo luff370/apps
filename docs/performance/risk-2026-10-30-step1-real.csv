@@ -1,0 +1,13 @@
+case,module,run,wall_ms,sql_ms,non_sql_ms,queries,count,complete,response_bytes,error
+overview.app.lately30,overview,1,3443.34,3337.87,105.47,9,,,5969,
+overview.app.lately30,overview,2,2489.01,2429.35,59.66,9,,,5969,
+overview.app.lately30,overview,3,2370.02,2333.76,36.26,9,,,5969,
+device.app.last30,device,1,599.45,592.13,7.32,5,24031,,12801,
+device.app.last30,device,2,508.03,505.27,2.76,5,24031,,12801,
+device.app.last30,device,3,540.54,531.73,8.81,5,24031,,12801,
+device.channel,device,1,4117.46,4108.11,9.35,5,15081,,12753,
+device.channel,device,2,1431,1428.24,2.76,5,15081,,12753,
+device.channel,device,3,1375.17,1372.98,2.19,5,15081,,12753,
+event.app.decision.verify,event,1,372.2,351.27,20.93,6,46,,13358,
+event.app.decision.verify,event,2,323.22,314.62,8.6,6,46,,13358,
+event.app.decision.verify,event,3,319.45,310.42,9.03,6,46,,13358,

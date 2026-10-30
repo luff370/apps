@@ -1,0 +1,66 @@
+{
+    "fixture": false,
+    "scope": "Read-only local service calls, no HTTP\/auth\/frontend time",
+    "checks": {
+        "explicit.device": true,
+        "explicit.ip": true,
+        "explicit.install": true,
+        "cursor_matches_offset_page": true
+    },
+    "measurements": {
+        "event.explicit.device": {
+            "wall_ms": [
+                3.29,
+                4.61,
+                26.28
+            ],
+            "median_ms": 4.61,
+            "response_bytes": 1072
+        },
+        "event.explicit.ip": {
+            "wall_ms": [
+                3.92,
+                4.41,
+                4.96
+            ],
+            "median_ms": 4.41,
+            "response_bytes": 5218
+        },
+        "event.explicit.install": {
+            "wall_ms": [
+                3.32,
+                3.46,
+                4.1
+            ],
+            "median_ms": 3.46,
+            "response_bytes": 1072
+        },
+        "event.list_without_count": {
+            "wall_ms": [
+                3.75,
+                4.1,
+                4.35
+            ],
+            "median_ms": 4.1,
+            "response_bytes": 13414
+        },
+        "event.separate_count": {
+            "wall_ms": [
+                110.35,
+                111.01,
+                143.45
+            ],
+            "median_ms": 111.01,
+            "response_bytes": 16
+        },
+        "event.cursor_page": {
+            "wall_ms": [
+                4.47,
+                6.06,
+                9.05
+            ],
+            "median_ms": 6.06,
+            "response_bytes": 13448
+        }
+    }
+}

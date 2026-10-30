@@ -115,6 +115,75 @@ class RiskAdminQueryTest extends TestCase
         $this->assertSame(99, $users[3]);
     }
 
+    public function test_grouped_device_pagination_counts_empty_pages_and_historical_matches(): void
+    {
+        $service = app(RiskAdminService::class);
+        $this->app->instance('request', \Illuminate\Http\Request::create('/', 'GET', ['page' => 1, 'limit' => 2]));
+        $result = $service->deviceList(['app_id' => 1, 'decision' => 'block']);
+        $this->assertSame(3, $result['count']);
+        $this->assertSame([10, 6], array_column($result['list'], 'id'));
+        $this->app->instance('request', \Illuminate\Http\Request::create('/', 'GET', ['page' => 2, 'limit' => 2]));
+        $this->assertSame([1], array_column($service->deviceList(['app_id' => 1, 'decision' => 'block'])['list'], 'id'));
+        $this->app->instance('request', \Illuminate\Http\Request::create('/', 'GET', ['page' => 99, 'limit' => 2]));
+        $result = $service->deviceList(['app_id' => 1]);
+        $this->assertSame(5, $result['count']);
+        $this->assertSame([], $result['list']);
+        $this->app->instance('request', \Illuminate\Http\Request::create('/', 'GET', ['page' => -1, 'limit' => 99999]));
+        $this->assertSame([1, 100], $service->getPageValue());
+    }
+
+    public function test_explicit_search_does_not_change_legacy_search(): void
+    {
+        DB::table('risk_probe_logs')->where('id', 2)->update(['user_uuid' => 'a', 'device_sn' => 'install-a',
+            'client_ip' => '192.0.2.1', 'app_version' => '1.0', 'risk_reasons' => '["root"]']);
+        DB::table('risk_probe_logs')->where('id', 4)->update(['client_ip' => '192.0.2.10', 'app_version' => '1.0.1', 'risk_reasons' => '["root_extra"]']);
+        $dao = app(RiskProbeLogDao::class);
+        $ids = fn ($type, $keyword) => $dao->search(['keyword_type' => $type, 'keyword' => $keyword])->orderBy('id')->pluck('id')->all();
+        $this->assertSame([2, 4], $ids('all', '192.0.2.1'));
+        $this->assertSame([2], $ids('ip', '192.0.2.1'));
+        $this->assertSame([2, 4], $ids('ip_prefix', '192.0.2.1'));
+        $this->assertSame([], $ids('ip_prefix', '192.0.2.%'));
+        $this->assertSame([], $ids('ip', 'invalid'));
+        $this->assertSame([2], $ids('version', '1.0'));
+        $this->assertSame([2], $ids('reason', 'root'));
+        $this->assertSame([2], $ids('install', 'install-a'));
+        $this->assertSame([1, 2, 3], $ids('device', 'a'));
+    }
+
+    public function test_event_cursor_and_separate_count_use_same_anchor_and_do_not_skip_rows(): void
+    {
+        $service = app(RiskAdminService::class);
+        $this->app->instance('request', \Illuminate\Http\Request::create('/', 'GET', ['limit' => 2]));
+        $first = $service->eventList(['app_id' => 1, 'include_count' => 0]);
+        $this->assertNull($first['count']);
+        $this->assertTrue($first['has_more']);
+        $this->assertSame([10, 9], array_column($first['list'], 'id'));
+        DB::table('risk_probe_logs')->insert(['id' => 11, 'app_id' => 1, 'status' => 'ok', 'device_identity' => 'new']);
+        $second = $service->eventList(['app_id' => '1', 'cursor' => $first['next_cursor']]);
+        $this->assertSame([8, 6], array_column($second['list'], 'id'));
+        $this->assertSame(8, $second['count']);
+        $this->assertSame(8, $service->eventCount(['app_id' => 1, 'cursor' => $first['count_cursor']])['count']);
+        $this->app->instance('request', \Illuminate\Http\Request::create('/', 'GET', ['page' => 3, 'limit' => 2]));
+        $jump = $service->eventList(['app_id' => 1, 'cursor' => $first['count_cursor']]);
+        $this->assertSame([5, 4], array_column($jump['list'], 'id'));
+        $third = $service->eventList(['app_id' => 1, 'cursor' => $second['next_cursor']]);
+        $this->assertSame([5, 4], array_column($third['list'], 'id'));
+    }
+
+    public function test_cursor_rejects_tampering_and_different_filters(): void
+    {
+        $service = app(RiskAdminService::class);
+        $token = \App\Services\Risk\RiskQueryCursor::encode(['app_id' => 1], 10, 5);
+        foreach ([$token, 'broken'] as $cursor) {
+            try {
+                $service->eventList(['app_id' => 2, 'cursor' => $cursor]);
+                $this->fail('Changed filters or tampering must not silently restart pagination');
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                $this->assertArrayHasKey('cursor', $e->errors());
+            }
+        }
+    }
+
     private function invoke(object $service, string $method, array $args)
     {
         return (new \ReflectionMethod($service, $method))->invokeArgs($service, $args);

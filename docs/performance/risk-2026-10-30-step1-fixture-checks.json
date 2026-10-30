@@ -1,0 +1,48 @@
+{
+    "fixture_only": true,
+    "native_json_reason_filter": {
+        "actual": 20001,
+        "expected": 20001
+    },
+    "exact_ip_filter": {
+        "actual": 1,
+        "expected": 1
+    },
+    "synchronous_applyLog": {
+        "quiet": {
+            "wall_ms": [
+                4.43,
+                1.55,
+                1.93
+            ],
+            "sql_ms": [
+                2.34,
+                0.9,
+                1.41
+            ],
+            "query_count": [
+                5,
+                5,
+                5
+            ]
+        },
+        "risk_hit_hot_ip": {
+            "wall_ms": [
+                63.66,
+                60.12,
+                62.52
+            ],
+            "sql_ms": [
+                29.93,
+                29.86,
+                30.1
+            ],
+            "query_count": [
+                13,
+                13,
+                13
+            ]
+        }
+    },
+    "note": "Write-path tests executed only inside rollback transactions in the isolated synthetic database; no real application tables changed"
+}

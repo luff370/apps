@@ -1,0 +1,107 @@
+{
+    "device_month.original_index": {
+        "runs": [
+            2544.43
+        ],
+        "median_ms": 2544.43
+    },
+    "device_month.existing_time_index": {
+        "runs": [
+            444.02,
+            447.64,
+            506.06
+        ],
+        "median_ms": 447.64
+    },
+    "device_month.same_ids": true,
+    "device_month.two_groupings": {
+        "runs": [
+            828.73,
+            831.62,
+            844.45
+        ],
+        "median_ms": 831.62
+    },
+    "device_month.window_group_once": {
+        "runs": [
+            431.08,
+            433.37,
+            436.38
+        ],
+        "median_ms": 433.37
+    },
+    "device_month.same_page_and_count": true,
+    "keyword.legacy_uuid": {
+        "runs": [
+            1243.43,
+            1247.35,
+            1271.59
+        ],
+        "median_ms": 1247.35
+    },
+    "keyword.explicit_uuid": {
+        "runs": [
+            0.83,
+            0.85,
+            3.7
+        ],
+        "median_ms": 0.85
+    },
+    "keyword.legacy_ip": {
+        "runs": [
+            1229.14,
+            1232.41,
+            1255.03
+        ],
+        "median_ms": 1232.41
+    },
+    "keyword.explicit_ip": {
+        "runs": [
+            0.55,
+            0.76,
+            2.46
+        ],
+        "median_ms": 0.76
+    },
+    "event_verify.wide_page": {
+        "runs": [
+            1378.16,
+            1415.46,
+            1827.82
+        ],
+        "median_ms": 1415.46
+    },
+    "event_verify.ids_then_rows": {
+        "runs": [
+            157.46,
+            158.07,
+            165.96
+        ],
+        "median_ms": 158.07
+    },
+    "event_verify.same_page": true,
+    "event_deep.offset": {
+        "runs": [
+            1367.13,
+            1400.33,
+            1434.3
+        ],
+        "median_ms": 1400.33
+    },
+    "event_deep.cursor_page_only": {
+        "runs": [
+            1.65,
+            2.14,
+            2.4
+        ],
+        "median_ms": 2.14
+    },
+    "event_deep.same_page": true,
+    "notes": [
+        "Local service\/query timings, not HTTP timings",
+        "Median of 3 except guarded original month grouping",
+        "Explicit search modes have narrower, intentional semantics",
+        "Cursor result excludes boundary preparation and exact COUNT",
+        "Window pagination needs a fallback COUNT for an out-of-range empty page"
+    ]
+}

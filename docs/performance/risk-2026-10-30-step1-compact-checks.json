@@ -1,0 +1,117 @@
+{
+    "fixture": true,
+    "scope": "Read-only local service calls, no HTTP\/auth\/frontend time",
+    "checks": {
+        "compact_counts_preserved": true,
+        "compact_no_placeholder_arrays": true,
+        "devices.page1": true,
+        "devices.page2": true,
+        "devices.page500": true,
+        "devices.page501": true,
+        "accounts.page1": true,
+        "accounts.page2": true,
+        "accounts.page400": true,
+        "accounts.page401": true
+    },
+    "measurements": {
+        "dossier.legacy_detail": {
+            "wall_ms": [
+                171.29,
+                189.78,
+                282.5
+            ],
+            "median_ms": 189.78,
+            "response_bytes": 5045682
+        },
+        "dossier.compact_detail": {
+            "wall_ms": [
+                0.29,
+                0.33,
+                0.55
+            ],
+            "median_ms": 0.33,
+            "response_bytes": 687
+        },
+        "dossier.compact_list": {
+            "wall_ms": [
+                22.31,
+                24.91,
+                28.29
+            ],
+            "median_ms": 24.91,
+            "response_bytes": 13812
+        },
+        "relations.devices.page1": {
+            "wall_ms": [
+                47.73,
+                48.69,
+                49.87
+            ],
+            "median_ms": 48.69,
+            "response_bytes": 3100
+        },
+        "relations.devices.page2": {
+            "wall_ms": [
+                47.72,
+                49.71,
+                50.12
+            ],
+            "median_ms": 49.71,
+            "response_bytes": 3100
+        },
+        "relations.devices.page500": {
+            "wall_ms": [
+                50.41,
+                50.69,
+                50.81
+            ],
+            "median_ms": 50.69,
+            "response_bytes": 3101
+        },
+        "relations.devices.page501": {
+            "wall_ms": [
+                50.9,
+                51.42,
+                52.45
+            ],
+            "median_ms": 51.42,
+            "response_bytes": 42
+        },
+        "relations.accounts.page1": {
+            "wall_ms": [
+                31.66,
+                32.07,
+                32.9
+            ],
+            "median_ms": 32.07,
+            "response_bytes": 2875
+        },
+        "relations.accounts.page2": {
+            "wall_ms": [
+                31.95,
+                32.92,
+                33.04
+            ],
+            "median_ms": 32.92,
+            "response_bytes": 2875
+        },
+        "relations.accounts.page400": {
+            "wall_ms": [
+                40.62,
+                40.64,
+                41.08
+            ],
+            "median_ms": 40.64,
+            "response_bytes": 2880
+        },
+        "relations.accounts.page401": {
+            "wall_ms": [
+                39.08,
+                39.41,
+                40.3
+            ],
+            "median_ms": 39.41,
+            "response_bytes": 41
+        }
+    }
+}

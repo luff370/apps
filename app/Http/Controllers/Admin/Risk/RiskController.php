@@ -34,6 +34,7 @@ class RiskController extends Controller
             ['risk_level', ''],
             ['decision', ''],
             ['keyword', ''],
+            ['keyword_type', 'all'],
             ['time', ''],
             ['app_id', ''],
         ]);
@@ -44,7 +45,7 @@ class RiskController extends Controller
     public function deviceDetail($id)
     {
         $data = $this->adminService->deviceDetail((int) $id);
-        if (!$data) {
+        if (! $data) {
             return $this->fail('设备记录不存在');
         }
 
@@ -56,7 +57,7 @@ class RiskController extends Controller
         return $this->success($this->adminService->deviceGraph($id));
     }
 
-    public function events()
+    private function eventFilter(): array
     {
         $filter = $this->getMore([
             ['app_id', ''],
@@ -64,10 +65,24 @@ class RiskController extends Controller
             ['decision', ''],
             ['risk_level', ''],
             ['keyword', ''],
+            ['keyword_type', 'all'],
             ['time', ''],
         ]);
 
-        return $this->success($this->adminService->eventList($filter));
+        $filter['include_count'] = request()->input('include_count', true);
+        $filter['cursor'] = (string) request()->input('cursor', '');
+
+        return $filter;
+    }
+
+    public function events()
+    {
+        return $this->success($this->adminService->eventList($this->eventFilter()));
+    }
+
+    public function eventCount()
+    {
+        return $this->success($this->adminService->eventCount($this->eventFilter()));
     }
 
     public function clusters()

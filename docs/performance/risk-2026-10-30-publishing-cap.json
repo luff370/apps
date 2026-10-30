@@ -1,0 +1,10 @@
+{
+    "range": [
+        "2026-09-30",
+        "2026-10-29"
+    ],
+    "raw_matching_rows": 726876,
+    "source_limit": 5000,
+    "returned_events": 437,
+    "reported_complete": true
+}

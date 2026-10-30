@@ -35,7 +35,7 @@ class RiskAdminService extends Service
             User::query()
                 ->select('uuid')
                 ->where('uuid', '!=', '')
-                ->when(!empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
+                ->when(! empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
                 ->groupBy('uuid')
                 ->havingRaw('COUNT(*) >= 2'),
             'multi_accounts'
@@ -89,16 +89,16 @@ class RiskAdminService extends Service
     private function deviceSnapshot(array $filter): array
     {
         $latest = $this->dao->latestDeviceIds($filter)->addSelect('device_identity');
-        $index = $this->dao->snapshotIndex($filter);
+        $index = empty($filter['app_id']) ? 'rpl_device_snapshot' : 'rpl_app_device_snapshot';
         $table = $index !== null && DB::connection()->getDriverName() === 'mysql'
-            ? DB::raw('`risk_probe_logs` as `l` FORCE INDEX (`' . $index . '`)')
+            ? DB::raw('`risk_probe_logs` as `l` FORCE INDEX (`'.$index.'`)')
             : 'risk_probe_logs as l';
         $query = DB::table($table)
             ->joinSub($latest, 'd', function ($join) {
                 $join->on('l.device_identity', '=', 'd.device_identity')->on('l.id', '=', 'd.id');
             })
             ->where('l.status', 'ok');
-        if (!empty($filter['app_id'])) {
+        if (! empty($filter['app_id'])) {
             $query->where('l.app_id', $filter['app_id']);
         }
 
@@ -154,7 +154,7 @@ class RiskAdminService extends Service
     {
         if (DB::connection()->getDriverName() === 'mysql') {
             $index = empty($filter['app_id']) ? 'rpl_farm_ip_agg' : 'rpl_app_time_agg';
-            $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`' . $index . '`)'));
+            $query->getQuery()->from(DB::raw('`risk_probe_logs` FORCE INDEX (`'.$index.'`)'));
         }
 
         return $query;
@@ -179,23 +179,27 @@ class RiskAdminService extends Service
     public function deviceList(array $filter): array
     {
         [$page, $limit] = $this->getPageValue();
-        if ($this->dao->snapshotIndex($filter) === 'rpl_device_snapshot') {
-            // 无筛选时一次覆盖索引扫描更快，避免 count / page 重复扫描全历史。
-            $ids = $this->dao->latestDeviceIds($filter)->toBase()->pluck('id')->all();
-            rsort($ids);
-            $count = count($ids);
-            $pageIds = array_slice($ids, max(0, ($page - 1) * $limit), $limit);
-            $rows = $pageIds === [] ? collect() : RiskProbeLog::query()->whereIn('id', $pageIds)
-                ->orderByDesc('id')->get(RiskProbeLog::adminListColumns());
+        // Compute exact total and page in the same grouping pass.
+        $group = $this->dao->latestDeviceIds($filter);
+        if ($this->dao->snapshotIndex($filter) === 'rpl_device_snapshot' && empty($filter['decision']) && empty($filter['risk_level'])) {
+            // Keep the existing lightweight unfiltered path; it already groups only once.
+            $allIds = (clone $group)->toBase()->pluck('id')->all();
+            rsort($allIds);
+            $count = count($allIds);
+            $ids = array_slice($allIds, ($page - 1) * $limit, $limit);
+        } elseif ($this->supportsWindowCount()) {
+            $pageRows = (clone $group)->selectRaw('COUNT(*) OVER () as total')
+                ->orderByDesc('id')->forPage($page, $limit)->toBase()->get();
+            $count = $pageRows->isNotEmpty() ? (int) $pageRows->first()->total
+                : ($page === 1 ? 0 : (int) DB::query()->fromSub($group, 'devices')->count());
+            $ids = $pageRows->pluck('id')->all();
         } else {
-            $count = (int) DB::query()->fromSub($this->dao->latestDeviceIds($filter), 'devices')->count();
-            // 先在分组结果中分页 ID，只为当前页回表，避免半连接扫描/排序所有日志。
-            $ids = $count > 0
-                ? $this->dao->latestDeviceIds($filter)->orderByDesc('id')->forPage($page, $limit)->toBase()->pluck('id')->all()
-                : [];
-            $rows = $ids === [] ? collect() : RiskProbeLog::query()->whereIn('id', $ids)
-                ->orderByDesc('id')->get(RiskProbeLog::adminListColumns());
+            // Compatibility for MySQL 5.7: keep exact results without requiring a server upgrade.
+            $count = (int) DB::query()->fromSub(clone $group, 'devices')->count();
+            $ids = $count > 0 ? $group->orderByDesc('id')->forPage($page, $limit)->toBase()->pluck('id')->all() : [];
         }
+        $rows = $ids === [] ? collect() : RiskProbeLog::query()->whereIn('id', $ids)
+            ->orderByDesc('id')->get(RiskProbeLog::adminListColumns());
 
         $list = [];
         if ($count > 0 && $rows->isNotEmpty()) {
@@ -221,10 +225,25 @@ class RiskAdminService extends Service
         return compact('list', 'count');
     }
 
+    private function supportsWindowCount(): bool
+    {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return true;
+        }
+        $version = DB::connection()->getPdo()->getAttribute(\PDO::ATTR_SERVER_VERSION);
+        if (stripos($version, 'MariaDB') !== false) {
+            preg_match('/(\d+\.\d+\.\d+)-MariaDB/', $version, $matches);
+
+            return isset($matches[1]) && version_compare($matches[1], '10.2.0', '>=');
+        }
+
+        return version_compare($version, '8.0.0', '>=');
+    }
+
     public function deviceDetail(int $id): array
     {
         $log = RiskProbeLog::query()->find($id);
-        if (!$log) {
+        if (! $log) {
             return [];
         }
         $apps = DeviceEnvRiskView::appNameMap();
@@ -274,7 +293,7 @@ class RiskAdminService extends Service
     public function deviceGraph($key): array
     {
         $log = $this->findDeviceLog($key);
-        if (!$log) {
+        if (! $log) {
             return [
                 'device' => null,
                 'accounts' => [],
@@ -299,7 +318,7 @@ class RiskAdminService extends Service
         $similar = $this->similarDevices($log, $apps, $channels);
 
         $nodes = [[
-            'id' => 'device_' . $device['id'],
+            'id' => 'device_'.$device['id'],
             'name' => $device['device_identity'],
             'category' => 0,
             'symbolSize' => 56,
@@ -309,7 +328,7 @@ class RiskAdminService extends Service
         $links = [];
         foreach ($accounts as $acc) {
             $nodes[] = [
-                'id' => 'account_' . $acc['user_id'],
+                'id' => 'account_'.$acc['user_id'],
                 'name' => $acc['account'],
                 'category' => 1,
                 'symbolSize' => 28,
@@ -317,14 +336,14 @@ class RiskAdminService extends Service
                 'raw' => array_merge(['type' => 'account'], $acc),
             ];
             $links[] = [
-                'source' => 'device_' . $device['id'],
-                'target' => 'account_' . $acc['user_id'],
+                'source' => 'device_'.$device['id'],
+                'target' => 'account_'.$acc['user_id'],
                 'relation' => '同设备登录',
             ];
         }
         foreach ($similar as $sim) {
             $nodes[] = [
-                'id' => 'sim_' . $sim['id'],
+                'id' => 'sim_'.$sim['id'],
                 'name' => $sim['device_identity'],
                 'category' => 2,
                 'symbolSize' => 36,
@@ -332,8 +351,8 @@ class RiskAdminService extends Service
                 'raw' => array_merge(['type' => 'similar_device'], $sim),
             ];
             $links[] = [
-                'source' => 'device_' . $device['id'],
-                'target' => 'sim_' . $sim['id'],
+                'source' => 'device_'.$device['id'],
+                'target' => 'sim_'.$sim['id'],
                 'relation' => $sim['relation'] ?? '相似设备',
             ];
         }
@@ -357,13 +376,18 @@ class RiskAdminService extends Service
     public function eventList(array $filter): array
     {
         [$page, $limit] = $this->getPageValue();
-        $query = $this->dao->search($filter);
-        $count = (clone $query)->count();
+        [$query, $anchor, $before] = $this->eventPageQuery($filter);
+        $countQuery = $this->dao->eventQuery($filter, true)->where('id', '<=', $anchor);
+        $count = filter_var($filter['include_count'] ?? true, FILTER_VALIDATE_BOOLEAN) ? (clone $countQuery)->count() : null;
+        $ids = (clone $query)->orderByDesc('id')->offset($before ? 0 : ($page - 1) * $limit)
+            ->limit($limit + 1)->toBase()->pluck('id')->all();
+        $hasMore = count($ids) > $limit;
+        $ids = array_slice($ids, 0, $limit);
         $list = [];
-        if ($count > 0) {
+        if ($ids !== []) {
             $apps = DeviceEnvRiskView::appNameMap();
             $channels = DeviceEnvRiskView::channelMap();
-            $rows = (clone $query)->orderByDesc('id')->forPage($page, $limit)->get(RiskProbeLog::adminListColumns());
+            $rows = RiskProbeLog::query()->whereIn('id', $ids)->orderByDesc('id')->get(RiskProbeLog::adminListColumns());
             $items = [];
             foreach ($rows as $log) {
                 $items[] = DeviceEnvRiskView::formatLog($log, $apps, $channels);
@@ -385,7 +409,38 @@ class RiskAdminService extends Service
             $list = $items;
         }
 
-        return compact('list', 'count');
+        return [
+            'list' => $list, 'count' => $count, 'has_more' => $hasMore,
+            'next_cursor' => $hasMore ? RiskQueryCursor::encode($filter, $anchor, (int) end($ids)) : null,
+            'count_cursor' => RiskQueryCursor::encode($filter, $anchor, 0),
+        ];
+    }
+
+    public function eventCount(array $filter): array
+    {
+        [, $anchor] = $this->eventPageQuery($filter);
+
+        return ['count' => $this->dao->eventQuery($filter, true)->where('id', '<=', $anchor)->count()];
+    }
+
+    private function eventPageQuery(array $filter): array
+    {
+        $cursor = RiskQueryCursor::decode($filter['cursor'] ?? '', $filter);
+        $anchor = $cursor['anchor'] ?? (int) RiskProbeLog::query()->max('id');
+        $before = $cursor['before'] ?? 0;
+        $query = $this->dao->eventQuery($filter)->where('id', '<=', $anchor);
+        if ($before > 0) {
+            $query->where('id', '<', $before);
+        }
+
+        return [$query, $anchor, $before];
+    }
+
+    public function getPageValue(): array
+    {
+        [$page, $limit] = parent::getPageValue();
+
+        return [max(1, $page), max(1, min(100, $limit))];
     }
 
     public function clusters(array $filter): array
@@ -415,7 +470,7 @@ class RiskAdminService extends Service
         $rows = User::query()
             ->select('uuid', DB::raw('COUNT(*) as account_count'))
             ->where('uuid', '!=', '')
-            ->when(!empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
+            ->when(! empty($filter['app_id']), fn ($q) => $q->where('app_id', $filter['app_id']))
             ->groupBy('uuid')
             ->havingRaw('COUNT(*) >= 2')
             ->orderByDesc('account_count')
@@ -428,17 +483,17 @@ class RiskAdminService extends Service
         $clusters = [];
         foreach ($rows as $row) {
             $log = $logs->get($row->uuid);
-            if (!$log) {
+            if (! $log) {
                 continue;
             }
             $formatted = DeviceEnvRiskView::formatLog($log, $apps, $channels);
             $sample = array_slice($samples[$row->uuid] ?? [], 0, 3);
-            $blob = strtolower($formatted['device_identity'] . ' ' . $formatted['hardware_hash'] . ' ' . implode(' ', $sample));
-            if ($keyword !== '' && !str_contains($blob, $keyword)) {
+            $blob = strtolower($formatted['device_identity'].' '.$formatted['hardware_hash'].' '.implode(' ', $sample));
+            if ($keyword !== '' && ! str_contains($blob, $keyword)) {
                 continue;
             }
             $clusters[] = [
-                'id' => 'ma_' . $formatted['device_identity'],
+                'id' => 'ma_'.$formatted['device_identity'],
                 'cluster_type' => 'multi_account',
                 'title' => '同设备多账号',
                 'device_identity' => $formatted['device_identity'],
@@ -496,12 +551,12 @@ class RiskAdminService extends Service
             $accounts = $identity !== '' ? ($samples[$identity] ?? []) : [];
             $sample = array_values(array_unique(array_slice($accounts, 0, 3)));
             $hardware = $formatted['hardware_hash'] ?? '';
-            $blob = strtolower($ip . ' ' . $hardware . ' ' . implode(' ', $sample));
-            if ($keyword !== '' && !str_contains($blob, $keyword)) {
+            $blob = strtolower($ip.' '.$hardware.' '.implode(' ', $sample));
+            if ($keyword !== '' && ! str_contains($blob, $keyword)) {
                 continue;
             }
             $clusters[] = [
-                'id' => 'farm_' . md5((string) $ip),
+                'id' => 'farm_'.md5((string) $ip),
                 'cluster_type' => 'farm',
                 'title' => '疑似设备农场',
                 'device_identity' => '',
@@ -538,7 +593,7 @@ class RiskAdminService extends Service
 
     private function similarDevices(RiskProbeLog $log, array $apps, array $channels): array
     {
-        if (!$log->client_ip) {
+        if (! $log->client_ip) {
             return [];
         }
         $identity = DeviceEnvRiskView::identityFromLog($log);
