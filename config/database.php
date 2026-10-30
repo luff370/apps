@@ -137,6 +137,20 @@ return [
             'database' => env('REDIS_DB', '0'),
         ],
 
+        // Short timeouts isolate risk publication failures from ordinary API latency.
+        'risk' => [
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
+            'username' => env('REDIS_USERNAME'),
+            'password' => env('REDIS_PASSWORD'),
+            'port' => env('REDIS_PORT', '6379'),
+            'database' => env('RISK_REDIS_DB', env('REDIS_DB', '0')),
+            'timeout' => (float) env('RISK_REDIS_TIMEOUT', 0.2),
+            'read_timeout' => (float) env('RISK_REDIS_TIMEOUT', 0.2),
+            'read_write_timeout' => (float) env('RISK_REDIS_TIMEOUT', 0.2),
+            'retry_interval' => 0,
+        ],
+
         'cache' => [
             'url' => env('REDIS_URL'),
             'host' => env('REDIS_HOST', '127.0.0.1'),

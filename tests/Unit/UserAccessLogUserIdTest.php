@@ -97,6 +97,20 @@ class UserAccessLogUserIdTest extends TestCase
         $this->assertCount(0, $this->userSelects());
     }
 
+    public function test_each_log_preserves_its_original_response_including_audit_status(): void
+    {
+        foreach ([1, 0] as $isAudit) {
+            $response = ['is_audit' => $isAudit, 'nested' => ['title' => '返回参数', 'items' => [1, false, null]]];
+            (new RecordAccessLog(0, 10027, 'huawei', '2.6.2', 'Android', 'device-uuid',
+                'device-uuid', '127.0.0.1', 'api/app/info', $response))->handle();
+        }
+        $logs = \App\Models\UserAccessLog::query()->orderBy('id')->get();
+        $this->assertCount(2, $logs);
+        $this->assertSame(1, $logs[0]->return_data['is_audit']);
+        $this->assertSame(0, $logs[1]->return_data['is_audit']);
+        $this->assertSame(['title' => '返回参数', 'items' => [1, false, null]], $logs[0]->return_data['nested']);
+    }
+
     private function writeLog(int $uid = 0, string $uuid = 'device-uuid', ?string $token = null): void
     {
         (new RecordAccessLog($uid, 10027, 'huawei', '2.6.2', 'Android', $uuid,

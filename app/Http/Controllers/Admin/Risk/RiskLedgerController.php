@@ -26,6 +26,19 @@ class RiskLedgerController extends Controller
     ) {
     }
 
+    public function probabilityBoard()
+    {
+        [$start, $end] = $this->dates();
+        [$page, $limit] = $this->page();
+
+        return $this->success($this->probability->board($start, $end, (int) request()->input('flow_days', 7), (int) request()->input('access_days', 7), $page, $limit));
+    }
+
+    public function ledgerStatus()
+    {
+        return $this->success(app(\App\Services\Risk\RiskLedgerService::class)->progress());
+    }
+
     public function summary()
     {
         [$start, $end] = $this->dates();
@@ -162,7 +175,7 @@ class RiskLedgerController extends Controller
     public function storeMonitorAccount()
     {
         try {
-            $row = $this->accounts->save(null, (string) request()->input('account', ''), (string) request()->input('subject', request()->input('subject_name', '')));
+            $row = $this->accounts->save(null, (string) request()->input('account', ''), (string) request()->input('subject', request()->input('subject_name', '')), (int) request()->input('app_id', 0));
         } catch (AdminException $e) {
             return $this->fail($e->getMessage());
         } catch (QueryException $e) {
@@ -175,7 +188,7 @@ class RiskLedgerController extends Controller
     public function updateMonitorAccount($id)
     {
         try {
-            $row = $this->accounts->save((int) $id, (string) request()->input('account', ''), (string) request()->input('subject', request()->input('subject_name', '')));
+            $row = $this->accounts->save((int) $id, (string) request()->input('account', ''), (string) request()->input('subject', request()->input('subject_name', '')), (int) request()->input('app_id', 0));
         } catch (AdminException $e) {
             return $this->fail($e->getMessage());
         }
@@ -200,7 +213,17 @@ class RiskLedgerController extends Controller
         $start = Carbon::parse($end, 'Asia/Shanghai')->subDays($days - 1)->toDateString();
         $accountId = request()->input('monitor_account_id');
 
-        return $this->success($this->publishing->board($start, $end, $accountId ? (int) $accountId : null, (string) request()->input('cursor', ''), (int) request()->input('limit', 500)));
+        return $this->success($this->publishing->board($start, $end, $accountId ? (int) $accountId : null, (string) request()->input('cursor', ''), (int) request()->input('limit', 500), (string) request()->input('market_channel', '')));
+    }
+
+    public function publishingActivities($id)
+    {
+        [$page, $limit] = $this->page();
+        [$start, $end] = $this->dates();
+
+        return $this->success(app(\App\Services\Risk\PublishingQuery::class)->page($start, $end,
+            request()->input('monitor_account_id') ? (int) request()->input('monitor_account_id') : null,
+            (string) request()->input('market_channel', ''), $page, $limit, (string) $id, (string) request()->input('category', 'all'), request()->has('anchor_id') ? (int) request()->input('anchor_id') : null));
     }
 
     private function dates(): array

@@ -283,3 +283,216 @@ php tools/risk-performance-fixture.php --drop=risk_perf_fixture_012345abcdef
 前后端需要一同发布，按项目现有流程更新路由缓存与 PHP OPcache；本轮无需迁移、索引 DDL、定时任务或 worker。旧事件列表仍默认携带 count，旧 IP 列表/详情默认保留原格式。上架监控的截断结果改为显式分批，调用者应使用新游标继续读取；本轮页面已接入。
 
 跨月概览仍需精确计算整个区间的 IP→设备去重，应用近 30 天概览约 **2.5～2.6 s**，全局近 30 天约 **3.85 s**。综合 OR / JSON 文本模糊搜索在本轮矩阵仍约 **1.8～1.9 s**；选项首次加载、关系分组精确 count 也并非零成本。旧客户端主动请求完整 IP 详情仍会加载全关联。下一阶段若要继续大幅降低这些耗时，应按阶段 B 做增量投影/去重统计与对账；不恢复定时全量扫描，不把这些慢场景说成已全部解决。
+
+## 11. 四份功能说明与实际接入核对（2026-10-30）
+
+核对来源为用户提供的 `01-风控概览.md`、`02-上架监控.md`、`03-风控名单.md`、`04-释放记录.md`，均更新于 2026-10-22。将其作为验收依据，未执行文档中的操作建议，也未改动原文件。文档中的“仅示例/尚未实现”是当时状态；当前代码已有真实接口，必须区分“接口存在”“页面调用真实接口”“业务闭环正确”“实际数据/部署已运行”四层。
+
+本次执行只读本机 MySQL 查询、内存 SQLite 复现与既有测试；没有启动历史回填或自动释放，没有改动业务数据、调度配置或风控判定代码。未连接阿里云，不能把本机状态直接当作线上部署状态。
+
+### 11.1 “统计尚未完成”的实际原因
+
+本机只读检查时间：2026-10-30 21:58:39 +08:00。
+
+| 检查项 | 结果 |
+| --- | --- |
+| `risk_probe_logs` 实际行数 | 957774 |
+| 源日志最大 ID | 1991486（ID 有空洞，不等于日志条数） |
+| 源日志最近发生时间 | 2026-10-29 10:12:33 |
+| `risk_ledger_meta` id=1 | 不存在，服务读取 cursor=0 |
+| `risk_ledger_applied` | 0 |
+| scopes / intakes / visits / dossiers / timeline | 均为 0 |
+| releases / revocations / activity_events / monitor_accounts | 均为 0 |
+| 需处理的 `id > cursor` 实际日志数 | 957774 |
+| `caughtUp()` / summary.complete | false / false |
+| summary 三项指标 | 均为 null，未返回假 0 |
+| 当前用户 crontab 中 artisan 调度/风控同步入口 | 0 条；不排除外部进程管理器或其他用户调度 |
+
+触发链为 `RiskLedgerService::caughtUp()`（约 90 行，cursor 与源 max ID 比较）→ `RiskProbabilityService::summary/ranking` → `probability/index.vue::loadLive`。因此这次提示反映账本尚未初始化/追平，不能理解成浏览器还在执行一条慢查询，也不能简单移除提示。
+
+代码已在 `Console/Kernel.php` 注册 `app:risk-ledger-sync` 每分钟运行，但仅有注册不代表机器实际运行了 Laravel scheduler。`RiskProbeAuditService::record` 的实时路径调用 `applyLog`，不会推进顺序同步 cursor；内存复现为 source=1/applied=1/cursor=0，仍 complete=false，说明调度仍是必要依赖。没有现场运行日志和线上进程信息，不能断言线上不存在其他同步失败原因。
+
+`app:risk-ledger-sync` 按递增 ID、batch 和 max-seconds 增量推进，与用户已否决的“定时全历史重新计算概览”不是同一个方案。但首次有近百万条积压，不应在本次核对中直接启动；每条风险记录还会重算该 IP 档案，热点 IP 回填成本较高。不得直接把 cursor 改为 max ID 或强置 complete=true，这会把缺失事实伪装成完整数据。
+
+### 11.2 模块接入结论
+
+| 模块 | 当前确实已接入 | 尚未满足说明的部分 |
+| --- | --- | --- |
+| 风控概率/新概览 | summary/trends/ranking 真实接口、区间 IP 去重、完整退出事实、历史状态事件回放、连续日期、显式示例隔离、未知显示 null | 本机账本未初始化；账号事实不完整；访问仍从探针样本/路径推测；没有跨接口统一查询水位/读事务；排行榜前端固定读取第一页 100 项；主体/App 授权数据范围未落实 |
+| 上架监控 | 真实版本规划、监控账号服务端保存/停用、批量 board、事件 ID 游标与部分数据提示、连续甘特图、分类圈数 | 普通账号身份/实际登录事实不完整；账号探针统一伪装 login；被拒状态枚举遗漏；主体只保存文字、同账号跨主体被前端合并；缺构建/提交尝试及历史状态；圈数仍聚合已加载事件，没有完整范围人数统计及版本明细独立服务端分页 |
+| 风控名单 | 服务端 IP 档案、完整过滤/状态数量、SQL 关系分页、事件时间线、部分设备释放后仍按剩余范围计算 IP 状态 | 正常登录/活动未进时间线；账号回填没刷新档案/收录事实；设备/账号关联只有简化字段，标签缺首次/最近命中及完整证据；安装身份未按 App 作用域去重；缺主体/App 数据隔离 |
+| 释放记录 | 真实列表、七项后端搜索、规则/范围快照、事务撤销、版本校验、request_id、反复释放 hold、独立菜单与显式示例 | 客户端实际策略闭环缺失；审核历史硬锁会遗漏；补传可触发释放；本机无活动/释放数据；页面固定前 100 条、重置不请求、详情未调用完整详情接口、失败重试生成新幂等键；IPv6 非标准写法搜索失败 |
+
+因此四个模块属于“主要页面和接口已连接，但业务与部署尚未完整验收”，不能整体标为已正确完成。尤其前一轮性能优化并不等于完成了这些业务验收。
+
+### 11.3 优先问题与复现证据
+
+**P0：审核中访问的禁止释放依据没有持久化，可能遗漏。**
+
+`RiskReleaseEngine::reviewBlock`（约 392 行）根据当前版本任务状态及最近 200 条探针重新推断；`VersionPlanService::savePlan` 还会删除并重建平台任务，没有保存事件时的审核状态和稳定提交尝试。内存复现：
+
+1. 某版本在审核中时发生访问，blockers 返回 reviewing_visit/prevent=true。
+2. 将任务更新为已上架，原硬锁退化为 review_status_unknown/pause=true。
+3. 再产生 201 条上架后访问，原审核访问不在最近 200 条内，blockers 变为空。
+
+这违反“后来上架不抹掉原审核中访问”的明确要求。修复应在可信事件匹配时固化硬锁事实/来源/版本/任务尝试，释放读取有效硬锁，不能仅扩大 LIMIT。
+
+**P0：同一批离线/历史补传可以直接触发 30 分钟释放。**
+
+`ActivityEventService::ingest`（16 行起）保存客户端事件序号但没有验证序号连续性/时间单调性；`tryRelease/UsageWindow` 使用整批历史时间累计，`onlineInteraction` 只核对资格交互的接收时间差。内存复现：一个有效范围，提交 62 条每 30 秒一条、覆盖 30 分多钟的历史事件，全部在同一时刻收到，最后一条交互为当前时间；accepted=62，随后产生一条自动释放、scope 变为 released。没有实际等待 30 分钟。
+
+这违反“离线补传用于补历史，不能仅凭补传立即释放”的要求。路由 `api/risk/activity-events/batch` 只挂 device_env_risk，没有用户 token_auth；需要支持匿名使用的同时，建立可信安装/会话上下文和可选登录认证，不宜直接加必登录条件误伤匿名用户。
+
+**P0：账本释放/撤销未接入实际下发策略。**
+
+全仓调用核对：`RiskReleaseEngine` 改 `risk_scopes`、写释放/退出/时间线；`DeviceEnvRiskService::context`（323 行）仍只评分并叠加旧 `RiskListService`，`applyAppInfoPolicy`（179 行）仅读当前 riskContext，不读取账本有效 scope/释放/撤销。没有找到将“本轮软性处置解除/恢复”反馈到实际客户端策略的读取路径。当前只能确认账本状态变化，不能确认用户端实际解除/恢复风控；新的硬风险仍必须重新收录，不能通过无条件白名单替代这个闭环。
+
+**P1：正常活动、账号和访问统计没有打通。**
+
+- `applyLog` 对普通通过日志只 touchActivity，不生成 login 时间线；ActivityEventService 也不写 risk_timeline/risk_visits。
+- scope 和 intake 首次写入 user_id=null（RiskLedgerService 约 177/195 行）。采集到已登录活动后，仅更新 scopes.user_id，不回填 intake 或刷新档案。
+- 内存复现：活动已 accepted，scope.user_id='123'，但 intake.user_id=null、dossier.account_count=0，timeline 只有 intake，没有 login。实际路由又没有注册 authUserId 的 TokenAuth，真实登录账号获取本身也没有完成。
+- `coverage` 按样本数和 route 的 login/sign 子串判断 visit，按 source_log_id 去重，未建立独立稳定访问 ID；不能保证心跳/重传排除或实际访问次数准确。
+
+需要区分“收录时账号事实快照”与“后来登录建立的有时间范围账号关联”，不能把当前账号无条件回填成当时已登录。
+
+**P1：上架监控存在事件类型、身份和状态错误。**
+
+- PublishingMonitorService 约 155 行，任何命中测试账号的探针都返回 event_type=login；其他风险事件返回 guard，普通用户的真实 user_id 不返回，因此不能据此验收真实登录次数/其他账号人数。
+- 前端 model.js 的 classifyActivity/inSubmissionWindow（130/173 行）仍使用“已拒绝”，遗漏当前枚举“被拒”；没有 listed_at 的被拒任务会继续作为提审窗口，纳入本应结束后的黄色记录。
+- accountSummary 对无账号/无设备记录回退 record:key，仍把每条未知记录计成独立对象，没有文档要求的 unknown 量。
+- monitor subject_name 是展示文字；账号匹配跨 App 使用全局账号集合，前端按账号字符串去重，不满足主体命名空间。
+
+**P1：释放页面只读取第一页，部分交互未真正调用接口。**
+
+`probability/releases.vue::loadReleases`（373 行）固定 page=1/limit=100，无服务端分页控件；总数超过 100 时余下记录无法访问。resetSearch（356 行）仅清空筛选，没有重新读取真实列表。详情按钮仅 `detail=record`，没有调用已有 `GET releases/{id}`，完整 released_scopes/evidence 未展示。confirmUndo（416 行）每次生成新 request_id，超时重试无法按文档以同键核对上一次执行结果。
+
+`RiskReleaseQuery::apply` 只有 normalized===原字符串时才做精确 IP 查询。内存复现同一 IPv6：压缩小写查询返回 1，展开大写写法返回 0，未满足规范化精确匹配。
+
+**P1：授权、身份及完整性仍有缺口。**
+
+所有风险查询主要读取全库，没有按当前操作者主体/App 数据范围过滤；管理员 token/菜单权限不等于行级数据权限。SystemRoleServices 还对未登记 api_url 的接口放行，需要把新接口纳入权限核对。同一个安装兜底标识目前在全局 IP 设备数量上按字符串去重，没有 App 命名空间，不能保证不同 App 的同名安装被区分。若系统只允许超级管理员看全库，应明确产品范围；按四份文档的主体隔离要求，当前未完成。
+
+卡片/排行/趋势分别查询，没有统一一致性水位；访问日缺失标记只作用于日行，页面顶部 complete 仅取 summary/ranking。历史源日志已清理的部分也不能凭“cursor追平”证明全时期完整，需要记录数据覆盖起点及缺失原因。
+
+### 11.4 修复顺序与验证边界
+
+1. 先补实际策略闭环、审核硬锁持久化、采集可信度与补传隔离、主体/App 授权；这些影响真实释放正确性。
+2. 再打通真实登录/访问、账号时间关联、IP 时间线和统计事实；修复上架监控枚举/未知量/分页及释放页交互。
+3. 为旧数据定义可恢复范围：原探针可回放收录，但不能凭旧日志补造不存在的审核历史、登录身份、前台会话或原始访问去重 ID；缺失保持未知。
+4. 在隔离库对账通过后，再按 ID 游标限量补账和持续增量同步；展示进度、最后成功时间、积压和错误。先观察吞吐及主库负载，避免同时启动自动释放。
+5. 数据达到明确截止水位后再恢复可用统计；自动释放以端到端验收和新采集覆盖为启用依据，不以账本非空为依据。
+
+复现命令：`php tools/risk-integration-checks.php`；工具强制 SQLite :memory:，不连接业务数据库执行写入。复现结果：`docs/performance/risk-2026-10-30-integration-checks.json`。复现仅在 SQLite :memory: 运行，合成身份与 IP，无业务写入。既有 `RiskLedgerRulesTest`、`RiskActivityAndReleaseQueryTest` 合计 10 tests / 144 assertions 通过，但覆盖的是局部规则，不能代替上面的集成验收；本轮新增的复现直接展示了这些既有测试未覆盖的问题。
+
+## 12. 功能补全实施与验收（2026-10-30）
+
+本节覆盖第 11 节审计后的实施结果。已确认：所有管理员可查看全部 App；业务日期统一 `Asia/Shanghai`；历史仅统计和追溯，上线后的新处置才参与客户端拦截和自动释放。本机没有原生 App 源码。
+
+### 12.1 本轮已落地
+
+- **概率概览**：一次事务返回汇总、排行和趋势，统一快照时间；排行 SQL 分页；账本进度单独轻量查询。前端分别提示补账中、所选日期未覆盖、历史真实访问无法还原，未知值不填成 0。
+- **上架监控**：从轻量访问事实查询，完整去重计数与预览事件分页分离，抽屉按版本/渠道/账号服务端分页。匹配按 App、版本、渠道及最近提交尝试确定；重复且无法唯一确定的尝试不强行归属。红色只来自真实登录/访问，不把任意探针当作测试账号登录；历史缺少账号身份时不凭 UUID 猜账号。被拒/撤回且无结束时间不延长成无限审核窗口。
+- **风控名单**：收录、IP 档案、原因证据、账号关联与游标同事务提交；重放幂等。正常活动可更新已有档案时间线和账号关联；原始收录账号快照保留。设备身份区分跨 App 设备与 App 内安装标识；设备详情统计关联账号与事件。IPv6 查询先标准化。
+- **释放记录及实际策略**：同 App/设备的新有效处置接入客户端广告/合规决策；释放只软化相同原始风险依据，出现新风险重新收录。撤销有资源版本、稳定请求号、IP 锁及审计，恢复后重新累计使用证据。记录列表支持完整分页、重置重新请求和独立详情。
+- **审核硬证据**：版本任务修改前后追加审核快照，历史审核访问/测试账号证据独立保存，不因任务被替换、已上架或最近 200 条探针之外而消失。无法还原事件时审核状态时暂停释放。
+- **30 分钟规则**：要求同 App/设备/会话、连续序号、单调时钟、前台与交互、服务器接收时间共同满足；离线批量补传不能补出在线 30 分钟。旧协议可以入账，但不自动释放。后台和锁屏不计时，长后台切断连续使用。
+
+### 12.2 历史隔离
+
+迁移 `2026_10_30_170000_isolate_historical_risk_scopes.php` 冻结源日志最大 ID 到 `risk_ledger_meta.enforcement_source_id`，并把已有范围设为 `policy_eligible=0`。补账按源 ID 判定历史，新命中创建独立有效范围，不把旧处置合并升级为生效处置。客户端策略与自动释放都只读取有效范围；人工维护的原有黑/观察名单继续按原规则工作。
+
+本机隔离边界为 **1991486**，历史范围 **7073** 个。名单中的历史状态保留用于追溯，不等同于当前客户端拦截状态。上线必须先部署迁移再放开新代码流量，避免切换期间的在途请求归类不一致。
+
+### 12.3 数据与查询验收
+
+本机已执行两项本轮风控迁移并补齐 **957774** 条现有探针；`cursor_id=source_max_id=1991486`，账本已追平。形成 7073 条收录、6925 个 IP 档案、50205 条访问/风险事实、15212 条原因证据。没有生成虚假的历史登录账号或释放记录。日志 ID 有空洞，游标比例不能当作已处理条数比例。
+
+验收 JSON：`docs/performance/risk-2026-10-30-completion-verification.json`。本机数据库、直接调用服务、每项 3 次，最新一轮耗时：
+
+| 查询 | 耗时 |
+| --- | --- |
+| 概率汇总+排行+双趋势 | 15～39 ms |
+| IP 档案首页（20 条，紧凑返回） | 9～12 ms |
+| 上架监控（30 日，完整汇总+预览） | 1054～1100 ms |
+
+这不是线上 2 核 8G 的压测结果，也不是原 `/risk/overview` 接口的同口径前后对照。上架监控仍是较重查询；本轮先保证完整统计与明确归属，进一步缓存应围绕账本游标、版本计划/账号配置修订生成键，并保留原始事实可追溯性。
+
+自动回归：60 项 PHPUnit / 431 个断言；全部使用内存 SQLite，避免测试删除本机业务表。两个前端脚本覆盖旧分页回归以及新增的重置、过期响应、撤销重试幂等和汇总快照行为；前端生产构建与修改文件 ESLint 校验通过。
+
+### 12.4 上线与低配置运行
+
+本轮没有给 `risk_probe_logs` 新增索引，也没有恢复定时全量扫描。账本按主键游标增量处理，历史补账只执行一次；同批只刷新受影响的 IP。自动释放每轮限量且通过共享缓存游标轮转，不固定反复检查前 200 个范围；客户端活动到达时也会触发对应设备评估。
+
+上线部署顺序（项目已有基础账本迁移的前提下）：
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_30_160000_complete_risk_integration.php --force
+php artisan migrate --path=database/migrations/2026_10_30_170000_isolate_historical_risk_scopes.php --force
+php artisan app:risk-ledger-sync --batch=200 --max-seconds=10
+```
+
+同步重复执行直到 `probability/status` 返回 `complete=true`。生产环境持续安排每分钟增量同步，并确保同一实例不会并发跑两份；释放命令每 5 分钟运行一次即可。Laravel Kernel 已注册这两个任务。若项目没有启用全局 scheduler，可单独为这两个命令配置带 `flock -n` 的系统 cron，先使用 `--batch=200 --max-seconds=10` 和 `--limit=200`，观察新增速率和执行日志再调节。共享缓存应使用已有持久缓存，不使用只存在于单次进程的 array store。
+
+本机只完成有限补账和只读验收，没有新增系统 cron、启用全局 scheduler 或运行历史自动释放。不能为风控直接开启全局 scheduler 而忽略其中其他业务任务。
+
+### 12.5 尚需原生 App 联调
+
+服务端协议见 `docs/device-env-risk-testing.md` 的“风控活动采集与释放协议（第二版）”。由于客户端源码缺失，真实前后台/锁屏/触摸采集尚未接入 App。旧客户端不满足可信使用证据时保持不自动释放；服务端测试不能替代真实 App 的端到端验收。空闲 300 秒、断档 90 秒、后台切段 300 秒仍为现有联调默认值，规则接口明确列为 provisional。
+
+## 13. Laravel 异步队列隔离（2026-10-30）
+
+本节替代第 12 节中“新活动入库后在请求内评估”的实现描述。按最新确认，采用 Laravel 的 Redis 异步队列，不修改其他业务的默认队列行为。
+
+### 13.1 请求内与 Worker 的边界
+
+| 路径 | 请求内工作 | 后台工作 |
+| --- | --- | --- |
+| 普通带 Device-Env 的客户端接口 | 原有验签/评分；必要的只读策略查询；写一条原始探针与一个队列任务 | 校验候选账号归属、账本收录、审核硬证据、IP 锁、账号关联、原因证据、档案与统计更新 |
+| 活动批量上报 | 格式/登录校验、保存原始活动、投递唤醒任务 | 活动事实、时间线、关联、档案及释放评估 |
+| 已释放设备的策略检查 | 只读检查释放/审核/硬性限制 | 新的审核访问证据由日志消费者固化 |
+
+正常审计路径不再查询 users 表核实账号归属，而是记录服务器登录缓存解析出的候选 ID，消费者校验 App 归属后才能使用。客户端在探针中自行声明的 `_user_id` 不会被直接采纳。只读策略路径不再隐式捕获版本计划、写审核证据或获取 IP 锁。
+
+原始探针保存在 `risk_probe_logs`，活动保存在 `risk_activity_events`。请求内仍有持久化写入与必要读取，不能宣称零 IO 或数据库故障时零延迟；这轮移除了新增的多表统计事务和 IP 锁等待。未带 Device-Env 的旧请求仍沿用既有跳过审计行为。
+
+### 13.2 独立队列与失败恢复
+
+- `config/queue.php` 新增名为 `risk` 的 Redis queue connection，使用 `database.redis.risk` 专用连接，队列名也为 risk。`config/risk.php` 默认指定该 connection，现有 `QUEUE_CONNECTION=sync` 不会使风控任务同步执行。
+- Redis 连接沿用 REDIS_HOST/PORT/USERNAME/PASSWORD/URL，数据库可由 RISK_REDIS_DB 覆盖。连接与读取超时默认 0.2 秒（RISK_REDIS_TIMEOUT），不改动其他 Redis 连接。Worker 采用非阻塞取任务加 sleep，避免短读取超时与长阻塞取任务冲突。
+- `RiskWorkDispatcher` 只接受真正的异步驱动（database/redis/sqs/beanstalkd）。误配 sync/null 会报告错误并保留原始记录，不在业务请求中执行 handle。
+- `ProcessRiskProbe` 通过有界主键增量消费推进账本；`ProcessRiskActivity` 消费未处理活动。任务最多重试 5 次，退避 3/10/30/60 秒，timeout 60 秒，Redis risk connection 的 retry_after 120 秒。
+- 活动使用带索引的 `projected_at` 标记，衍生更新、处理标记和对应释放评估同事务。失败回滚后重新处理；重复任务不会重复增加访问事实或释放。待处理索引只用于活动表，不给 `risk_probe_logs` 追加索引。
+- 原始记录写入成功、入队失败时，已有每分钟账本同步与新增 `app:risk-activity-sync` 提供补偿。队列消费是日常主路径，定时任务只补增量，不重新扫描全量日志。
+- 还有未投影活动时，统计完整性标记保持未完成，自动释放暂停；服务器接收时间和单调时钟证据原样保留，后台处理延迟不能算作用户使用时间。延迟过大、不满足在线条件时等待后续在线交互，不追补自动放行。
+- 同一设备尚有未处理活动时不提前释放，避免账号或审核证据尚未补齐就先做释放判断。历史仅统计的隔离口径不变。
+
+### 13.3 部署命令
+
+先确认线上 Redis 可用并安装此前风控迁移，再执行本轮迁移（活动表加入处理标记；此前迁移创建的 risk_jobs 空表保留兼容，本版不向该表投递任务）：
+
+```bash
+php artisan migrate --path=database/migrations/2026_10_30_180000_async_risk_activity_projection.php --force
+php artisan config:cache
+php artisan queue:work risk --queue=risk --sleep=1 --tries=5 --timeout=60 --memory=128 --max-time=3600
+```
+
+2 核 8G、当前访问量先运行 **1 个 Worker**。生产用进程管理器保持运行；示例 `docs/deploy/risk-worker.conf.example` 中的 PHP 路径、项目目录和用户必须替换为线上实际值。Worker 停止时请求仍然可以写原始记录和入队，统计及关联更新会延迟；因此 Worker 必须随本轮一起部署，不能只发布代码。
+
+保留已有的每分钟增量同步，并新增每分钟活动补偿。Kernel 已配置受限的账本任务（batch 200/max-seconds 10）及活动任务（默认 batch 100/max-seconds 10）。如只启用风控的独立 cron，应分别执行这两个命令并加互斥，不能直接开启项目全部 scheduler 任务。
+
+无需改全局 QUEUE_CONNECTION。风控配置为 `RISK_QUEUE_CONNECTION=risk`、`RISK_QUEUE=risk`，其中 risk 是专用的 Redis 队列连接名，Worker 命令中的 connection 参数仍为 risk。这样可以独立设置超时与 retry_after，避免改动其他业务共用的 redis 队列连接。发布新版任务代码后执行 `php artisan queue:restart` 使常驻 Worker 载入新版本。
+
+故障恢复可使用 `php artisan queue:failed` 查看失败任务、`php artisan queue:retry <id>` 重试，通过 `Queue::connection('risk')->size('risk')` 检查 Redis 队列积压，同时检查 `probability/status.activity_pending` 和账本游标。成功处理的队列任务自动删除，原始业务事实按既有留存策略保留。Redis 持久化沿用线上运维策略，本次不修改 Redis 服务配置。
+
+### 13.4 本机验证
+
+本机新迁移已执行。切换后，Redis PING 和随机隔离队列的实际入队、Worker 消费测试通过，未清理共享队列或 Redis 数据库。没有改变本机全局 QUEUE_CONNECTION，没有开启全局 scheduler，也没有安装生产 Supervisor 配置或启动永久后台进程。
+
+内存 SQLite 测试实际调用 Laravel `queue:work --once` 消费任务，验证源记录与任务在请求内入库、账本在 Worker 内生成；覆盖同步驱动拒绝、入队故障补偿、跨 App 候选账号拒绝、Worker 失败回滚重试、活动投影完成前暂停释放，以及异步后的 30 分钟规则。验收时不把“任务已经入队”当作“统计已经完成”。
+
+最终回归为 67 项内存 SQLite 测试、497 个断言通过；真实本机 Redis 的 2 项集成测试、10 个断言通过。SQLite 队列契约测试使用数据库适配器，保证离线可重复；真实 Redis 的任务序列化、消费和确认由独立集成测试验证。Redis 测试仅连接本机 127.0.0.1:6379，使用随机测试队列并只清理该队列：
+
+```bash
+RISK_REDIS_INTEGRATION=1 DB_CONNECTION=sqlite DB_DATABASE=:memory: vendor/bin/phpunit tests/Integration/RiskRedisQueueTest.php
+```

@@ -1,0 +1,41 @@
+{
+    "scope_created": 1,
+    "applied_count": 1,
+    "cursor_after_realtime_apply": 0,
+    "caught_up_after_realtime_apply": false,
+    "activity_result": {
+        "accepted": 1,
+        "duplicated": 0,
+        "rejected": 0
+    },
+    "scope_user_id": "123",
+    "intake_user_id": null,
+    "dossier_account_count": 0,
+    "timeline_types_after_activity": [
+        "intake"
+    ],
+    "review_initial": [
+        {
+            "type": "reviewing_visit",
+            "prevent": true
+        }
+    ],
+    "review_after_listing": [
+        {
+            "type": "review_status_unknown",
+            "pause": true
+        }
+    ],
+    "review_after_201_later_visits": [],
+    "ipv6_search_counts": [
+        1,
+        0
+    ],
+    "single_bulk_backfill_without_token": {
+        "accepted": 62,
+        "duplicated": 0,
+        "rejected": 0
+    },
+    "release_count_after_bulk": 1,
+    "scope_state_after_bulk": "released"
+}

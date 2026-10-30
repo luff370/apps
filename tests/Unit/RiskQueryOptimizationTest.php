@@ -3,10 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\Risk\Ledger\IpNormalizer;
-use App\Services\Risk\PublishingMonitorService;
 use App\Services\Risk\RiskDossierService;
 use App\Services\Risk\RiskLedgerService;
-use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +18,9 @@ class RiskQueryOptimizationTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
         (require database_path('migrations/2026_10_28_120000_create_risk_ledger_tables.php'))->up();
+        (require database_path('migrations/2026_10_30_160000_complete_risk_integration.php'))->up();
+        (require database_path('migrations/2026_10_30_170000_isolate_historical_risk_scopes.php'))->up();
+        (require database_path('migrations/2026_10_30_180000_async_risk_activity_projection.php'))->up();
         Schema::create('system_apps', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -84,7 +85,7 @@ class RiskQueryOptimizationTest extends TestCase
         foreach (range(1, 25) as $n) {
             foreach ([1, 2] as $appId) {
                 DB::table('risk_scopes')->insert([
-                    'ip' => $ip, 'app_id' => $appId, 'device_identity' => sprintf('device-%02d', $n),
+                    'ip' => $ip, 'app_id' => $appId, 'identity_kind' => 'device', 'device_identity' => sprintf('device-%02d', $n),
                     'user_id' => 'same-account', 'collected_at' => '2026-10-01 00:00:00',
                     'updated_at' => '2026-10-29 12:00:00',
                 ]);
@@ -99,8 +100,9 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertSame(2, $page['list'][0]['apps']);
         $this->assertFalse($page['has_more']);
         $queries = DB::getQueryLog();
-        $this->assertCount(3, $queries);
-        $this->assertStringContainsString('limit 20 offset 20', end($queries)['query']);
+        $this->assertCount(5, $queries);
+        $this->assertStringContainsString('limit 20 offset 20', $queries[2]['query']);
+        $this->assertSame(2, $page['list'][0]['account_count']);
         $this->assertSame(2, $this->service()->relations($id, 'accounts', 1, 20)['count']);
         $this->assertSame([], $this->service()->relations($id, 'devices', 9, 20)['list']);
         DB::flushQueryLog();
@@ -129,50 +131,49 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertNull($manual['days']);
     }
 
-    public function test_publishing_filters_before_limit_and_paginates_without_cross_app_account_matches(): void
+    public function test_publishing_filters_before_limit_and_paginates_without_cross_app_identity_guesses(): void
     {
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->integer('app_id');
-            $table->string('uuid');
-            $table->string('phone')->default('');
-            $table->string('account')->default('');
-            $table->integer('is_del')->default(0);
-        });
-        Schema::create('risk_probe_logs', function (Blueprint $table) {
-            $table->id();
-            $table->integer('app_id');
-            foreach (['app_version', 'market_channel', 'client_ip', 'user_uuid', 'device_sn', 'status'] as $field) {
-                $table->string($field)->default('');
-            }
-            foreach (['risk_score', 'compliance_mode', 'ad_switch'] as $field) {
-                $table->integer($field)->nullable();
-            }
-            $table->dateTime('created_at');
-        });
-        DB::table('users')->insert(['app_id' => 1, 'uuid' => 'watched-uuid', 'account' => 'test-account']);
-        $base = ['app_id' => 1, 'status' => 'ok', 'risk_score' => 0, 'compliance_mode' => 0, 'ad_switch' => 1,
-            'created_at' => '2026-10-29 12:00:00'];
-        DB::table('risk_probe_logs')->insert([
-            ['id' => 1, 'user_uuid' => 'risky', 'risk_score' => 90] + $base,
-            ['id' => 2, 'user_uuid' => 'watched-uuid'] + $base,
-            ['id' => 3, 'app_id' => 2, 'user_uuid' => 'watched-uuid'] + $base,
+        foreach (['app_version_plans', 'app_version_plan_tasks'] as $name) {
+            Schema::create($name, function (Blueprint $t) use ($name) {
+                $t->id();
+                if ($name === 'app_version_plans') {
+                    $t->integer('app_id');
+                } else {
+                    $t->integer('plan_id');
+                    foreach (['version', 'market_channel', 'status', 'submitted_at', 'listed_at'] as $f) {
+                        $t->string($f)->nullable();
+                    }
+                }
+            });
+        }
+        \Carbon\Carbon::setTestNow(\Carbon\Carbon::parse('2026-10-30 12:00:00', 'Asia/Shanghai'));
+        foreach ([1, 2] as $id) {
+            DB::table('app_version_plans')->insert(['id' => $id, 'app_id' => $id]);
+            DB::table('app_version_plan_tasks')->insert(['id' => $id, 'plan_id' => $id, 'version' => '1.0', 'market_channel' => 'huawei', 'status' => '审核中', 'submitted_at' => '2026-10-29 09:00:00']);
+        }
+        DB::table('risk_monitor_accounts')->insert(['account' => 'test-account', 'app_id' => 1]);
+        $base = ['app_id' => 1, 'device_identity' => 'device-a', 'version_name' => '1.0', 'market_channel' => 'huawei',
+            'decision' => 'pass', 'event_type' => 'access', 'occurred_at' => '2026-10-29 12:00:00', 'received_at' => '2026-10-29 12:00:00'];
+        DB::table('risk_access_facts')->insert([
+            ['id' => 1, 'event_key' => 'risk', 'event_type' => 'guard', 'decision' => 'block', 'account' => null] + $base,
+            ['id' => 2, 'event_key' => 'watched', 'account' => 'test-account'] + $base,
+            ['id' => 3, 'event_key' => 'same-device', 'account' => null, 'app_id' => 2] + $base,
         ]);
         foreach (array_chunk(range(4, 5005), 100) as $chunk) {
-            DB::table('risk_probe_logs')->insert(array_map(fn ($id) => ['id' => $id, 'user_uuid' => 'quiet'] + $base, $chunk));
+            DB::table('risk_access_facts')->insert(array_map(fn ($id) => ['id' => $id, 'event_key' => 'quiet-'.$id] + $base, $chunk));
         }
-        $method = new \ReflectionMethod(PublishingMonitorService::class, 'events');
-        $service = app(PublishingMonitorService::class);
-        $start = Carbon::parse('2026-10-01');
-        $end = Carbon::parse('2026-10-30');
-        $first = $method->invoke($service, [1, 2], ['test-account'], $start, $end, '', 1);
-        $this->assertSame([2], array_column($first['list'], 'id'));
-        $this->assertSame('test-account', $first['list'][0]['account']);
+        $query = app(\App\Services\Risk\PublishingQuery::class);
+        $first = $query->page('2026-10-01', '2026-10-30', null, '', 1, 1, null, 'all', 5005);
+        $this->assertSame(['2'], array_column($first['list'], 'id'));
+        $this->assertSame(2, $first['count']);
         $this->assertTrue($first['has_more']);
-        DB::table('risk_probe_logs')->insert(['id' => 5006, 'user_uuid' => 'new', 'risk_score' => 90] + $base);
-        $next = $method->invoke($service, [1, 2], ['test-account'], $start, $end, $first['next_cursor'], 1);
-        $this->assertSame([1], array_column($next['list'], 'id'));
+        DB::table('risk_access_facts')->insert(['id' => 5006, 'event_key' => 'new', 'decision' => 'block', 'event_type' => 'guard'] + $base);
+        $next = $query->page('2026-10-01', '2026-10-30', null, '', 2, 1, null, 'all', 5005);
+        $this->assertSame(['1'], array_column($next['list'], 'id'));
         $this->assertFalse($next['has_more']);
-        $this->assertNull($next['next_cursor']);
+        $aggregate = $query->aggregates('2026-10-01', '2026-10-30', null, '', 5005);
+        $this->assertSame(1, (int) $aggregate[0]['test_count']);
+        $this->assertSame(1, (int) $aggregate[0]['other_count']);
+        \Carbon\Carbon::setTestNow();
     }
 }

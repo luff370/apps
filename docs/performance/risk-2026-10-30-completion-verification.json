@@ -1,0 +1,90 @@
+{
+    "as_of": "2026-10-30T23:10:45+08:00",
+    "progress": {
+        "cursor_id": "1991486",
+        "source_max_id": "1991486",
+        "complete": true,
+        "last_success_at": "2026-10-30 22:53:54",
+        "coverage_started_at": "2026-08-16 11:14:43"
+    },
+    "counts": {
+        "risk_ledger_applied": 957774,
+        "risk_scopes": 7073,
+        "risk_intakes": 7073,
+        "risk_ip_dossiers": 6925,
+        "risk_access_facts": 50205,
+        "risk_reason_evidence": 15212,
+        "risk_scope_accounts": 0,
+        "risk_hard_blocks": 0,
+        "risk_releases": 0
+    },
+    "timings": {
+        "board": [
+            38.31,
+            17.47,
+            14.71
+        ],
+        "publishing": [
+            1099.51,
+            1056.1,
+            1054.42
+        ],
+        "dossiers": [
+            11.99,
+            9.63,
+            10.83
+        ]
+    },
+    "summary": {
+        "range": {
+            "start_date": "2026-10-24",
+            "end_date": "2026-10-30",
+            "timezone": "Asia\/Shanghai"
+        },
+        "as_of": "2026-10-30T23:10:45+08:00",
+        "snapshot_at": "2026-10-30T23:10:45+08:00",
+        "complete": true,
+        "intake_ip_count": 460,
+        "net_released_ip_count": 0,
+        "raw_release_count": 0,
+        "revoked_release_count": 0,
+        "progress": {
+            "cursor_id": "1991486",
+            "source_max_id": "1991486",
+            "complete": true,
+            "last_success_at": "2026-10-30 22:53:54",
+            "coverage_started_at": "2026-08-16 11:14:43"
+        },
+        "incomplete_reason": null,
+        "active_ip_total": 6925
+    },
+    "ranking_count": 7,
+    "access_complete": false,
+    "publishing": {
+        "apps": 13,
+        "returned_events": 233,
+        "aggregates_complete": true,
+        "aggregates": 3,
+        "unmatched_count": 20306
+    },
+    "dossiers": {
+        "count": 6925,
+        "state_counts": {
+            "all": 6925,
+            "high": 5381,
+            "watch": 1544,
+            "released": 0
+        },
+        "complete": true
+    },
+    "rollout": {
+        "enforcement_source_id": "1991486",
+        "historical_scopes": 7073,
+        "policy_scopes": 0
+    },
+    "device_relation_check": {
+        "count": 1,
+        "returned": 1,
+        "ms": 3.03
+    }
+}

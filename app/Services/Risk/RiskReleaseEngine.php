@@ -3,7 +3,6 @@
 namespace App\Services\Risk;
 
 use App\Exceptions\AdminException;
-use App\Models\AppVersionPlanTask;
 use App\Models\RiskList;
 use App\Models\SystemApp;
 use App\Models\User;
@@ -24,6 +23,7 @@ class RiskReleaseEngine
             ->where('app_id', $appId)
             ->where('device_identity', $device)
             ->where('state', 'active')
+            ->where('policy_eligible', true)
             ->get();
         $released = [];
         foreach ($scopes as $scope) {
@@ -39,11 +39,15 @@ class RiskReleaseEngine
     public function tryRelease(object $scope): ?array
     {
         return DB::transaction(function () use ($scope) {
+            $this->ledger->lockIp($scope->ip);
             $scope = DB::table('risk_scopes')->where('id', $scope->id)->lockForUpdate()->first();
-            if (!$scope || $scope->state !== 'active') {
+            if (! $scope || $scope->state !== 'active' || ! (bool) $scope->policy_eligible) {
                 return null;
             }
-            if ($scope->auto_release_hold_version === ReleaseRule::VERSION && !$scope->evidence_after_hold_at) {
+            if (DB::table('risk_activity_events')->where('app_id', $scope->app_id)->where('device_identity', $scope->device_identity)->whereNull('projected_at')->exists()) {
+                return $this->skip($scope, 'activity_projection_pending');
+            }
+            if ($scope->auto_release_hold_version === ReleaseRule::VERSION && ! $scope->evidence_after_hold_at) {
                 return $this->skip($scope, 'same_rule_hold');
             }
             $events = $this->activityEvents($scope);
@@ -51,16 +55,16 @@ class RiskReleaseEngine
                 return $this->skip($scope, 'no_usage_evidence');
             }
             $measured = UsageWindow::measure($events);
-            if (!$measured['qualified']) {
+            if (! $measured['qualified']) {
                 return $this->skip($scope, 'usage_not_qualified');
             }
-            $online = $this->onlineInteraction($scope, (int) $measured['qualifying_interaction_at']);
-            if (!$online) {
+            $online = $this->onlineInteraction($scope, (int) $measured['qualifying_interaction_at'], $measured['session_id']);
+            if (! $online) {
                 return $this->skip($scope, 'interaction_not_online');
             }
             $blockers = $this->blockers($scope);
             foreach ($blockers as $blocker) {
-                if (!empty($blocker['prevent']) || !empty($blocker['pause'])) {
+                if (! empty($blocker['prevent']) || ! empty($blocker['pause'])) {
                     return $this->skip($scope, (string) $blocker['type']);
                 }
             }
@@ -92,6 +96,8 @@ class RiskReleaseEngine
                     'threshold_reached_at' => Carbon::createFromTimestamp($measured['threshold_reached_at'])->timezone('Asia/Shanghai')->toIso8601String(),
                     'last_interaction_at' => Carbon::createFromTimestamp($measured['qualifying_interaction_at'])->timezone('Asia/Shanghai')->toIso8601String(),
                     'hard_blockers' => [],
+                    'received_time_bounded' => true,
+                    'usage_protocol_version' => 2,
                 ], JSON_UNESCAPED_UNICODE),
                 'explanation' => ReleaseRule::describe((int) $measured['effective_seconds']),
                 'ip_fully_released' => 0,
@@ -118,7 +124,7 @@ class RiskReleaseEngine
                 'updated_at' => now(),
             ]);
             $this->ledger->scopeEvent((int) $scope->id, $scope->ip, 'release', $now, false, $releaseId);
-            $activeLeft = DB::table('risk_scopes')->where('ip', $scope->ip)->where('state', 'active')->count();
+            $activeLeft = DB::table('risk_scopes')->where('ip', $scope->ip)->where('state', 'active')->where('policy_eligible', true)->count();
             $fully = $activeLeft === 0;
             if ($fully) {
                 DB::table('risk_ip_exits')->insert([
@@ -160,14 +166,30 @@ class RiskReleaseEngine
 
         return DB::transaction(function () use ($releaseId, $requestId, $expectedVersion, $operatorId, $operatorName) {
             $prior = DB::table('risk_revocations')->where('request_id', $requestId)->first();
+            if ($prior && (int) $prior->release_id !== $releaseId) {
+                throw new AdminException('请求号已用于另一条释放记录', 409);
+            }
             if ($prior) {
                 $release = DB::table('risk_releases')->where('id', $releaseId)->first();
 
                 return $this->revokePayload($release, $prior->result, false);
             }
+            $ip = DB::table('risk_releases')->where('id', $releaseId)->value('ip');
+            if ($ip) {
+                $this->ledger->lockIp($ip);
+            }
             $release = DB::table('risk_releases')->where('id', $releaseId)->lockForUpdate()->first();
-            if (!$release) {
+            if (! $release) {
                 throw new AdminException('释放记录不存在');
+            }
+            // A concurrent retry may have committed while this request waited for the IP lock.
+            $prior = DB::table('risk_revocations')->where('request_id', $requestId)->lockForUpdate()->first();
+            if ($prior) {
+                if ((int) $prior->release_id !== $releaseId) {
+                    throw new AdminException('请求号已用于另一条释放记录', 409);
+                }
+
+                return $this->revokePayload($release, $prior->result, false);
             }
             if ((int) $release->resource_version !== $expectedVersion) {
                 throw new AdminException('释放记录已变化，请刷新后重试', 409);
@@ -183,18 +205,21 @@ class RiskReleaseEngine
             $now = Carbon::now('Asia/Shanghai');
             foreach ($links as $link) {
                 $scope = DB::table('risk_scopes')->where('id', $link->scope_id)->lockForUpdate()->first();
-                if (!$scope || (int) $scope->release_id !== $releaseId || $scope->state !== 'released') {
+                if (! $scope || (int) $scope->release_id !== $releaseId || $scope->state !== 'released') {
                     $skipped[] = (int) $link->scope_id;
+
                     continue;
                 }
                 $newer = DB::table('risk_scopes')
                     ->where('app_id', $scope->app_id)
                     ->where('device_identity', $scope->device_identity)
                     ->where('ip', $scope->ip)
+                    ->where('policy_eligible', true)
                     ->where('state', 'active')
                     ->exists();
                 if ($newer) {
                     $skipped[] = (int) $scope->id;
+
                     continue;
                 }
                 DB::table('risk_scopes')->where('id', $scope->id)->update([
@@ -202,6 +227,7 @@ class RiskReleaseEngine
                     'released_at' => null,
                     'release_id' => null,
                     'auto_release_hold_version' => ReleaseRule::VERSION,
+                    'hold_at' => $now->toDateTimeString(),
                     'evidence_after_hold_at' => null,
                     'updated_at' => now(),
                 ]);
@@ -288,14 +314,23 @@ class RiskReleaseEngine
 
     private function activityEvents(object $scope): array
     {
+        $session = DB::table('risk_activity_events')->where('app_id', $scope->app_id)
+            ->where('device_identity', $scope->device_identity)->where('online_verified', 1)->orderByDesc('id')->value('session_id');
+        if (! $session) {
+            return [];
+        }
         $rows = DB::table('risk_activity_events')
+            ->where('session_id', $session)
             ->where('app_id', $scope->app_id)
             ->where('device_identity', $scope->device_identity)
-            ->where('occurred_at', '>=', $scope->collected_at)
-            ->orderBy('occurred_at')
-            ->orderBy('event_seq')
-            ->limit(5000)
+            ->where('occurred_at', '>=', $scope->hold_at ?? $scope->collected_at)
+            ->where('online_verified', 1)
+            ->orderByDesc('id')
+            ->limit(5001)
             ->get();
+        if ($rows->count() > 5000) {
+            return [];
+        }
         $events = [];
         foreach ($rows as $row) {
             if ($row->foreground === null || $row->screen_interactive === null) {
@@ -304,6 +339,8 @@ class RiskReleaseEngine
             $events[] = [
                 'at' => Carbon::parse($row->occurred_at)->timezone('Asia/Shanghai')->getTimestamp(),
                 'seq' => (int) $row->event_seq,
+                'received_at' => Carbon::parse($row->received_at)->timestamp,
+                'monotonic_ms' => $row->monotonic_elapsed_ms === null ? null : (int) $row->monotonic_elapsed_ms,
                 'session_id' => (string) $row->session_id,
                 'foreground' => (bool) $row->foreground,
                 'screen_interactive' => (bool) $row->screen_interactive,
@@ -314,29 +351,32 @@ class RiskReleaseEngine
         return $events;
     }
 
-    private function onlineInteraction(object $scope, int $at): bool
+    private function onlineInteraction(object $scope, int $at, ?string $sessionId = null): bool
     {
         $stamp = Carbon::createFromTimestamp($at)->timezone('Asia/Shanghai')->toDateTimeString();
         $row = DB::table('risk_activity_events')
             ->where('app_id', $scope->app_id)
             ->where('device_identity', $scope->device_identity)
             ->where('interaction', 1)
+            ->where('online_verified', 1)
+            ->when($sessionId !== null, fn ($q) => $q->where('session_id', $sessionId))
             ->where('occurred_at', $stamp)
             ->orderByDesc('id')
             ->first();
-        if (!$row) {
+        if (! $row) {
             return false;
         }
         $occurred = Carbon::parse($row->occurred_at)->getTimestamp();
         $received = Carbon::parse($row->received_at)->getTimestamp();
 
-        return abs($received - $occurred) <= ReleaseRule::ONLINE_SKEW_SECONDS;
+        return abs($received - $occurred) <= ReleaseRule::ONLINE_SKEW_SECONDS
+            && abs(Carbon::now('Asia/Shanghai')->timestamp - $received) <= ReleaseRule::ONLINE_SKEW_SECONDS;
     }
 
     /**
      * @return array<int, array{type:string,prevent?:bool,pause?:bool}>
      */
-    public function blockers(object $scope): array
+    public function blockers(object $scope, bool $readOnly = false): array
     {
         $blocks = [];
         if ($this->matchesMonitorAccount($scope)) {
@@ -345,7 +385,7 @@ class RiskReleaseEngine
         if ($this->explicitPrevent($scope)) {
             $blocks[] = ['type' => 'prevent_auto_release', 'prevent' => true];
         }
-        $review = $this->reviewBlock($scope);
+        $review = $this->reviewBlock($scope, $readOnly);
         if ($review) {
             $blocks[] = $review;
         }
@@ -355,7 +395,7 @@ class RiskReleaseEngine
 
     private function matchesMonitorAccount(object $scope): bool
     {
-        $accounts = DB::table('risk_monitor_accounts')->where('status', 1)->pluck('account')->all();
+        $accounts = DB::table('risk_monitor_accounts')->where('status', 1)->whereIn('app_id', [0, (int) $scope->app_id])->pluck('account')->all();
         if ($accounts === []) {
             return false;
         }
@@ -375,6 +415,11 @@ class RiskReleaseEngine
 
     private function explicitPrevent(object $scope): bool
     {
+        $match = RiskListService::match((string) $scope->device_identity, (string) $scope->install_id, (int) $scope->app_id);
+        if ($match && $match['list_type'] === RiskList::TYPE_BLACKLIST) {
+            return true;
+        }
+
         return RiskList::query()
             ->where('status', 1)
             ->where('decision', 'block')
@@ -389,70 +434,23 @@ class RiskReleaseEngine
             ->exists();
     }
 
-    private function reviewBlock(object $scope): ?array
+    private function reviewBlock(object $scope, bool $readOnly = false): ?array
     {
-        $tasks = AppVersionPlanTask::query()
-            ->select('app_version_plan_tasks.*')
-            ->join('app_version_plans', 'app_version_plans.id', '=', 'app_version_plan_tasks.plan_id')
-            ->where('app_version_plans.app_id', $scope->app_id)
-            ->get();
-        if ($tasks->isEmpty()) {
-            return null;
-        }
-        $visits = DB::table('risk_probe_logs')
-            ->where('app_id', $scope->app_id)
-            ->where('created_at', '>=', $scope->collected_at)
-            ->where(function ($query) use ($scope) {
-                $query->where('user_uuid', $scope->device_identity)->orWhere('device_sn', $scope->device_identity);
-            })
-            ->orderByDesc('id')
-            ->limit(200)
-            ->get(['app_version', 'market_channel', 'created_at']);
-        if ($visits->isEmpty() && $scope->version_name) {
-            $visits = collect([(object) [
-                'app_version' => $scope->version_name,
-                'market_channel' => $scope->market_channel,
-                'created_at' => $scope->collected_at,
-            ]]);
-        }
-        $pause = false;
-        foreach ($visits as $visit) {
-            $version = $this->versionKey($visit->app_version ?? '');
-            $channel = strtolower((string) ($visit->market_channel ?? ''));
-            if ($version === '' || $channel === '') {
-                continue;
-            }
-            $matched = $tasks->filter(function ($task) use ($version, $channel) {
-                return $this->versionKey($task->version) === $version
-                    && strtolower((string) $task->market_channel) === $channel;
-            })->sortByDesc(fn ($task) => (string) $task->submitted_at)->values();
-            if ($matched->isEmpty()) {
-                continue;
-            }
-            if ($matched->count() > 1 && (string) $matched[0]->submitted_at === (string) $matched[1]->submitted_at) {
-                $pause = true;
-                continue;
-            }
-            $task = $matched[0];
-            $submitAt = $task->submitted_at ? Carbon::parse($task->submitted_at) : null;
-            $listedAt = $task->listed_at ? Carbon::parse($task->listed_at) : null;
-            $at = Carbon::parse($visit->created_at);
-            if (!$submitAt || $at->lt($submitAt)) {
-                continue;
-            }
-            if ($listedAt && $at->greaterThanOrEqualTo($listedAt) && (string) $task->status === '已上架') {
-                continue;
-            }
-            $openReview = (string) $task->status === '审核中'
-                && !$task->listed_at
-                && $submitAt->format('H:i:s') !== '00:00:00';
-            if ($openReview) {
-                return ['type' => 'reviewing_visit', 'prevent' => true];
-            }
-            $pause = true;
-        }
+        $evidence = app(RiskReviewEvidence::class);
+        if ($evidence->locked((int) $scope->app_id, (string) $scope->device_identity)) {
+            $kind = DB::table('risk_hard_blocks')->where('app_id', $scope->app_id)->where('device_identity', $scope->device_identity)->whereNull('invalidated_at')->value('kind');
 
-        return $pause ? ['type' => 'review_status_unknown', 'pause' => true] : null;
+            return ['type' => $kind, 'prevent' => true];
+        }
+        $method = $readOnly ? 'statusAt' : 'observe';
+        $result = $evidence->{$method}((int) $scope->app_id, (string) $scope->device_identity,
+            (string) $scope->version_name, (string) $scope->market_channel, Carbon::parse($scope->collected_at));
+
+        return match ($result) {
+            'blocked' => ['type' => 'reviewing_visit', 'prevent' => true],
+            'unknown' => ['type' => 'review_status_unknown', 'pause' => true],
+            default => null,
+        };
     }
 
     private function versionKey(?string $version): string

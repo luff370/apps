@@ -30,6 +30,16 @@ return [
 
     'connections' => [
 
+        // Dedicated Redis queue; the global QUEUE_CONNECTION stays unchanged.
+        'risk' => [
+            'driver' => 'redis',
+            'connection' => 'risk',
+            'queue' => 'risk',
+            'retry_after' => 120,
+            'block_for' => null,
+            'after_commit' => true,
+        ],
+
         'sync' => [
             'driver' => 'sync',
         ],

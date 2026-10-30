@@ -27,16 +27,17 @@ class CommonController extends Controller
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);
 
-        $agreementRoot = $obfuscationService->effectiveApiDomainRoot($this->getAppId(), $this->getAppPackageName());
+        $packageName = $this->getAppPackageName();
+        $agreementRoot = $obfuscationService->effectiveApiDomainRoot($this->getAppId(), $packageName);
         $agreementRoot = $agreementRoot !== '' ? $agreementRoot : null;
         // 用户数
         $data['active_users'] = 34099;
         // 用户协议
-        $data['user_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'user', $this->getMarketChannel(), $agreementRoot);
+        $data['user_agreement'] = $agreementUrlAlias->url($this->getAppId(), $packageName, 'user', $this->getMarketChannel(), $agreementRoot);
         // 隐私政策
-        $data['privacy_agreement'] = $agreementUrlAlias->url($this->getAppId(), $this->getAppPackageName(), 'privacy', $this->getMarketChannel(), $agreementRoot);
+        $data['privacy_agreement'] = $agreementUrlAlias->url($this->getAppId(), $packageName, 'privacy', $this->getMarketChannel(), $agreementRoot);
         // Google Play 账号删除申请页
-        $data['account_deletion'] = url('account-deletion/' . $this->getAppPackageName());
+        $data['account_deletion'] = url('account-deletion/' . $packageName);
 
         // 应用基础配置(后期应用已废弃此配置项)
         $sysConfig = SystemConfigService::getAppConfigs($this->getAppId());

@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Services\Risk\RiskReleaseEngine;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class RunRiskAutoRelease extends Command
@@ -14,7 +15,14 @@ class RunRiskAutoRelease extends Command
 
     public function handle(RiskReleaseEngine $engine): int
     {
-        $scopes = DB::table('risk_scopes')->where('state', 'active')->orderBy('id')->limit(max(1, (int) $this->option('limit')))->get();
+        $cursor = (int) Cache::get('risk:auto-release:cursor', 0);
+        $query = DB::table('risk_scopes')->where('state', 'active')->where('policy_eligible', true);
+        $scopes = (clone $query)->where('id', '>', $cursor)->orderBy('id')->limit(max(1, min(1000, (int) $this->option('limit'))))->get();
+        if ($scopes->isEmpty()) {
+            Cache::forget('risk:auto-release:cursor');
+
+            return self::SUCCESS;
+        }
         $released = 0;
         foreach ($scopes as $scope) {
             $result = $engine->tryRelease($scope);
@@ -22,7 +30,8 @@ class RunRiskAutoRelease extends Command
                 $released++;
             }
         }
-        $this->info('检查 ' . $scopes->count() . ' 个有效范围，新释放 ' . $released . ' 条');
+        Cache::forever('risk:auto-release:cursor', (int) $scopes->last()->id);
+        $this->info('检查 '.$scopes->count().' 个有效范围，新释放 '.$released.' 条');
 
         return self::SUCCESS;
     }

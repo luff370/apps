@@ -1,0 +1,16 @@
+; Replace /srv/apps, /usr/bin/php and www with the actual deployment paths/user.
+[program:apps-risk-worker]
+process_name=%(program_name)s_%(process_num)02d
+command=/usr/bin/php /srv/apps/artisan queue:work risk --queue=risk --sleep=1 --tries=5 --timeout=60 --memory=128 --max-time=3600 --max-jobs=5000
+directory=/srv/apps
+numprocs=1
+autostart=true
+autorestart=true
+user=www
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=75
+redirect_stderr=true
+stdout_logfile=/srv/apps/storage/logs/risk-worker.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=3

@@ -82,8 +82,10 @@ class VersionPlanService extends Service
             $plan->save();
 
             // 计划任务属于一个小集合，整体重建比逐条 diff 更稳定，也避免遗留已删除渠道。
+            app(\App\Services\Risk\RiskReviewEvidence::class)->captureApp($appId);
+            // 旧渠道或版本被修改、移除后，也必须让原组合的审核状态立即失效。
+            $auditCacheKeys = $this->auditCacheKeysForPlan($appId, (int)$plan->id);
             AppVersionPlanTask::query()->where('plan_id', $plan->id)->delete();
-            $auditCacheKeys = [];
             $autoAddWhiteListTasks = [];
             foreach ($data['tasks'] as $task) {
                 $this->createTask($plan, $task);
@@ -94,11 +96,13 @@ class VersionPlanService extends Service
                     $autoAddWhiteListTasks[$channel] = $task;
                 }
             }
+            app(\App\Services\Risk\RiskReviewEvidence::class)->captureApp($appId);
             $syncedAutoAddWhiteList = $this->syncAutoAddWhiteListConfigs($appId, array_values($autoAddWhiteListTasks));
             if ($syncedAutoAddWhiteList) {
                 DB::afterCommit(fn() => AppConfigService::cacheByAppId($appId));
             }
             if (!empty($auditCacheKeys)) {
+                // 提交后再清缓存，避免其他请求在事务完成前缓存旧状态。
                 DB::afterCommit(function () use ($auditCacheKeys) {
                     foreach (array_keys($auditCacheKeys) as $cacheKey) {
                         cache()->forget($cacheKey);
@@ -159,10 +163,28 @@ class VersionPlanService extends Service
 
         DB::transaction(function () use ($plan) {
             $appId = (int)$plan->app_id;
+            // 删除前保留原组合，删除成功后清除对应审核缓存。
+            $auditCacheKeys = $this->auditCacheKeysForPlan($appId, (int)$plan->id);
             AppVersionPlanTask::query()->where('plan_id', $plan->id)->delete();
             $plan->delete();
+            DB::afterCommit(function () use ($auditCacheKeys) {
+                foreach (array_keys($auditCacheKeys) as $cacheKey) {
+                    cache()->forget($cacheKey);
+                }
+            });
             $this->syncAppMarketsFromListedTasks($appId);
         });
+    }
+
+    private function auditCacheKeysForPlan(int $appId, int $planId): array
+    {
+        // 同一计划可能包含重复组合，使用键集合去重。
+        $keys = [];
+        foreach (AppVersionPlanTask::query()->where('plan_id', $planId)->get(['market_channel', 'version']) as $task) {
+            $keys[AppVersionServices::auditStatusCacheKey($appId, $task->market_channel, $task->version)] = true;
+        }
+
+        return $keys;
     }
 
     /**
@@ -301,6 +323,7 @@ class VersionPlanService extends Service
                 ->first();
 
             if ($config) {
+                $config->changeSource = 'version_plan';
                 $next = [
                     'version' => $version,
                     'is_enable' => $enabled,
@@ -324,7 +347,7 @@ class VersionPlanService extends Service
                 continue;
             }
 
-            AppConfig::query()->create([
+            $config = new AppConfig([
                 'app_id' => $appId,
                 'channel' => $channel,
                 'version' => $version,
@@ -334,6 +357,8 @@ class VersionPlanService extends Service
                 'remark' => AppConfig::AUTO_ADD_WHITE_LIST_REMARK,
                 'is_enable' => 1,
             ]);
+            $config->changeSource = 'version_plan';
+            $config->save();
             $changed = true;
         }
 

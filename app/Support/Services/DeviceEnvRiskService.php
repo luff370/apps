@@ -2,10 +2,10 @@
 
 namespace App\Support\Services;
 
-use RuntimeException;
+use App\Services\Risk\RiskListService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use App\Services\Risk\RiskListService;
+use RuntimeException;
 
 class DeviceEnvRiskService
 {
@@ -15,7 +15,7 @@ class DeviceEnvRiskService
      * wire header -> HMAC 验签 -> AES 解密 -> 短键还原 -> 防重放
      * -> probe_v=9 schema 校验 -> 环境/行为组合评分 -> 风控决策
      *
-     * 本服务只生成风险上下文，不直接写数据库。落库由 RiskProbeAuditService 负责，
+     * 本服务生成风险上下文并关联处置与审核证据。探针落库由 RiskProbeAuditService 负责，
      * /app/info 的响应覆盖由 applyAppInfoPolicy() 负责，以保持解密、存储、业务策略解耦。
      *
      * 客户端为了降低明文字段暴露，会把字段名压缩成短键后再整体加密。
@@ -23,6 +23,8 @@ class DeviceEnvRiskService
      */
     private const WIRE_KEY_MAP = [
         // probe_v=9 schema 与原生协议自检。
+        'vi' => 'visit_id',
+        'et' => 'event_type',
         'ev' => 'env_schema_v',
         'ef' => 'env_field_count',
         'eg' => 'env_payload_digest',
@@ -161,7 +163,7 @@ class DeviceEnvRiskService
                 'validation' => $validation,
             ]);
         } catch (RuntimeException $e) {
-            logger()->warning('Device-Env 解析失败：' . $e->getMessage(), [
+            logger()->warning('Device-Env 解析失败：'.$e->getMessage(), [
                 'path' => $request->path(),
                 'method' => $request->method(),
                 'package_name' => $packageName,
@@ -192,17 +194,17 @@ class DeviceEnvRiskService
         if ($complianceMode === 1) {
             $data['compliance_mode'] = 1;
             $data['complianceMode'] = 1;
-        } elseif (!array_key_exists('compliance_mode', $data) && !array_key_exists('complianceMode', $data)) {
+        } elseif (! array_key_exists('compliance_mode', $data) && ! array_key_exists('complianceMode', $data)) {
             $data['compliance_mode'] = 0;
         }
 
         if ($adSwitch === 0) {
             $data['ad_switch'] = 0;
-        } elseif (!array_key_exists('ad_switch', $data)) {
+        } elseif (! array_key_exists('ad_switch', $data)) {
             $data['ad_switch'] = 1;
         }
 
-        if (!array_key_exists('is_free_ad', $data)) {
+        if (! array_key_exists('is_free_ad', $data)) {
             $data['is_free_ad'] = 0;
         }
 
@@ -215,7 +217,7 @@ class DeviceEnvRiskService
         if ($origin !== '') {
             return $origin;
         }
-        if ($packageName === '' || $appId === '' || !is_numeric($appId)) {
+        if ($packageName === '' || $appId === '' || ! is_numeric($appId)) {
             return '';
         }
 
@@ -238,7 +240,7 @@ class DeviceEnvRiskService
             throw new RuntimeException('unsupported device env version');
         }
 
-        if (!preg_match('/^[a-f0-9]{64}$/', $hmacHex)) {
+        if (! preg_match('/^[a-f0-9]{64}$/', $hmacHex)) {
             throw new RuntimeException('invalid device env hmac');
         }
 
@@ -246,7 +248,7 @@ class DeviceEnvRiskService
         // HMAC 覆盖的是 Base64 密文本身，而不是解码后的二进制密文；
         // 这需要和 Flutter 端保持完全一致，否则会出现“能解密但验签失败”的联调问题。
         $expected = hash_hmac('sha256', $base64Cipher, $keys['sign_key']);
-        if (!hash_equals($expected, strtolower($hmacHex))) {
+        if (! hash_equals($expected, strtolower($hmacHex))) {
             throw new RuntimeException('device env sign mismatch');
         }
 
@@ -261,7 +263,7 @@ class DeviceEnvRiskService
         }
 
         $decoded = json_decode($json, true);
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             throw new RuntimeException('invalid device env json');
         }
 
@@ -278,9 +280,9 @@ class DeviceEnvRiskService
         $root = hash('sha256', "device_env_v1|{$packageName}|{$appId}", true);
 
         return [
-            'aes_key' => substr(hash('sha256', $root . '|aes', true), 0, 32),
-            'aes_iv' => substr(hash('sha256', $root . '|iv', true), 0, 16),
-            'sign_key' => hash('sha256', $root . '|sign', true),
+            'aes_key' => substr(hash('sha256', $root.'|aes', true), 0, 32),
+            'aes_iv' => substr(hash('sha256', $root.'|iv', true), 0, 16),
+            'sign_key' => hash('sha256', $root.'|sign', true),
         ];
     }
 
@@ -314,8 +316,8 @@ class DeviceEnvRiskService
         // cache key 同时包含 package/appId，避免不同应用之间 nonce 碰撞互相影响。
         $ttl = (int) config('api_obfuscation.device_env.nonce_ttl_seconds', 600);
         $prefix = (string) config('api_obfuscation.device_env.nonce_cache_prefix', 'device_env:nc:');
-        $cacheKey = $prefix . $packageName . ':' . $appId . ':' . sha1($nonce);
-        if (!Cache::add($cacheKey, 1, $ttl)) {
+        $cacheKey = $prefix.$packageName.':'.$appId.':'.sha1($nonce);
+        if (! Cache::add($cacheKey, 1, $ttl)) {
             throw new RuntimeException('replayed device env');
         }
     }
@@ -325,8 +327,24 @@ class DeviceEnvRiskService
         // 统一返回结构放到 request attributes 中，后续控制器、日志或审计任务都可以复用。
         // status=missing/error 时 probe 为空，score 会自然为 0，不会触发广告降级。
         $decision = $this->score($probe, $meta['validation']['errors'] ?? []);
+        $rawDecision = $decision;
+        $policyProbe = array_replace($probe, [
+            'uuid' => ClientRequestContext::uuid() ?: ($probe['uuid'] ?? ''),
+            'device_sn' => ClientRequestContext::deviceSn() ?: ($probe['device_sn'] ?? ''),
+            'app_version' => ClientRequestContext::appVersion() ?: ($probe['app_version'] ?? ''),
+            'market_channel' => ClientRequestContext::marketChannel() ?: ($probe['market_channel'] ?? ''),
+        ]);
         try {
-            $decision = RiskListService::overlayDecision($decision, $probe, $meta);
+            if ($status === 'ok') {
+                $identity = (string) ($policyProbe['uuid'] ?: $policyProbe['device_sn']);
+                $decision = app(\App\Services\Risk\RiskPolicyService::class)->overlay($decision, (int) ($meta['app_id'] ?? 0), $identity, $policyProbe);
+            }
+        } catch (\Illuminate\Database\QueryException $e) {
+            // Old deployments retain the original conservative scoring until migration is installed.
+            report($e);
+        }
+        try {
+            $decision = RiskListService::overlayDecision($decision, $policyProbe, $meta);
         } catch (\Throwable $e) {
             // 名单表尚未迁移或缓存不可用时，不影响探针评分。
         }
@@ -334,6 +352,7 @@ class DeviceEnvRiskService
         return array_merge($meta, [
             'status' => $status,
             'probe' => $probe,
+            'raw_decision' => $rawDecision,
             'score' => $decision['score'],
             'reasons' => $decision['reasons'],
             'decision' => $decision,
@@ -463,12 +482,12 @@ class DeviceEnvRiskService
             $excluded = ['env_schema_v', 'env_field_count', 'env_payload_digest', 'ts', 'nc', 'ver'];
             $actualCount = count(array_filter(
                 $probe,
-                fn($value, $key) => $value !== null && !in_array($key, $excluded, true),
+                fn ($value, $key) => $value !== null && ! in_array($key, $excluded, true),
                 ARRAY_FILTER_USE_BOTH
             ));
             if (is_int($probe['env_field_count'] ?? null)) {
                 $fieldCountOk = $probe['env_field_count'] === $actualCount;
-                if (!$fieldCountOk) {
+                if (! $fieldCountOk) {
                     $errors[] = 'env_field_count_mismatch';
                 }
             }
@@ -478,7 +497,7 @@ class DeviceEnvRiskService
                 $digestPayload = array_diff_key($probe, array_flip(['env_payload_digest', 'ts', 'nc', 'ver']));
                 $expected = substr(hash('sha256', $this->canonicalJson($digestPayload)), 0, 16);
                 $digestOk = hash_equals($expected, $digest);
-                if (!$digestOk) {
+                if (! $digestOk) {
                     $errors[] = 'device_env_digest_mismatch';
                 }
             }
@@ -504,7 +523,7 @@ class DeviceEnvRiskService
     private function canonicalJson(array $payload): string
     {
         $normalize = function ($value) use (&$normalize) {
-            if (!is_array($value)) {
+            if (! is_array($value)) {
                 return $value;
             }
 
@@ -512,8 +531,9 @@ class DeviceEnvRiskService
                 return array_map($normalize, $value);
             }
 
-            $value = array_filter($value, fn($item) => $item !== null);
+            $value = array_filter($value, fn ($item) => $item !== null);
             ksort($value, SORT_STRING);
+
             return array_map($normalize, $value);
         };
 

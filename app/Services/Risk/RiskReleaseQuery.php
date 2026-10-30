@@ -6,8 +6,8 @@ use App\Services\Risk\Ledger\IpNormalizer;
 use App\Services\Risk\Ledger\ReasonCatalog;
 use App\Services\Risk\Ledger\ReleaseRule;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class RiskReleaseQuery
 {
@@ -44,16 +44,16 @@ class RiskReleaseQuery
 
     private function apply($query, array $filter): void
     {
-        if (!empty($filter['ip'])) {
+        if (! empty($filter['ip'])) {
             $ip = trim((string) $filter['ip']);
             $normalized = IpNormalizer::normalize($ip);
-            if ($normalized !== '' && $normalized === $ip) {
+            if ($normalized !== '') {
                 $query->where('ip', $normalized);
             } else {
-                $query->where('ip', 'like', '%' . addcslashes($ip, '%_\\') . '%');
+                $query->where('ip', 'like', '%'.addcslashes($ip, '%_\\').'%');
             }
         }
-        if (!empty($filter['app_id'])) {
+        if (! empty($filter['app_id'])) {
             $appId = (string) $filter['app_id'];
             $query->whereExists(function ($sub) use ($appId) {
                 $sub->selectRaw('1')->from('risk_release_scopes')
@@ -61,15 +61,15 @@ class RiskReleaseQuery
                     ->where('app_id', $appId);
             });
         }
-        if (!empty($filter['start_date'])) {
+        if (! empty($filter['start_date'])) {
             $query->where('released_at', '>=', Carbon::parse($filter['start_date'], 'Asia/Shanghai')->startOfDay()->toDateTimeString());
         }
-        if (!empty($filter['end_date'])) {
+        if (! empty($filter['end_date'])) {
             $query->where('released_at', '<', Carbon::parse($filter['end_date'], 'Asia/Shanghai')->addDay()->startOfDay()->toDateTimeString());
         }
         foreach (['device_keyword' => 'device_identity', 'user_keyword' => 'user_id'] as $input => $column) {
-            if (!empty($filter[$input])) {
-                $like = '%' . addcslashes(trim((string) $filter[$input]), '%_\\') . '%';
+            if (! empty($filter[$input])) {
+                $like = '%'.addcslashes(trim((string) $filter[$input]), '%_\\').'%';
                 $query->whereExists(function ($sub) use ($column, $like) {
                     $sub->selectRaw('1')->from('risk_release_scopes')
                         ->whereColumn('risk_release_scopes.release_id', 'risk_releases.id')
@@ -77,7 +77,7 @@ class RiskReleaseQuery
                 });
             }
         }
-        if (!empty($filter['unregistered'])) {
+        if (! empty($filter['unregistered'])) {
             $query->whereExists(function ($sub) {
                 $sub->selectRaw('1')->from('risk_release_scopes')
                     ->whereColumn('risk_release_scopes.release_id', 'risk_releases.id')
@@ -86,7 +86,7 @@ class RiskReleaseQuery
                     });
             });
         }
-        if (!empty($filter['market_channel'])) {
+        if (! empty($filter['market_channel'])) {
             $channel = (string) $filter['market_channel'];
             $query->whereExists(function ($sub) use ($channel) {
                 $sub->selectRaw('1')->from('risk_release_scopes')
@@ -94,13 +94,13 @@ class RiskReleaseQuery
                     ->where('market_channel', $channel);
             });
         }
-        if (!empty($filter['reason_code'])) {
+        if (! empty($filter['reason_code'])) {
             $code = preg_replace('/[^a-z0-9_]/', '', strtolower((string) $filter['reason_code']));
             if ($code !== '') {
                 $query->whereExists(function ($sub) use ($code) {
                     $sub->selectRaw('1')->from('risk_release_scopes')
                         ->whereColumn('risk_release_scopes.release_id', 'risk_releases.id')
-                        ->where('reason_codes', 'like', '%"' . $code . '"%');
+                        ->where('reason_codes', 'like', '%"'.$code.'"%');
                 });
             }
         }
@@ -145,7 +145,7 @@ class RiskReleaseQuery
             'can_revoke' => $row->status === 'released',
             'rule' => '连续使用达到 30 分钟',
             'code' => $row->rule_id ?: ReleaseRule::ID,
-            'version' => 'v' . ($row->rule_version ?: ReleaseRule::VERSION),
+            'version' => 'v'.($row->rule_version ?: ReleaseRule::VERSION),
             'condition' => (string) $row->explanation,
             'riskTags' => array_values($tags),
             'markets' => array_values($markets),

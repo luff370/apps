@@ -27,6 +27,26 @@ use Carbon\Carbon;
  */
 class AppConfig extends BaseModel
 {
+    public string $changeSource = '';
+
+    protected static function booted(): void
+    {
+        static::created(fn(self $config) => AppConfigChangeLog::record($config, 'create'));
+        static::updated(fn(self $config) => AppConfigChangeLog::record($config, 'update'));
+        static::deleted(fn(self $config) => AppConfigChangeLog::record($config, 'delete'));
+    }
+
+    // Keep configuration writes and their audit records atomic, including automatic writes.
+    public function save(array $options = [])
+    {
+        return $this->getConnection()->transaction(fn() => parent::save($options));
+    }
+
+    public function delete()
+    {
+        return $this->getConnection()->transaction(fn() => parent::delete());
+    }
+
     const CACHE_BY_APPID = "app_config:%s";
 
     const AUTO_ADD_WHITE_LIST_KEY = 'auto_add_white_list';

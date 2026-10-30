@@ -145,3 +145,45 @@ php artisan config:clear
 4. `probe_json` 中短键是否已还原成逻辑字段名。
 5. `risk_reasons` 是否符合实际探针值。
 6. `/app/info` 是否在最终响应阶段调用 `applyAppInfoPolicy()`。
+
+## 风控活动采集与释放协议（第二版，2026-10-30）
+
+服务端已实现；本机没有原生 App 代码，本节用于后续客户端联调。所有业务时间展示为北京时间 `Asia/Shanghai`；Unix 时间戳仍表示同一绝对时刻，不要手动加 8 小时。
+
+`POST /api/risk/activity-events/batch` 复用现有 `Device-Env` 验签/防重放链路。请求携带 App-Id、Uuid（或 Device-Sn）、App-Version、Market-Channel；已登录用户携带实际 Token。账号只能由有效登录态解析，服务端不信任请求体自行声明的 user_id。
+
+```json
+{
+  "events": [
+    {
+      "event_id": "installation-random-event-id-001",
+      "session_id": "foreground-session-random-id",
+      "event_type": "interaction",
+      "occurred_at": 1793363400,
+      "event_seq": 1,
+      "monotonic_elapsed_ms": 0,
+      "foreground": true,
+      "screen_interactive": true,
+      "interaction": true
+    }
+  ]
+}
+```
+
+- `event_id`、`session_id` 各不超过 128 字节。event_id 在 App/设备内唯一，网络重试沿用原值；返回 accepted/duplicated/rejected。每批最多处理 100 条，客户端超量需自行分批。
+- `occurred_at` 支持 Unix 秒或毫秒；`event_seq` 在同一会话中严格递增且连续，`monotonic_elapsed_ms` 来自原生单调时钟。切会话使用新 session_id。发生丢包可重试同事件，不得重新排序后伪造连续序号。
+- `event_type` 支持 login/access/interaction/foreground/background/heartbeat。login 需要有效 Token；无登录态时只记匿名访问。登录/访问事实与纯心跳分开，统计不能从任意请求或触摸累计值猜访问量。
+- 前台建议每 30 秒报告一次，在前后台、锁屏/解锁和实际用户交互时报告真实状态；空闲时不伪造 interaction。退出后台和锁屏时间不累计。断档大于 90 秒不补算；空闲 300 秒停止计时；后台持续 300 秒切断连续使用（均为当前联调默认参数）。
+- 在线验证要求本次 Device-Env 校验成功、字段齐全、事件与服务器接收相差不超过 120 秒。有效时长同时受事件时间差、单调时钟差和服务器接收时间差限制。离线补传可存档，但不能按客户端声称的历史时长直接累计 30 分钟。
+- 达到有效前台 1800 秒后仍需新的在线实际交互，且不存在测试账号/审核访问/强制黑名单等禁止条件，才会释放对应 App/设备。未知审核状态、旧采集协议或证据不足保持不释放。
+- 撤销释放后必须使用撤销之后的新证据重新累计；不能重复利用上次那 30 分钟。服务端会轮转检查有效范围，也在新活动入库后评估当前设备。
+
+如果只需要给一次实际登录/访问生成事实，可以在已签名探针中增加 `vi`（visit_id）与 `et`（login/access），同一业务访问重试沿用 visit_id。它与批量活动事件若描述同一次访问，应使用相同 event_id/visit_id，以便服务端按 App、设备、事件 ID 去重。不能把 heartbeat 报成 access。
+
+验收至少覆盖：正常连续前台、锁屏、长后台、空闲、断网补传、时钟跳变、丢序号、跨设备/跨 App 同 ID、重复请求、匿名登录事件、审核中访问后上架、测试账号删除配置、释放后新风险及撤销后的重试。服务端验签和接收时间约束不能替代原生真实传感器采集，也不证明设备不可被篡改。
+
+### 异步消费补充
+
+活动接口 accepted 表示原始事件已保存，衍生事实、账号关联、时间线和释放评估由独立 Laravel 风控 Worker 异步完成。客户端不应把 accepted 当作已经解除风控；后续 `/app/info` 以服务端实际返回策略为准。事件本身的发生时间、服务器接收时间和在线验证结果不会因为排队而重写，后台处理耗时不计入有效使用时长。
+
+部署 Worker 与恢复命令见 `docs/risk-management-performance-plan-2026-10-30.md` 第 13 节。

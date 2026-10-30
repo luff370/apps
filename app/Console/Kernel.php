@@ -26,7 +26,8 @@ class Kernel extends ConsoleKernel
 
         // 凌晨分批清理过期探针，单次限时，不和白天的写入抢锁
         $schedule->command('app:risk-probe-logs-prune')->dailyAt('03:00')->withoutOverlapping(70);
-        $schedule->command('app:risk-ledger-sync')->everyMinute()->withoutOverlapping(3);
+        $schedule->command('app:risk-ledger-sync --batch=200 --max-seconds=10')->everyMinute()->withoutOverlapping(3);
+        $schedule->command('app:risk-activity-sync')->everyMinute()->withoutOverlapping(3);
         $schedule->command('app:risk-auto-release')->everyFiveMinutes()->withoutOverlapping(8);
 
         // 每天6:00-24:00 每两小时执行违章举报内容重新排序操作

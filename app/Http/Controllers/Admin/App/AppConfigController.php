@@ -31,6 +31,16 @@ class AppConfigController extends Controller
         return $this->success($data);
     }
 
+    public function changeLogs()
+    {
+        return $this->success($this->service->changeLogs(
+            (int)request()->input('app_id', 0),
+            (int)request()->input('page', 1),
+            (int)request()->input('limit', 20),
+            request()->only(['keyword', 'channel'])
+        ));
+    }
+
     /**
      * 新增表单
      *
@@ -84,6 +94,7 @@ class AppConfigController extends Controller
      */
     public function update($id)
     {
+        $previousAppId = (int)AppConfig::query()->where('id', $id)->value('app_id');
         $data = $this->getMore([
             ['app_id', ''],
             ['channel', 'all'],
@@ -98,6 +109,9 @@ class AppConfigController extends Controller
 
         // 清除缓存
         \App\Support\Services\AppConfigService::cacheByAppId($data['app_id']);
+        if ($previousAppId > 0 && $previousAppId !== (int)$data['app_id']) {
+            \App\Support\Services\AppConfigService::cacheByAppId($previousAppId);
+        }
 
         return $this->success(100001);
     }

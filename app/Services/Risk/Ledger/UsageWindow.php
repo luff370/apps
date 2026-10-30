@@ -31,9 +31,18 @@ class UsageWindow
         $lastInteraction = null;
         $prev = null;
         $frozen = null;
+        $backgroundAt = null;
 
         foreach ($events as $event) {
-            $split = $prev && (
+            $foreground = $event['foreground'] && $event['screen_interactive'];
+            if (! $foreground && $backgroundAt === null) {
+                $backgroundAt = $event['at'];
+            }
+            $resumedAfterLongPause = $foreground && $backgroundAt !== null && $backgroundSplitSeconds < $event['at'] - $backgroundAt;
+            if ($foreground) {
+                $backgroundAt = null;
+            }
+            $split = $resumedAfterLongPause || $prev && (
                 (string) $event['session_id'] !== (string) $prev['session_id']
                 || ($event['at'] - $prev['at']) > $backgroundSplitSeconds
             );
@@ -45,11 +54,17 @@ class UsageWindow
             }
             if ($prev) {
                 $gap = $event['at'] - $prev['at'];
-                $countable = $prev['foreground'] && $prev['screen_interactive'] && $lastInteraction !== null;
+                $countable = (! isset($event['seq'], $prev['seq']) || $event['seq'] === $prev['seq'] + 1) && $prev['foreground'] && $prev['screen_interactive'] && $lastInteraction !== null;
                 if ($gap > 0 && $gap <= $gapSeconds && $countable) {
                     $budget = $idleSeconds - ($prev['at'] - $lastInteraction);
                     if ($budget > 0) {
                         $add = min($gap, $budget);
+                        if (isset($event['received_at'], $prev['received_at'])) {
+                            $add = min($add, max(0, $event['received_at'] - $prev['received_at']));
+                        }
+                        if (isset($event['monotonic_ms'], $prev['monotonic_ms'])) {
+                            $add = min($add, max(0, intdiv($event['monotonic_ms'] - $prev['monotonic_ms'], 1000)));
+                        }
                         $before = $accum;
                         $accum += $add;
                         if ($thresholdAt === null && $accum >= $thresholdSeconds) {
@@ -59,7 +74,7 @@ class UsageWindow
                 }
             }
             // 后台或锁屏上报不能刷新有效交互时间，也不能触发达标后的释放。
-            if (!empty($event['interaction']) && $event['foreground'] && $event['screen_interactive']) {
+            if (! empty($event['interaction']) && $event['foreground'] && $event['screen_interactive']) {
                 $lastInteraction = $event['at'];
                 if ($frozen === null && $thresholdAt !== null && $event['at'] > $thresholdAt) {
                     $frozen = [

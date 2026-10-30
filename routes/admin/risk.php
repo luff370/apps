@@ -30,6 +30,8 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
     Route::put('list/{id}', 'RiskController@listUpdate');
     Route::delete('list/{id}', 'RiskController@listDestroy');
 
+    Route::get('probability/board', 'RiskLedgerController@probabilityBoard');
+    Route::get('probability/status', 'RiskLedgerController@ledgerStatus');
     Route::get('probability/summary', 'RiskLedgerController@summary');
     Route::get('probability/trends', 'RiskLedgerController@trends');
     Route::get('probability/app-ranking', 'RiskLedgerController@ranking');
@@ -50,5 +52,6 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
     Route::match(['post', 'patch'], 'monitor-accounts/{id}', 'RiskLedgerController@updateMonitorAccount');
     Route::delete('monitor-accounts/{id}', 'RiskLedgerController@destroyMonitorAccount');
 
+    Route::get('publishing-monitor/releases/{id}/activities', 'RiskLedgerController@publishingActivities');
     Route::get('publishing-monitor', 'RiskLedgerController@publishingBoard');
 });

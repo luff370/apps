@@ -12,10 +12,28 @@ class RiskProbabilityService
     {
     }
 
+    private ?Carbon $snapshotAt = null;
+
+    public function board(string $start, string $end, int $flowDays, int $accessDays, int $page, int $limit): array
+    {
+        return DB::transaction(function () use ($start, $end, $flowDays, $accessDays, $page, $limit) {
+            $this->snapshotAt = Carbon::now('Asia/Shanghai');
+            try {
+                return ['summary' => $this->summary($start, $end), 'ranking' => $this->ranking($start, $end, $page, $limit),
+                    'flow' => $this->trends('flow', $flowDays, $this->snapshotAt->toDateString()),
+                    'access' => $this->trends('access', $accessDays, $this->snapshotAt->toDateString())];
+            } finally {
+                $this->snapshotAt = null;
+            }
+        });
+    }
+
     public function summary(string $start, string $end): array
     {
         [$startAt, $endAt, $asOf, $endDay] = $this->bounds($start, $end);
-        $complete = $this->ledger->caughtUp();
+        $progress = $this->ledger->progress();
+        $rangeCovered = $progress['coverage_started_at'] !== null && $startAt->gte(Carbon::parse($progress['coverage_started_at'], 'Asia/Shanghai'));
+        $complete = $this->ledger->caughtUp() && $rangeCovered;
         $base = [
             'range' => ['start_date' => $startAt->toDateString(), 'end_date' => $endDay, 'timezone' => 'Asia/Shanghai'],
             'as_of' => $asOf->toIso8601String(),
@@ -25,9 +43,11 @@ class RiskProbabilityService
             'net_released_ip_count' => null,
             'raw_release_count' => null,
             'revoked_release_count' => null,
+            'progress' => $progress,
+            'incomplete_reason' => ! $progress['complete'] ? 'backfill_pending' : (! $rangeCovered ? 'before_coverage_start' : null),
             'active_ip_total' => null,
         ];
-        if (!$complete) {
+        if (! $complete) {
             return $base;
         }
         $base['intake_ip_count'] = (int) DB::table('risk_intakes')
@@ -46,7 +66,7 @@ class RiskProbabilityService
             ->where('released_at', '<', $endAt->toDateTimeString())
             ->count();
         $base['revoked_release_count'] = (int) DB::table('risk_revocations')
-            ->where('result', 'restored')
+            ->whereIn('result', ['restored', 'partial'])
             ->where('revoked_at', '>=', $startAt->toDateTimeString())
             ->where('revoked_at', '<', $endAt->toDateTimeString())
             ->count();
@@ -62,15 +82,18 @@ class RiskProbabilityService
         $endDay = $end->toDateString();
         $start = $end->copy()->startOfDay()->subDays($days - 1);
         $complete = $this->ledger->caughtUp();
+        $coverage = $this->ledger->progress()['coverage_started_at'];
+        $coverageAt = $coverage ? Carbon::parse($coverage, 'Asia/Shanghai') : null;
+        $rangeEnd = $end->copy()->startOfDay()->addDay()->min($this->snapshotAt ?? Carbon::now('Asia/Shanghai'));
         $flags = DB::table('risk_day_flags')->whereBetween('day', [$start->toDateString(), $endDay])->pluck('unclassified_logs', 'day');
         $rows = [];
         $grouped = collect();
         $intake = collect();
         $released = collect();
         if ($complete && $kind === 'access') {
-            $grouped = DB::table('risk_visits')
+            $grouped = DB::table('risk_access_facts')->whereIn('event_type', ['login', 'access'])
                 ->where('occurred_at', '>=', $start->toDateTimeString())
-                ->where('occurred_at', '<', $end->copy()->startOfDay()->addDay()->toDateTimeString())
+                ->where('occurred_at', '<', $rangeEnd->toDateTimeString())
                 ->selectRaw('DATE(occurred_at) as day')
                 ->selectRaw("SUM(decision = 'pass') as normal_visits")
                 ->selectRaw("SUM(decision IN ('verify','limit','block')) as risk_visits")
@@ -81,21 +104,21 @@ class RiskProbabilityService
         } elseif ($complete) {
             $intake = DB::table('risk_intakes')
                 ->where('collected_at', '>=', $start->toDateTimeString())
-                ->where('collected_at', '<', $end->copy()->startOfDay()->addDay()->toDateTimeString())
+                ->where('collected_at', '<', $rangeEnd->toDateTimeString())
                 ->selectRaw('DATE(collected_at) as day, COUNT(DISTINCT ip) as intake')
                 ->groupBy(DB::raw('DATE(collected_at)'))
                 ->pluck('intake', 'day');
             $released = DB::table('risk_ip_exits')
                 ->where('status', 'effective')
                 ->where('exited_at', '>=', $start->toDateTimeString())
-                ->where('exited_at', '<', $end->copy()->startOfDay()->addDay()->toDateTimeString())
+                ->where('exited_at', '<', $rangeEnd->toDateTimeString())
                 ->selectRaw('DATE(exited_at) as day, COUNT(DISTINCT ip) as released')
                 ->groupBy(DB::raw('DATE(exited_at)'))
                 ->pluck('released', 'day');
         }
         for ($cursor = $start->copy(); $cursor->toDateString() <= $endDay; $cursor->addDay()) {
             $day = $cursor->toDateString();
-            $dayComplete = $complete && (int) ($flags[$day] ?? 0) === 0;
+            $dayComplete = $complete && $coverageAt !== null && $cursor->gte($coverageAt) && ($kind !== 'access' || (int) ($flags[$day] ?? 0) === 0);
             if ($kind === 'access') {
                 $row = $grouped[$day] ?? null;
                 $rows[] = [
@@ -119,8 +142,8 @@ class RiskProbabilityService
             'kind' => $kind === 'access' ? 'access' : 'flow',
             'days' => $days,
             'timezone' => 'Asia/Shanghai',
-            'as_of' => Carbon::now('Asia/Shanghai')->toIso8601String(),
-            'complete' => $complete,
+            'as_of' => ($this->snapshotAt ?? Carbon::now('Asia/Shanghai'))->toIso8601String(),
+            'complete' => $complete && $coverageAt !== null && $start->gte($coverageAt) && ($kind !== 'access' || $flags->sum() === 0),
             'list' => $rows,
         ];
     }
@@ -128,31 +151,38 @@ class RiskProbabilityService
     public function ranking(string $start, string $end, int $page, int $limit): array
     {
         [$startAt, $endAt, $asOf] = $this->bounds($start, $end);
-        $complete = $this->ledger->caughtUp();
-        if (!$complete) {
+        $coverage = $this->ledger->progress()['coverage_started_at'];
+        $complete = $this->ledger->caughtUp() && $coverage && $startAt->gte(Carbon::parse($coverage, 'Asia/Shanghai'));
+        if (! $complete) {
             return ['list' => [], 'count' => 0, 'complete' => false, 'as_of' => $asOf->toIso8601String()];
         }
         $grouped = DB::table('risk_intakes')
             ->where('collected_at', '>=', $startAt->toDateTimeString())
             ->where('collected_at', '<', $endAt->toDateTimeString())
             ->selectRaw('app_id, COUNT(DISTINCT ip) as intake_ip_count, COUNT(DISTINCT device_identity) as device_count')
-            ->selectRaw("COUNT(DISTINCT CASE WHEN user_id IS NOT NULL AND user_id <> '' THEN CONCAT(app_id, ':', user_id) END) as account_count")
+            ->selectRaw("COUNT(DISTINCT CASE WHEN user_id IS NOT NULL AND user_id <> '' THEN user_id END) as account_count")
             ->selectRaw('MAX(collected_at) as last_intake_at')
             ->groupBy('app_id')
             ->orderByDesc('intake_ip_count')
-            ->orderBy('app_id')
-            ->get();
+            ->orderBy('app_id');
+        $count = (int) DB::query()->fromSub((clone $grouped)->reorder(), 'ranking')->count();
+        $slice = $grouped->forPage(max(1, $page), max(1, min(100, $limit)))->get();
         $names = SystemApp::idToNameMap();
-        $count = $grouped->count();
-        $slice = $grouped->slice(($page - 1) * $limit, $limit)->values();
+        $legacyAccounts = DB::table('risk_intakes')->where('collected_at', '>=', $startAt->toDateTimeString())
+            ->where('collected_at', '<', $endAt->toDateTimeString())->whereNotNull('user_id')->where('user_id', '<>', '')->select('app_id', 'user_id');
+        $linkedAccounts = DB::table('risk_scope_accounts as a')->join('risk_intakes as i', 'i.scope_id', '=', 'a.scope_id')
+            ->where('i.collected_at', '>=', $startAt->toDateTimeString())->where('i.collected_at', '<', $endAt->toDateTimeString())
+            ->where('a.first_at', '<', $endAt->toDateTimeString())->select('a.app_id', 'a.user_id');
+        $accounts = DB::query()->fromSub($legacyAccounts->union($linkedAccounts), 'accounts')
+            ->selectRaw('app_id, COUNT(DISTINCT user_id) as accounts')->groupBy('app_id')->pluck('accounts', 'app_id');
         $list = [];
         foreach ($slice as $row) {
             $list[] = [
                 'app_id' => (string) $row->app_id,
-                'app_name' => $names[(int) $row->app_id] ?? ('应用 ' . $row->app_id),
+                'app_name' => $names[(int) $row->app_id] ?? ('应用 '.$row->app_id),
                 'intake_ip_count' => (int) $row->intake_ip_count,
                 'device_count' => (int) $row->device_count,
-                'account_count' => (int) $row->account_count,
+                'account_count' => (int) ($accounts[$row->app_id] ?? 0),
                 'last_intake_at' => Carbon::parse($row->last_intake_at)->timezone('Asia/Shanghai')->toIso8601String(),
             ];
         }
@@ -187,7 +217,7 @@ class RiskProbabilityService
     {
         $startAt = Carbon::parse($start, 'Asia/Shanghai')->startOfDay();
         $endDay = Carbon::parse($end, 'Asia/Shanghai')->toDateString();
-        $asOf = Carbon::now('Asia/Shanghai');
+        $asOf = $this->snapshotAt ? $this->snapshotAt->copy() : Carbon::now('Asia/Shanghai');
         $endAt = Carbon::parse($endDay, 'Asia/Shanghai')->addDay()->startOfDay();
         if ($endDay === $asOf->toDateString() && $endAt->greaterThan($asOf)) {
             $endAt = $asOf->copy();

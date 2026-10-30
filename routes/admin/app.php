@@ -71,6 +71,7 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::post('payment/{id}/copy', 'PaymentController@copy');
 
     // 应用配置
+    Route::get('app_config/change_logs', 'AppConfigController@changeLogs');
     Route::resource('app_config', 'AppConfigController');
     Route::put('app_config/set_field_value/{id}/{value}/{field}', 'AppConfigController@setFieldValue');
     Route::post('app_config/{id}/copy', 'AppConfigController@copy');

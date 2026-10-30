@@ -2,12 +2,12 @@
 
 namespace Tests\Unit;
 
-use Tests\TestCase;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Database\Schema\Blueprint;
 use App\Models\RiskProbeLog;
 use App\Support\Services\RiskProbeAuditService;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
+use Tests\TestCase;
 
 class RiskProbeAuditServiceTest extends TestCase
 {
@@ -15,6 +15,7 @@ class RiskProbeAuditServiceTest extends TestCase
     {
         parent::setUp();
 
+        \Illuminate\Support\Facades\Queue::fake();
         Schema::dropIfExists('risk_probe_logs');
         Schema::create('risk_probe_logs', function (Blueprint $table) {
             $table->id();
@@ -73,7 +74,16 @@ class RiskProbeAuditServiceTest extends TestCase
             'decision' => ['compliance_mode' => 1, 'ad_switch' => 0],
         ];
 
+        $ledger = \Mockery::mock(\App\Services\Risk\RiskLedgerService::class);
+        $ledger->shouldNotReceive('applyLog');
+        $this->app->instance(\App\Services\Risk\RiskLedgerService::class, $ledger);
+        \Illuminate\Support\Facades\DB::enableQueryLog();
         (new RiskProbeAuditService())->record($request, $context);
+        $queries = \Illuminate\Support\Facades\DB::getQueryLog();
+        \Illuminate\Support\Facades\DB::disableQueryLog();
+        $this->assertCount(1, $queries);
+        $this->assertStringContainsString('insert into', strtolower($queries[0]['query']));
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\Risk\ProcessRiskProbe::class, fn ($job) => $job->sourceId > 0);
 
         $log = RiskProbeLog::query()->firstOrFail();
         $this->assertSame(hash('sha256', 'secret-nonce'), $log->nonce_hash);

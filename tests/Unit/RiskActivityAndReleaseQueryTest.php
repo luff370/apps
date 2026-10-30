@@ -19,17 +19,20 @@ class RiskActivityAndReleaseQueryTest extends TestCase
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
         (require database_path('migrations/2026_10_28_120000_create_risk_ledger_tables.php'))->up();
+        (require database_path('migrations/2026_10_30_160000_complete_risk_integration.php'))->up();
+        (require database_path('migrations/2026_10_30_170000_isolate_historical_risk_scopes.php'))->up();
+        (require database_path('migrations/2026_10_30_180000_async_risk_activity_projection.php'))->up();
     }
 
     public function test_activity_uses_uuid_for_device_and_server_install_identity(): void
     {
         $engine = \Mockery::mock(RiskReleaseEngine::class);
-        $engine->shouldReceive('evaluateDevice')->once()->with(10027, 'uuid-a')->andReturn(null);
+        $engine->shouldNotReceive('evaluateDevice');
         $request = Request::create('/api/risk/activity/batch', 'POST', ['events' => [[
             'event_id' => 'e-1', 'session_id' => 's-1', 'occurred_at' => time(),
             'install_id' => 'unrelated-client-value',
         ]]], [], [], ['HTTP_APP_ID' => '10027', 'HTTP_UUID' => 'uuid-a', 'HTTP_DEVICE_SN' => 'install-a']);
-        $result = (new ActivityEventService($engine))->ingest($request);
+        $result = (new ActivityEventService())->ingest($request);
         $this->assertSame(1, $result['accepted']);
         $row = DB::table('risk_activity_events')->first();
         $this->assertSame('uuid-a', $row->device_identity);
@@ -39,11 +42,11 @@ class RiskActivityAndReleaseQueryTest extends TestCase
     public function test_activity_falls_back_to_device_sn_when_uuid_is_missing(): void
     {
         $engine = \Mockery::mock(RiskReleaseEngine::class);
-        $engine->shouldReceive('evaluateDevice')->once()->with(10027, 'install-b')->andReturn(null);
+        $engine->shouldNotReceive('evaluateDevice');
         $request = Request::create('/api/risk/activity/batch', 'POST', ['events' => [[
             'event_id' => 'e-2', 'session_id' => 's-1', 'occurred_at' => time(),
         ]]], [], [], ['HTTP_APP_ID' => '10027', 'HTTP_DEVICE_SN' => 'install-b']);
-        $this->assertSame(1, (new ActivityEventService($engine))->ingest($request)['accepted']);
+        $this->assertSame(1, (new ActivityEventService())->ingest($request)['accepted']);
         $this->assertSame('install-b', DB::table('risk_activity_events')->value('device_identity'));
     }
 
@@ -56,6 +59,8 @@ class RiskActivityAndReleaseQueryTest extends TestCase
             'received_at' => $occurred->copy()->subMinutes(5)->toDateTimeString(),
             'interaction' => 1, 'event_seq' => 1,
         ]);
+        Carbon::setTestNow($occurred);
+        DB::table('risk_activity_events')->where('id', $id)->update(['online_verified' => 1]);
         $engine = new RiskReleaseEngine(app(RiskLedgerService::class));
         $method = new \ReflectionMethod($engine, 'onlineInteraction');
         $scope = (object) ['app_id' => 10027, 'device_identity' => 'uuid-a'];
@@ -64,6 +69,7 @@ class RiskActivityAndReleaseQueryTest extends TestCase
         $this->assertFalse($method->invoke($engine, $scope, $occurred->getTimestamp()));
         DB::table('risk_activity_events')->where('id', $id)->update(['received_at' => $occurred->copy()->addSeconds(120)->toDateTimeString()]);
         $this->assertTrue($method->invoke($engine, $scope, $occurred->getTimestamp()));
+        Carbon::setTestNow();
     }
 
     public function test_release_list_batches_relations_and_matches_details_including_latest_revocation(): void

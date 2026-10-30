@@ -5,6 +5,7 @@ namespace App\Services\App;
 use App\Dao\App\AppConfigDao;
 use App\Exceptions\AdminException;
 use App\Models\AppConfig;
+use App\Models\AppConfigChangeLog;
 use App\Models\SystemApp;
 use App\Services\Service;
 use App\Support\Services\AppConfigService as AppConfigCacheService;
@@ -39,6 +40,51 @@ class AppConfigService extends Service
         }
 
         return $list;
+    }
+
+    public function changeLogs(int $appId, int $page = 1, int $limit = 20, array $filters = []): array
+    {
+        if ($appId <= 0) {
+            throw new AdminException('请先选择应用');
+        }
+        $query = AppConfigChangeLog::query()->where(function ($query) use ($appId) {
+            $query->where('app_id', $appId)->orWhere('previous_app_id', $appId);
+        });
+        $channel = trim((string)($filters['channel'] ?? ''));
+        if ($channel !== '') {
+            $aliases = SystemApp::marketChannelAliases($channel);
+            $query->where(function ($query) use ($aliases) {
+                $query->whereIn('channel', $aliases)->orWhereIn('before->channel', $aliases);
+            });
+        }
+        $keyword = trim((string)($filters['keyword'] ?? ''));
+        if ($keyword !== '') {
+            $query->where(function ($query) use ($keyword) {
+                foreach (['key', 'admin_account', 'before->key', 'before->name', 'after->name'] as $field) {
+                    $query->orWhere($field, 'like', '%' . $keyword . '%');
+                }
+            });
+        }
+        $count = (clone $query)->count();
+        $list = $query->orderByDesc('id')->forPage(max(1, $page), min(100, max(1, $limit)))->get()
+            ->map(function ($log) {
+                $row = $log->toArray();
+                $row['channel_name'] = $this->channelDisplayName($log->channel);
+                $row['before_channel_name'] = $this->channelDisplayName($log->before['channel'] ?? '');
+                $row['after_channel_name'] = $this->channelDisplayName($log->after['channel'] ?? '');
+                return $row;
+            })->all();
+        $channels = [];
+        foreach (['all' => '全部渠道'] + SystemApp::marketChannelsMap() as $value => $label) {
+            $channels[] = ['value' => (string)$value, 'label' => $label];
+        }
+
+        return compact('list', 'count', 'channels');
+    }
+
+    private function channelDisplayName(string $channel): string
+    {
+        return $channel === 'all' ? '全部渠道' : SystemApp::marketChannelDisplayName($channel);
     }
 
     /**

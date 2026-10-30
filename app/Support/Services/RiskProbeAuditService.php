@@ -2,9 +2,9 @@
 
 namespace App\Support\Services;
 
-use Throwable;
-use Illuminate\Http\Request;
 use App\Models\RiskProbeLog;
+use Illuminate\Http\Request;
+use Throwable;
 
 class RiskProbeAuditService
 {
@@ -22,7 +22,7 @@ class RiskProbeAuditService
 
     public function record(Request $request, array $context): void
     {
-        if (!config('api_obfuscation.device_env.audit_enabled', true)) {
+        if (! config('api_obfuscation.device_env.audit_enabled', true)) {
             return;
         }
 
@@ -34,6 +34,16 @@ class RiskProbeAuditService
         try {
             $probe = $context['probe'] ?? [];
             $validation = $context['validation'] ?? [];
+            $basis = $context['raw_decision'] ?? $context['decision'] ?? [];
+            $storedProbe = $this->withoutReplaySecret($probe);
+            $storedProbe['_risk_basis'] = ['hash' => \App\Services\Risk\RiskPolicyService::basis($basis), 'decision' => $basis];
+            // Capture the cached login identity only; App ownership is verified by the background consumer.
+            $storedProbe['_candidate_user_id'] = \App\Support\Utils\Token::cachedUserId(ClientRequestContext::token($request)) ?: null;
+            $storedProbe['_user_id'] = null;
+            if (! empty($probe['visit_id']) && in_array($probe['event_type'] ?? '', ['login', 'access'], true)) {
+                $storedProbe['_access_event'] = ['id' => (string) $probe['visit_id'], 'type' => $probe['event_type'] === 'login' && empty($storedProbe['_candidate_user_id']) ? 'access' : $probe['event_type']];
+            }
+            $storedProbe['_identity_kind'] = (ClientRequestContext::uuid($request) ?: ($probe['uuid'] ?? '')) ? 'device' : 'install';
 
             /*
              * 一次请求对应一条审计记录：
@@ -60,7 +70,7 @@ class RiskProbeAuditService
                 'env_allows_ads' => $probe['env_allows_ads'] ?? null,
                 'compliance_mode' => $context['decision']['compliance_mode'] ?? 0,
                 'ad_switch' => $context['decision']['ad_switch'] ?? 1,
-                'probe_json' => $this->withoutReplaySecret($probe),
+                'probe_json' => $storedProbe,
                 'behavior_json' => $this->behavior($probe),
                 'touch_sample_count' => $this->sampleCount($probe, 'touch_sample_count'),
                 'click_sample_count' => $this->sampleCount($probe, 'click_sample_count'),
@@ -68,14 +78,11 @@ class RiskProbeAuditService
                 'client_ip' => $request->ip(),
                 'app_version' => ClientRequestContext::appVersion($request),
                 'market_channel' => ClientRequestContext::marketChannel($request),
-                'user_uuid' => ClientRequestContext::uuid($request),
-                'device_sn' => ClientRequestContext::deviceSn($request),
+                'user_uuid' => ClientRequestContext::uuid($request) ?: ($probe['uuid'] ?? null),
+                'device_sn' => ClientRequestContext::deviceSn($request) ?: ($probe['device_sn'] ?? null),
             ]);
-            try {
-                app(\App\Services\Risk\RiskLedgerService::class)->applyLog($log);
-            } catch (Throwable $ledgerError) {
-                report($ledgerError);
-            }
+            // Queue publication failure leaves the source intact for scheduled recovery.
+            app(\App\Services\Risk\RiskWorkDispatcher::class)->probe((int) $log->id);
         } catch (Throwable $e) {
             // 风控审计不可用不能拖垮业务接口。
             report($e);
@@ -105,12 +112,13 @@ class RiskProbeAuditService
             return $fallback;
         }
 
-        return str_starts_with($path, 'api/') ? $path : 'api/' . $path;
+        return str_starts_with($path, 'api/') ? $path : 'api/'.$path;
     }
 
     private function withoutReplaySecret(array $probe): array
     {
         unset($probe['nc']);
+
         return $probe;
     }
 

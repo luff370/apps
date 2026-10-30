@@ -6,7 +6,7 @@ class ReleaseRule
 {
     public const ID = 'continuous-use-release';
 
-    public const VERSION = '1';
+    public const VERSION = '2';
 
     public const THRESHOLD_SECONDS = 1800;
 

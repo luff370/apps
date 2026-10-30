@@ -51,6 +51,7 @@ class RiskDossierService
         $presented['scopes'] = DB::table('risk_scopes')->where('ip', $ip)->orderByDesc('id')->get()->map(function ($scope) {
             return [
                 'scope_id' => (int) $scope->id,
+                'policy_eligible' => (bool) $scope->policy_eligible,
                 'app_id' => (string) $scope->app_id,
                 'device_identity' => $scope->device_identity,
                 'user_id' => $scope->user_id,
@@ -78,31 +79,57 @@ class RiskDossierService
             $devices = $kind === 'devices';
             $query = DB::table('risk_scopes')->where('ip', $ip);
             if ($devices) {
+                $identity = DB::connection()->getDriverName() === 'sqlite' ? "app_id || ':' || device_identity" : "CONCAT(app_id, ':', device_identity)";
+                $key = "CASE WHEN identity_kind = 'device' THEN device_identity ELSE ".$identity.' END';
                 $query->where('device_identity', '<>', '')
-                    ->selectRaw('device_identity, MIN(collected_at) as first_at, MAX(updated_at) as last_at, COUNT(DISTINCT app_id) as apps')
-                    ->groupBy('device_identity');
+                    ->selectRaw($key.' as identity_key, MIN(device_identity) as device_identity, MIN(collected_at) as first_at, MAX(updated_at) as last_at, COUNT(DISTINCT app_id) as apps, GROUP_CONCAT(DISTINCT app_id) as app_ids')
+                    ->groupByRaw($key);
             } else {
-                $query->whereNotNull('user_id')->where('user_id', '<>', '')
-                    ->selectRaw('app_id, user_id, MIN(collected_at) as first_at, MAX(updated_at) as last_at')
-                    ->groupBy('app_id', 'user_id');
+                $query = $this->accountRelationsQuery($ip);
             }
             $count = (int) DB::query()->fromSub(clone $query, 'relations')->count();
-            $query->orderBy($devices ? 'device_identity' : 'app_id');
+            $query->orderBy($devices ? 'identity_key' : 'app_id');
             if (! $devices) {
                 $query->orderBy('user_id');
             }
             $names = $devices ? [] : SystemApp::idToNameMap();
-            $list = $query->forPage($page, $limit)->get()->map(function ($item) use ($devices, $names) {
+            $pageRows = $query->forPage($page, $limit)->get();
+            $deviceAccounts = collect();
+            $deviceEvents = collect();
+            if ($devices && $pageRows->isNotEmpty()) {
+                $concat = DB::connection()->getDriverName() === 'sqlite' ? "s.app_id || ':' || s.device_identity" : "CONCAT(s.app_id, ':', s.device_identity)";
+                $deviceKey = "CASE WHEN s.identity_kind = 'device' THEN s.device_identity ELSE $concat END";
+                $scopes = DB::table('risk_scopes as s')->where('s.ip', $ip)->whereIn('s.device_identity', $pageRows->pluck('device_identity')->all());
+                $original = (clone $scopes)->whereNotNull('s.user_id')->where('s.user_id', '<>', '')
+                    ->selectRaw($deviceKey.' as identity_key, s.app_id, s.user_id');
+                $links = (clone $scopes)->join('risk_scope_accounts as a', 'a.scope_id', '=', 's.id')
+                    ->selectRaw($deviceKey.' as identity_key, a.app_id, a.user_id');
+                $deviceAccounts = DB::query()->fromSub($original->union($links), 'accounts')->selectRaw('identity_key, COUNT(*) as n')->groupBy('identity_key')->pluck('n', 'identity_key');
+                $deviceEvents = (clone $scopes)->join('risk_timeline as t', function ($join) {
+                    $join->on('t.ip', '=', 's.ip')->on('t.app_id', '=', 's.app_id')->on('t.device_identity', '=', 's.device_identity');
+                })->selectRaw($deviceKey.' as identity_key, COUNT(DISTINCT t.id) as n')->groupByRaw($deviceKey)->pluck('n', 'identity_key');
+            }
+            $list = $pageRows->map(function ($item) use ($devices, $names, $deviceAccounts, $deviceEvents) {
                 $base = ['first' => $item->first_at, 'last' => $item->last_at];
 
-                return $devices ? $base + ['key' => $item->device_identity, 'name' => $item->device_identity, 'apps' => (int) $item->apps]
+                return $devices ? $base + ['key' => $item->identity_key, 'name' => $item->device_identity, 'apps' => (int) $item->apps, 'app_ids' => explode(',', $item->app_ids), 'account_count' => (int) ($deviceAccounts[$item->identity_key] ?? 0), 'event_count' => (int) ($deviceEvents[$item->identity_key] ?? 0)]
                     : $base + ['key' => $item->app_id.':'.$item->user_id, 'name' => $item->user_id,
-                        'appId' => (string) $item->app_id, 'appName' => $names[(int) $item->app_id] ?? ('应用 '.$item->app_id)];
+                        'appId' => (string) $item->app_id, 'appName' => $names[(int) $item->app_id] ?? ('应用 '.$item->app_id), 'devices' => explode(',', (string) $item->devices)];
             })->all();
         } else {
             // App/tag metadata is bounded by the dossier, never load device/account scopes.
             $record = $this->present($row, false, true);
             $all = $kind === 'tags' ? $record['tags'] : $this->appRelations($ip, $record['apps']);
+            if ($kind === 'tags') {
+                $facts = DB::table('risk_reason_evidence')->where('ip', $ip)->selectRaw('code, SUM(hit_count) as hits, MIN(first_at) as first_at, MAX(last_at) as last_at, COUNT(DISTINCT device_identity) as devices, GROUP_CONCAT(DISTINCT app_id) as app_ids')->groupBy('code')->get()->keyBy('code');
+                foreach ($all as &$tag) {
+                    $fact = $facts[$tag['code']] ?? null;
+                    if ($fact) {
+                        $tag += ['count' => (int) $fact->hits, 'first' => $fact->first_at, 'last' => $fact->last_at, 'apps' => explode(',', $fact->app_ids), 'device_count' => (int) $fact->devices];
+                    }
+                }
+                unset($tag);
+            }
             $count = count($all);
             $list = array_slice($all, ($page - 1) * $limit, $limit);
         }
@@ -125,7 +152,7 @@ class RiskDossierService
             $query->where('app_id', $filter['app_id']);
         }
         if (! empty($filter['event_kind'])) {
-            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login'], 'manual' => ['auto_release', 'release_revoke']];
+            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'release_revoke']];
             $query->whereIn('event_type', $kinds[$filter['event_kind']] ?? [$filter['event_kind']]);
         }
         if (! empty($filter['reason_code'])) {
@@ -311,12 +338,21 @@ class RiskDossierService
         return $list;
     }
 
+    private function accountRelationsQuery(string $ip)
+    {
+        $legacy = DB::table('risk_scopes')->where('ip', $ip)->whereNotNull('user_id')->where('user_id', '<>', '')
+            ->select('app_id', 'user_id', 'device_identity', 'collected_at as first_at', 'updated_at as last_at');
+        $links = DB::table('risk_scope_accounts as a')->join('risk_scopes as s', 's.id', '=', 'a.scope_id')->where('s.ip', $ip)
+            ->select('a.app_id', 'a.user_id', 's.device_identity', 'a.first_at', 'a.last_at');
+
+        return DB::query()->fromSub($legacy->unionAll($links), 'accounts')->selectRaw('app_id, user_id, MIN(first_at) as first_at, MAX(last_at) as last_at, GROUP_CONCAT(DISTINCT device_identity) as devices')
+            ->groupBy('app_id', 'user_id');
+    }
+
     private function accounts(string $ip): array
     {
         $names = SystemApp::idToNameMap();
-        $rows = DB::table('risk_scopes')->where('ip', $ip)->whereNotNull('user_id')->where('user_id', '<>', '')
-            ->selectRaw('app_id, user_id, MIN(collected_at) as first_at, MAX(updated_at) as last_at')
-            ->groupBy('app_id', 'user_id')->get();
+        $rows = $this->accountRelationsQuery($ip)->get();
         $list = [];
         foreach ($rows as $row) {
             $list[] = [
@@ -326,6 +362,7 @@ class RiskDossierService
                 'appId' => (string) $row->app_id,
                 'first' => $row->first_at,
                 'last' => $row->last_at,
+                'devices' => explode(',', (string) $row->devices),
             ];
         }
 
@@ -337,10 +374,13 @@ class RiskDossierService
         $stats = DB::table('risk_scopes')->where('ip', $ip)
             ->selectRaw('app_id, COUNT(DISTINCT device_identity) as devices, COUNT(DISTINCT user_id) as accounts, MIN(collected_at) as first_at, MAX(updated_at) as last_at')
             ->groupBy('app_id')->get()->keyBy('app_id');
+        $accountCounts = DB::query()->fromSub($this->accountRelationsQuery($ip), 'accounts')->selectRaw('app_id, COUNT(*) as total')->groupBy('app_id')->pluck('total', 'app_id');
+        $markets = DB::table('risk_scopes')->where('ip', $ip)->whereNotNull('market_channel')->where('market_channel', '<>', '')->selectRaw('app_id, GROUP_CONCAT(DISTINCT market_channel) as markets')->groupBy('app_id')->pluck('markets', 'app_id');
         foreach ($apps as &$app) {
             $stat = $stats[$app['id']] ?? null;
             $app['devices'] = $stat ? (int) $stat->devices : 0;
-            $app['accounts'] = $stat ? (int) $stat->accounts : 0;
+            $app['accounts'] = (int) ($accountCounts[$app['id']] ?? 0);
+            $app['markets'] = isset($markets[$app['id']]) ? explode(',', $markets[$app['id']]) : [];
             $app['first'] = $stat->first_at ?? null;
             $app['last'] = $stat->last_at ?? null;
         }
@@ -366,7 +406,7 @@ class RiskDossierService
             'device' => (string) $row->device_identity,
             'account' => (string) $row->user_id,
             'version' => (string) $row->version_name,
-            'login' => $row->event_type === 'login',
+            'login' => in_array($row->event_type, ['login', 'access'], true),
             'time' => $at->format('Y-m-d H:i:s'),
             'ms' => $at->getTimestamp() * 1000,
             'tags' => $tags,
