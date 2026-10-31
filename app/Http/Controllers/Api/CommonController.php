@@ -97,6 +97,7 @@ class CommonController extends Controller
             }
         }
         $data = array_merge($data, $userWhiteList);
+        $data['user_white_list_filter'] = 0;
 
         // 白名单免广告免会员用户统一为审核状态
         // if (!empty($data['is_free_ad']) || !empty($data['is_free_member'])) {
