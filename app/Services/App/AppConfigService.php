@@ -133,8 +133,11 @@ class AppConfigService extends Service
         if ((int)$config->is_enable !== $enabled) {
             $config->is_enable = $enabled;
             $config->save();
-            AppConfigCacheService::cacheByAppId($appId);
         }
+
+        // 开关没变化时也要重写。列表读的是数据库，客户端读的是整份应用配置缓存，
+        // 旧缓存里可能还留着 value=1，有效期一个月。
+        AppConfigCacheService::cacheByAppId($appId);
 
         return $this->formatUserWhiteListFilter($appId, $config);
     }
