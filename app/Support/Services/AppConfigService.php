@@ -9,6 +9,7 @@ class AppConfigService
     public static function cacheByAppId($appId): array
     {
         $cacheKey = sprintf(AppConfig::CACHE_BY_APPID, $appId);
+        cache()->forget($cacheKey);
 
         $configs = AppConfig::query()->where('app_id', $appId)
             ->where('is_enable', 1)

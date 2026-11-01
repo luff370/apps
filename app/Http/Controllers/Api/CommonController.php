@@ -125,6 +125,7 @@ class CommonController extends Controller
             $this->getAppVersion()
         );
 
+        $data['user_white_list_filter'] = 0;
         return $this->success($data);
     }
 
