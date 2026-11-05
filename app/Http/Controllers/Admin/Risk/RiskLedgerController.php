@@ -72,6 +72,8 @@ class RiskLedgerController extends Controller
             'market_channel' => request()->input('market_channel', ''),
             'app_id' => request()->input('app_id', ''),
             'reason_code' => request()->input('reason_code', ''),
+            'start_date' => request()->input('start_date', ''),
+            'end_date' => request()->input('end_date', ''),
             'state' => request()->input('state', ''),
             'compact' => request()->boolean('compact'),
             'include_options' => request()->boolean('include_options', true),

@@ -78,6 +78,88 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertCount(10000, $this->service()->list(['include_options' => false], 1, 1)['list'][0]['devices']);
     }
 
+    public function test_dossier_activity_dates_filter_full_days_counts_states_and_pages(): void
+    {
+        foreach ([
+            ['192.0.2.1', 'high', '2026-11-04 23:59:59'],
+            ['192.0.2.2', 'high', '2026-11-05 00:00:00'],
+            ['192.0.2.3', 'watch', '2026-11-05 23:59:59.999999'],
+            ['192.0.2.4', 'released', '2026-11-06 12:00:00'],
+            ['192.0.2.5', 'high', '2026-11-06 23:59:59.999999'],
+            ['192.0.2.6', 'high', '2026-11-07 00:00:00'],
+            ['192.0.2.7', 'watch', null],
+        ] as [$ip, $state, $at]) {
+            $this->dossier($ip, $state);
+            DB::table('risk_ip_dossiers')->where('ip', $ip)->update(['last_activity_at' => $at]);
+        }
+        $service = $this->service();
+        $filter = ['start_date' => '2026-11-05', 'end_date' => '2026-11-06', 'compact' => true, 'include_options' => false];
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $first = $service->list($filter, 1, 2);
+        $queries = DB::getQueryLog();
+        DB::disableQueryLog();
+        $this->assertSame(4, $first['count']);
+        $this->assertSame(['all' => 4, 'high' => 2, 'watch' => 1, 'released' => 1], $first['state_counts']);
+        $this->assertSame(['192.0.2.5', '192.0.2.4'], array_column($first['list'], 'ip'));
+        $this->assertCount(2, $queries);
+        foreach ($queries as $query) {
+            $this->assertStringContainsString('"last_activity_at" >= ?', $query['query']);
+            $this->assertStringContainsString('"last_activity_at" < ?', $query['query']);
+            $this->assertSame(['2026-11-05 00:00:00', '2026-11-07 00:00:00'], array_slice($query['bindings'], 0, 2));
+        }
+        $second = $service->list($filter, 2, 2);
+        $this->assertSame(['192.0.2.3', '192.0.2.2'], array_column($second['list'], 'ip'));
+        $high = $service->list($filter + ['state' => 'high'], 1, 20);
+        $this->assertSame(2, $high['count']);
+        $this->assertSame($first['state_counts'], $high['state_counts']);
+        $singleDay = $service->list(array_replace($filter, ['end_date' => '2026-11-05']), 1, 20);
+        $this->assertSame(['192.0.2.3', '192.0.2.2'], array_column($singleDay['list'], 'ip'));
+        $this->assertSame(5, $service->list(array_replace($filter, ['end_date' => '']), 1, 20)['count']);
+        $this->assertSame(5, $service->list(array_replace($filter, ['start_date' => '']), 1, 20)['count']);
+        $this->assertSame(7, $service->list(array_replace($filter, ['start_date' => '', 'end_date' => '']), 1, 20)['count']);
+    }
+
+    public function test_dossier_activity_dates_reject_invalid_or_reversed_ranges_before_querying(): void
+    {
+        foreach ([
+            ['start_date' => '2026-02-30'],
+            ['end_date' => '2026/11/05'],
+            ['start_date' => ['2026-11-05']],
+            ['start_date' => '2026-11-06', 'end_date' => '2026-11-05'],
+        ] as $filter) {
+            DB::flushQueryLog();
+            DB::enableQueryLog();
+            try {
+                $this->service()->list($filter, 1, 20);
+                $this->fail('Expected invalid activity dates to be rejected');
+            } catch (\App\Exceptions\AdminException $exception) {
+                $this->assertStringContainsString('最近活动', $exception->getMessage());
+                $this->assertSame([], DB::getQueryLog());
+            } finally {
+                DB::disableQueryLog();
+            }
+        }
+    }
+
+    public function test_dossier_controller_passes_frontend_activity_date_parameters(): void
+    {
+        $this->app->instance('request', \Illuminate\Http\Request::create('/admin/risk/ip-dossiers', 'GET', [
+            'start_date' => '2026-11-01', 'end_date' => '2026-11-05', 'page' => 3, 'limit' => 20,
+        ]));
+        $dossiers = \Mockery::mock(RiskDossierService::class);
+        $dossiers->shouldReceive('list')->once()->withArgs(fn ($filter, $page, $limit) => $filter['start_date'] === '2026-11-01' && $filter['end_date'] === '2026-11-05' && $page === 3 && $limit === 20
+        )->andReturn(['list' => [], 'count' => 0]);
+        $controller = new \App\Http\Controllers\Admin\Risk\RiskLedgerController(
+            \Mockery::mock(\App\Services\Risk\RiskProbabilityService::class), $dossiers,
+            \Mockery::mock(\App\Services\Risk\RiskReleaseQuery::class),
+            \Mockery::mock(\App\Services\Risk\RiskReleaseEngine::class),
+            \Mockery::mock(\App\Services\Risk\MonitorAccountService::class),
+            \Mockery::mock(\App\Services\Risk\PublishingMonitorService::class),
+        );
+        $this->assertSame(0, $controller->dossiers()->getData(true)['data']['count']);
+    }
+
     public function test_relations_paginate_grouped_rows_in_sql_and_load_only_requested_kind(): void
     {
         $ip = '192.0.2.1';
