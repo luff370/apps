@@ -17,6 +17,7 @@ class AppVersionPlan extends BaseModel
         'title',
         'version',
         'status',
+        'priority',
         'owner_name',
         'planned_release_at',
         'remark',

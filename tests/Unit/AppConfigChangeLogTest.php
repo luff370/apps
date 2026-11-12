@@ -70,7 +70,7 @@ class AppConfigChangeLogTest extends TestCase
     private function plan(int $appId, string $channel, string $status, string $version = '2.0.0', int $id = 0): array
     {
         return (new VersionPlanService())->savePlan($appId, [
-            'id' => $id, 'title' => '测试上线', 'version' => $version, 'status' => '草稿',
+            'id' => $id, 'title' => '测试上线', 'version' => $version, 'status' => '开发中',
             'tasks' => [['market_channel' => $channel, 'version' => $version, 'status' => $status]],
         ]);
     }
@@ -105,14 +105,14 @@ class AppConfigChangeLogTest extends TestCase
 
     public function test_only_review_creates_config_and_every_other_status_disables_it(): void
     {
-        foreach (['待提交', '已提交', '已过审', '已拒绝', '待上架', '已上架', '已下架', '暂停'] as $status) {
+        foreach (['待提交', '已提交', '已拒绝', '已上架', '已下架'] as $status) {
             $this->plan(1, 'huawei', $status);
         }
         $this->assertSame(0, AppConfig::query()->count());
         $this->plan(1, 'huawei', '审核中');
         $config = AppConfig::query()->first();
         $this->assertSame('1', $config->value);
-        foreach (['待提交', '已提交', '已过审', '已拒绝', '待上架', '已上架', '已下架', '暂停'] as $status) {
+        foreach (['待提交', '已提交', '已拒绝', '已上架', '已下架'] as $status) {
             $this->plan(1, 'huawei', '审核中');
             $this->plan(1, 'huawei', $status);
             $this->assertSame(0, $config->fresh()->is_enable, $status);

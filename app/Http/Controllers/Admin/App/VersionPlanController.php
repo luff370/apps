@@ -25,6 +25,14 @@ class VersionPlanController extends Controller
     }
 
     /**
+     * 当前管理员在开发中、待上架计划里的待办，供首页滚动提醒使用。
+     */
+    public function todos()
+    {
+        return $this->success(['list' => $this->service->todoPlansForAdmin(adminInfo() ?: [])]);
+    }
+
+    /**
      * 新建或编辑版本规划，渠道任务随计划一起保存。
      *
      * 不拆成两个接口，是为了让前端一次点击保存就能把计划头和任务集合一起落库，避免主表
@@ -42,7 +50,7 @@ class VersionPlanController extends Controller
     /**
      * 复制一个已有版本规划及其渠道任务。
      *
-     * 复制后的记录回到草稿态，方便继续编辑，而不会误以为它已经在执行。
+     * 复制后的记录回到开发中，方便继续编辑，而不会误以为它已经上架。
      *
      * @throws AdminException
      */

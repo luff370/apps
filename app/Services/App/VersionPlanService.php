@@ -7,6 +7,7 @@ use App\Models\AppConfig;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
 use App\Models\SystemApp;
+use App\Support\Services\FormOptions;
 use App\Services\Service;
 use App\Services\System\AppVersionServices;
 use App\Support\Services\AppConfigService;
@@ -15,6 +16,62 @@ use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
 {
+    public const PLAN_STATUSES = ['开发中', '待上架', '已上架', '暂停'];
+
+    public const TASK_STATUSES = ['待提交', '已提交', '审核中', '已拒绝', '已上架', '已下架'];
+
+    public const PLAN_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+
+    /**
+     * 首页待办：负责人是当前管理员，且计划还在开发中或待上架。
+     *
+     * 负责人既可能记在计划上，也可能只记在某个渠道任务上，两种都算待办。
+     * 返回字段只保留首页滚动条和跳转弹窗需要的内容。
+     */
+    public function todoPlansForAdmin(array $admin): array
+    {
+        $labels = FormOptions::adminOwnerLabels($admin);
+        if ($labels === []) {
+            return [];
+        }
+
+        $plans = AppVersionPlan::query()
+            ->with('tasks')
+            ->where(function ($query) use ($labels) {
+                $query->whereIn('owner_name', $labels)
+                    ->orWhereHas('tasks', function ($taskQuery) use ($labels) {
+                        $taskQuery->whereIn('owner_name', $labels);
+                    });
+            })
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get();
+
+        $appIds = $plans->pluck('app_id')->unique()->filter()->all();
+        $appNames = $appIds === []
+            ? collect()
+            : SystemApp::query()->where('is_del', 0)->whereIn('id', $appIds)->pluck('name', 'id');
+
+        $list = [];
+        foreach ($plans as $plan) {
+            $status = $this->normalizePlanStatus((string)$plan->status);
+            $appId = (int)$plan->app_id;
+            if (!in_array($status, ['开发中', '待上架'], true) || !isset($appNames[$appId])) {
+                continue;
+            }
+            $list[] = [
+                'id' => (int)$plan->id,
+                'app_id' => $appId,
+                'app_name' => (string)$appNames[$appId],
+                'status' => $status,
+                'version' => (string)$plan->version,
+                'remark' => (string)($plan->remark ?? ''),
+            ];
+        }
+
+        return $list;
+    }
+
     /**
      * 版本规划列表直接返回前端页面需要的嵌套结构。
      *
@@ -74,7 +131,8 @@ class VersionPlanService extends Service
                 'app_id' => $appId,
                 'title' => (string)$data['title'],
                 'version' => (string)$data['version'],
-                'status' => (string)($data['status'] ?? '草稿'),
+                'status' => $this->normalizePlanStatus((string)($data['status'] ?? '')),
+                'priority' => $this->normalizePlanPriority((string)($data['priority'] ?? '')),
                 'owner_name' => (string)($data['owner_name'] ?? ''),
                 'planned_release_at' => $this->dateOrNull($data['planned_release_at'] ?? null),
                 'remark' => (string)($data['remark'] ?? ''),
@@ -116,10 +174,10 @@ class VersionPlanService extends Service
     }
 
     /**
-     * 复制计划会新建主计划和任务，复制后的记录默认回到草稿态。
+     * 复制计划会新建主计划和任务，复制后的记录默认回到开发中。
      *
      * 运营上经常会用上一版计划作为下一版模板，所以复制时保留任务、渠道、强更内容，
-     * 但主计划状态回到草稿，避免把“模板副本”误当成已经进入发布流程的计划。
+     * 但主计划状态回到开发中，避免把“模板副本”误当成已经上架的计划。
      *
      * @throws AdminException
      */
@@ -133,12 +191,13 @@ class VersionPlanService extends Service
         return DB::transaction(function () use ($source) {
             $copy = $source->replicate();
             $copy->title = $source->title . ' 副本';
-            $copy->status = '草稿';
+            $copy->status = '开发中';
             $copy->save();
 
             foreach ($source->tasks as $task) {
                 $nextTask = $task->replicate();
                 $nextTask->plan_id = $copy->id;
+                $nextTask->status = $this->normalizeTaskStatus((string)$nextTask->status);
                 $nextTask->save();
             }
 
@@ -296,7 +355,7 @@ class VersionPlanService extends Service
             'name' => (string)($task['name'] ?? ''),
             'version' => (string)$task['version'],
             'owner_name' => (string)($task['owner_name'] ?? ''),
-            'status' => (string)($task['status'] ?? '待提交'),
+            'status' => $this->normalizeTaskStatus((string)($task['status'] ?? '')),
             'submitted_at' => $this->dateTimeOrNull($task['submitted_at'] ?? null),
             'listed_at' => $this->dateTimeOrNull($task['listed_at'] ?? null),
             'remark' => (string)($task['remark'] ?? ''),
@@ -373,7 +432,8 @@ class VersionPlanService extends Service
             'local_id' => 'plan_' . $plan->id,
             'title' => (string)$plan->title,
             'version' => (string)$plan->version,
-            'status' => (string)$plan->status,
+            'status' => $this->normalizePlanStatus((string)$plan->status),
+            'priority' => $this->normalizePlanPriority((string)$plan->priority),
             'owner_name' => (string)$plan->owner_name,
             'planned_release_at' => $this->dateText($plan->planned_release_at),
             'remark' => (string)($plan->remark ?? ''),
@@ -393,7 +453,7 @@ class VersionPlanService extends Service
             'name' => (string)$task->name,
             'version' => (string)$task->version,
             'owner_name' => (string)$task->owner_name,
-            'status' => (string)$task->status,
+            'status' => $this->normalizeTaskStatus((string)$task->status),
             'submitted_at' => $this->dateTimeText($task->submitted_at),
             'listed_at' => $this->dateTimeText($task->listed_at),
             'remark' => (string)($task->remark ?? ''),
@@ -415,6 +475,37 @@ class VersionPlanService extends Service
             'info' => (string)($force['info'] ?? ''),
             'remark' => (string)($force['remark'] ?? ''),
         ];
+    }
+
+    private function normalizePlanPriority(string $priority): string
+    {
+        $priority = strtoupper(trim($priority));
+
+        return in_array($priority, self::PLAN_PRIORITIES, true) ? $priority : 'P2';
+    }
+
+    private function normalizePlanStatus(string $status): string
+    {
+        if (in_array($status, self::PLAN_STATUSES, true)) {
+            return $status;
+        }
+
+        return match ($status) {
+            '已完成' => '已上架',
+            '已取消' => '暂停',
+            '部分完成' => '待上架',
+            default => '开发中',
+        };
+    }
+
+    private function normalizeTaskStatus(string $status): string
+    {
+        if (in_array($status, self::TASK_STATUSES, true)) {
+            return $status;
+        }
+
+        // 已过审、待上架已从渠道任务去掉，归到仍在推进、但还没上架的“已提交”。
+        return in_array($status, ['已过审', '待上架'], true) ? '已提交' : '待提交';
     }
 
     private function parseLocalId(string $value, string $prefix): int

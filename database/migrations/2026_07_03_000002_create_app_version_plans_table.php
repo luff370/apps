@@ -13,7 +13,8 @@ class CreateAppVersionPlansTable extends Migration
             $table->unsignedInteger('app_id')->comment('应用ID');
             $table->string('title', 120)->comment('计划名称');
             $table->string('version', 50)->comment('目标版本');
-            $table->string('status', 30)->default('草稿')->comment('计划状态');
+            $table->string('status', 30)->default('开发中')->comment('计划状态');
+            $table->string('priority', 10)->default('P2')->comment('优先级');
             $table->string('owner_name', 80)->default('')->comment('主负责人');
             $table->date('planned_release_at')->nullable()->comment('计划上架日');
             $table->text('remark')->nullable()->comment('计划备注');

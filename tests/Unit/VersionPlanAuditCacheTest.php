@@ -27,6 +27,7 @@ class VersionPlanAuditCacheTest extends TestCase
         Schema::create('system_apps', function (Blueprint $table) {
             $table->integer('id')->primary();
             $table->integer('is_del')->default(0);
+            $table->string('name')->default('');
             $table->text('markets')->nullable();
         });
         Schema::create('risk_review_history', function (Blueprint $table) {
@@ -38,6 +39,52 @@ class VersionPlanAuditCacheTest extends TestCase
             $table->dateTime('submitted_at')->nullable();
             $table->dateTime('listed_at')->nullable();
         });
+    }
+
+    public function test_todo_plans_keep_only_my_developing_and_pending_plans(): void
+    {
+        DB::table('system_apps')->insert([
+            ['id' => 1, 'is_del' => 0, 'name' => '应用甲'],
+            ['id' => 2, 'is_del' => 0, 'name' => '应用乙'],
+            ['id' => 3, 'is_del' => 1, 'name' => '已删除应用'],
+        ]);
+        $mine = AppVersionPlan::query()->create([
+            'app_id' => 1, 'title' => '我的计划', 'version' => '1.2.0', 'status' => '开发中',
+            'owner_name' => '张三（zhang）', 'remark' => '修支付',
+        ]);
+        AppVersionPlan::query()->create([
+            'app_id' => 2, 'title' => '别人的计划', 'version' => '2.0.0', 'status' => '待上架',
+            'owner_name' => '李四', 'remark' => '别人的',
+        ]);
+        AppVersionPlan::query()->create([
+            'app_id' => 1, 'title' => '已上架', 'version' => '1.0.0', 'status' => '已上架',
+            'owner_name' => '张三（zhang）', 'remark' => '不上首页',
+        ]);
+        $taskOwned = AppVersionPlan::query()->create([
+            'app_id' => 2, 'title' => '渠道负责人', 'version' => '3.0.0', 'status' => '待上架',
+            'owner_name' => '李四', 'remark' => '我负责渠道',
+        ]);
+        AppVersionPlanTask::query()->create([
+            'plan_id' => $taskOwned->id, 'market_channel' => 'ios', 'version' => '3.0.0',
+            'owner_name' => '张三', 'status' => '待提交',
+        ]);
+        AppVersionPlan::query()->create([
+            'app_id' => 3, 'title' => '已删除应用', 'version' => '9.0.0', 'status' => '开发中',
+            'owner_name' => '张三', 'remark' => '应用已删',
+        ]);
+
+        $list = app(VersionPlanService::class)->todoPlansForAdmin([
+            'real_name' => '张三',
+            'account' => 'zhang',
+        ]);
+
+        $this->assertSame([$taskOwned->id, $mine->id], array_column($list, 'id'));
+        $this->assertSame('应用乙', $list[0]['app_name']);
+        $this->assertSame('待上架', $list[0]['status']);
+        $this->assertSame('3.0.0', $list[0]['version']);
+        $this->assertSame('我负责渠道', $list[0]['remark']);
+        $this->assertSame('应用甲', $list[1]['app_name']);
+        $this->assertSame('开发中', $list[1]['status']);
     }
 
     public function test_status_changes_invalidate_a_warmed_cache_in_both_directions(): void
@@ -78,7 +125,7 @@ class VersionPlanAuditCacheTest extends TestCase
     {
         $form = $this->reviewingPlan();
         $this->assertSame(1, $this->audit());
-        $form['tasks'] = [['market_channel' => 'huawei', 'version' => '1.0', 'status' => '已过审']];
+        $form['tasks'] = [['market_channel' => 'huawei', 'version' => '1.0', 'status' => '已提交']];
         app(VersionPlanService::class)->savePlan(1, $form);
         $this->assertSame(0, $this->audit());
     }

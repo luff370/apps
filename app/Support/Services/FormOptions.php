@@ -4,6 +4,7 @@ namespace App\Support\Services;
 
 use App\Models\Article;
 use App\Models\Merchant;
+use App\Models\SystemAdmin;
 use App\Models\SystemApp;
 use App\Models\MemberOrder;
 use App\Models\AppAgreement;
@@ -71,6 +72,7 @@ class FormOptions
             'subscribe_status' => self::subscribeStatus($firstOption),
             'is_enable' => self::isEnable($firstOption),
             'languages' => self::languages($firstOption),
+            'system_admin' => self::systemAdmins($firstOption),
             default => [],
         };
     }
@@ -196,5 +198,63 @@ class FormOptions
     public static function isEnable($firstOption = []): array
     {
         return self::toFormOptions([1 => '是', 0 => '否'], $firstOption);
+    }
+
+    /**
+     * 管理员在版本规划里可能被存成的负责人名称。
+     *
+     * 下拉展示「姓名（账号）」，历史数据也可能只存了姓名或账号，匹配时这几种都算同一个人。
+     */
+    public static function adminOwnerLabels(array $admin): array
+    {
+        $name = trim((string)($admin['real_name'] ?? ''));
+        $account = trim((string)($admin['account'] ?? ''));
+        $labels = [];
+        if ($name !== '') {
+            $labels[] = $name;
+        }
+        if ($account !== '') {
+            $labels[] = $account;
+        }
+        if ($name !== '' && $account !== '' && $name !== $account) {
+            $labels[] = $name . '（' . $account . '）';
+        }
+
+        return array_values(array_unique($labels));
+    }
+
+    /**
+     * 启用中的后台管理员，供版本规划负责人下拉使用。
+     */
+    public static function systemAdmins($firstOption = []): array
+    {
+        $result = [];
+        if (!empty($firstOption)) {
+            $result[] = $firstOption;
+        }
+
+        $admins = SystemAdmin::query()
+            ->where('is_del', 0)
+            ->where('status', 1)
+            ->orderBy('id')
+            ->get(['id', 'account', 'real_name']);
+
+        foreach ($admins as $admin) {
+            $name = trim((string)$admin->real_name);
+            $account = trim((string)$admin->account);
+            $label = $name !== '' ? $name : $account;
+            if ($label === '') {
+                continue;
+            }
+            if ($name !== '' && $account !== '' && $name !== $account) {
+                $label .= '（' . $account . '）';
+            }
+            $result[] = [
+                'label' => $label,
+                'value' => (string)$admin->id,
+            ];
+        }
+
+        return $result;
     }
 }

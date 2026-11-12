@@ -31,6 +31,7 @@ Route::name('app')->prefix('app')->namespace('App')->group(function () {
     Route::get('recharge_statistics/trend', 'RechargeStatisticsController@trend');
 
     // 版本规划：保存版本计划与渠道任务，供版本规划页替换本地假数据
+    Route::get('version_plans/todos', 'VersionPlanController@todos');
     Route::get('apps/{appId}/version_plans', 'VersionPlanController@index');
     Route::post('apps/{appId}/version_plans', 'VersionPlanController@save');
     Route::post('apps/{appId}/version_plans/{id}/copy', 'VersionPlanController@copy');

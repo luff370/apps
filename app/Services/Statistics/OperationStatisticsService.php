@@ -39,8 +39,8 @@ class OperationStatisticsService
             'rankings' => [
                 'today_recharge' => $this->rank('recharge', $today->copy(), $today->copy(), $today->copy()->subDay(), $today->copy()->subDay(), $appId),
                 'today_ad' => $this->rank('ad', $today->copy(), $today->copy(), $today->copy()->subDay(), $today->copy()->subDay(), $appId),
-                'week_recharge' => $this->rank('recharge', $today->copy()->startOfWeek(), $today->copy()->endOfWeek(), $today->copy()->subWeek()->startOfWeek(), $today->copy()->subWeek()->endOfWeek(), $appId),
-                'week_ad' => $this->rank('ad', $today->copy()->startOfWeek(), $today->copy()->endOfWeek(), $today->copy()->subWeek()->startOfWeek(), $today->copy()->subWeek()->endOfWeek(), $appId),
+                'month_recharge' => $this->rank('recharge', $today->copy()->startOfMonth(), $today->copy(), $today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow(), $appId),
+                'month_ad' => $this->rank('ad', $today->copy()->startOfMonth(), $today->copy(), $today->copy()->subMonthNoOverflow()->startOfMonth(), $today->copy()->subMonthNoOverflow(), $appId),
             ],
             'trends' => [
                 'new_users' => $this->dashboardTrend('new_users', $trendRange, $appId),
