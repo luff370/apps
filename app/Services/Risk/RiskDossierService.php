@@ -2,6 +2,7 @@
 
 namespace App\Services\Risk;
 
+use App\Exceptions\AdminException;
 use App\Models\SystemApp;
 use App\Services\Risk\Ledger\IpNormalizer;
 use App\Services\Risk\Ledger\ReasonCatalog;
@@ -183,7 +184,14 @@ class RiskDossierService
 
     private function filtered(array $filter, bool $ignoreState)
     {
+        [$startAt, $endAt] = $this->activityDateBounds($filter);
         $query = DB::table('risk_ip_dossiers');
+        if ($startAt !== null) {
+            $query->where('last_activity_at', '>=', $startAt->toDateTimeString());
+        }
+        if ($endAt !== null) {
+            $query->where('last_activity_at', '<', $endAt->toDateTimeString());
+        }
         $keyword = trim((string) ($filter['keyword'] ?? ''));
         if ($keyword !== '') {
             $normalized = IpNormalizer::normalize($keyword);
@@ -229,6 +237,31 @@ class RiskDossierService
         }
 
         return $query;
+    }
+
+    private function activityDateBounds(array $filter): array
+    {
+        $dates = [];
+        foreach (['start_date', 'end_date'] as $key) {
+            $value = $filter[$key] ?? '';
+            if ($value === '') {
+                $dates[] = null;
+
+                continue;
+            }
+            if (! is_string($value) || ! preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)
+                || ! checkdate((int) substr($value, 5, 2), (int) substr($value, 8, 2), (int) substr($value, 0, 4))) {
+                throw new AdminException('最近活动日期格式必须为 YYYY-MM-DD，且为有效日期');
+            }
+            $dates[] = Carbon::createFromFormat('!Y-m-d', $value, 'Asia/Shanghai');
+        }
+        [$start, $end] = $dates;
+        if ($start !== null && $end !== null && $start->gt($end)) {
+            throw new AdminException('最近活动开始日期不能晚于结束日期');
+        }
+
+        // An exclusive next-day bound includes the entire end date without wrapping the indexed column.
+        return [$start, $end?->copy()->addDay()];
     }
 
     private function stateCounts(array $filter): array
