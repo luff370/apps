@@ -109,13 +109,17 @@ class MemberOrderService extends Service
             $item['purchase_seq'] = $progress['seq'] ?? 0;
             $item['purchase_amount'] = $progress ? number_format($progress['amount'], 2, '.', '') : '';
             $item['is_repurchase'] = $progress['is_repurchase'] ?? 0;
-            $payment = $payments[(string)($item['mch_id'] ?? '')] ?? null;
+            $mchId = trim((string)($item['mch_id'] ?? ''));
+            if ($mchId === '0' || ($item['pay_status'] ?? '') !== MemberOrder::PAY_STATUS_PAID) {
+                $mchId = '';
+            }
+            $payment = $mchId === '' ? null : ($payments[$mchId] ?? null);
             $subject = trim((string)($payment->merchant->name ?? ''));
             if ($subject === '' && $payment) {
                 $subject = trim((string)$payment->name);
             }
             $item['pay_merchant_subject'] = $subject;
-            $item['pay_merchant_no'] = (string)($item['mch_id'] ?? '');
+            $item['pay_merchant_no'] = $mchId;
         }
 
         return $list;
@@ -128,7 +132,10 @@ class MemberOrderService extends Service
     {
         $rows = $list instanceof \Illuminate\Support\Collection ? $list->all() : (array)$list;
         $mchIds = array_values(array_unique(array_filter(array_map(
-            fn ($item) => (string)($item['mch_id'] ?? ''),
+            fn ($item) => ($item['pay_status'] ?? '') === MemberOrder::PAY_STATUS_PAID
+                && (string)($item['mch_id'] ?? '') !== '0'
+                ? (string)($item['mch_id'] ?? '')
+                : '',
             $rows
         ))));
         if ($mchIds === []) {
