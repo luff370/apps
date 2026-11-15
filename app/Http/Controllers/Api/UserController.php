@@ -89,7 +89,7 @@ class UserController extends Controller
     public function feedback(Request $request)
     {
         $feedback = $request->all();
-        $feedback['user_id'] = authUserId();
+        $feedback['user_id'] = $this->optionalUserId();
         $feedback['app_id'] = $this->getAppId();
         $feedback['version'] = $this->getAppVersion();
         $feedback['market_channel'] = $this->getMarketChannel();
@@ -97,6 +97,23 @@ class UserController extends Controller
         UserFeedback::query()->create($feedback);
 
         return $this->success();
+    }
+
+    /**
+     * 有有效 token 时返回用户 ID，未登录或 token 无效时返回 0。
+     */
+    private function optionalUserId(): int
+    {
+        $token = (string) ($this->getToken() ?? '');
+        if ($token === '') {
+            return 0;
+        }
+
+        try {
+            return (int) (Token::verify($token)['user_id'] ?? 0);
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     /**

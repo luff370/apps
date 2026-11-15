@@ -75,7 +75,6 @@ Route::middleware($deviceEnv)->group(function () {
     Route::prefix('user')->middleware(['token_auth'])->group(
         function (\Illuminate\Routing\Router $route) {
             $route->post('info', 'UserController@info');
-            $route->post('feedback', 'UserController@feedback');
             $route->post('feedback/list', 'UserController@feedbackList');
             $route->post('logout', 'UserController@logout');
             $route->post('sign_out', 'UserController@singOut');
@@ -92,6 +91,8 @@ Route::middleware($deviceEnv)->group(function () {
 
     Route::prefix('user')->group(
         function (\Illuminate\Routing\Router $route) {
+            // 意见反馈，可不登录；带有效 token 时仍关联用户
+            $route->post('feedback', 'UserController@feedback');
             // 档案上传
             $route->post('profile', 'UserController@profile');
             // 档案修改
