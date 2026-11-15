@@ -54,6 +54,11 @@ class SystemPayment extends Model
     const PayTypeApple = 'apple';
     const PayTypeGoogle = 'google';
 
+    public function merchant()
+    {
+        return $this->belongsTo(Merchant::class, 'mer_id', 'id');
+    }
+
     public static function typesMap()
     {
         return [

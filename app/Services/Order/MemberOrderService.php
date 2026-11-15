@@ -6,6 +6,7 @@ use App\Services\Service;
 use App\Models\MemberOrder;
 use App\Models\MemberProduct;
 use App\Dao\Order\MemberOrderDao;
+use App\Models\SystemPayment;
 use App\Models\User;
 use App\Models\SystemApp;
 use App\Exceptions\RequestException;
@@ -81,6 +82,7 @@ class MemberOrderService extends Service
         $refundStatusMap = MemberOrder::refundStatusMap();
         $refundStatusColorMap = MemberOrder::refundStatusColorMap();
         $purchaseProgress = $this->purchaseProgress($list);
+        $payments = $this->paymentsByMchId($list);
         foreach ($list as &$item) {
             $item['type_name'] = $typeMap[$item['type']] ?? '';
             $item['member_type_name'] = $memberTypeMap[$item['member_type']] ?? '';
@@ -107,9 +109,37 @@ class MemberOrderService extends Service
             $item['purchase_seq'] = $progress['seq'] ?? 0;
             $item['purchase_amount'] = $progress ? number_format($progress['amount'], 2, '.', '') : '';
             $item['is_repurchase'] = $progress['is_repurchase'] ?? 0;
+            $payment = $payments[(string)($item['mch_id'] ?? '')] ?? null;
+            $subject = trim((string)($payment->merchant->name ?? ''));
+            if ($subject === '' && $payment) {
+                $subject = trim((string)$payment->name);
+            }
+            $item['pay_merchant_subject'] = $subject;
+            $item['pay_merchant_no'] = (string)($item['mch_id'] ?? '');
         }
 
         return $list;
+    }
+
+    /**
+     * 按订单商户号取出收款配置，并带上所属企业主体。
+     */
+    private function paymentsByMchId($list)
+    {
+        $rows = $list instanceof \Illuminate\Support\Collection ? $list->all() : (array)$list;
+        $mchIds = array_values(array_unique(array_filter(array_map(
+            fn ($item) => (string)($item['mch_id'] ?? ''),
+            $rows
+        ))));
+        if ($mchIds === []) {
+            return collect();
+        }
+
+        return SystemPayment::query()
+            ->with('merchant:id,name')
+            ->whereIn('mch_id', $mchIds)
+            ->get()
+            ->keyBy(fn (SystemPayment $payment) => (string)$payment->mch_id);
     }
 
     /**
