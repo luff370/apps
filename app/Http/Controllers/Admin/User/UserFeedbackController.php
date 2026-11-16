@@ -48,7 +48,7 @@ class UserFeedbackController extends Controller
         $this->service->update($id, $data);
 
         $info = $this->service->getRow($id);
-        if (!empty($info)) {
+        if (!empty($info) && (int) $info['user_id'] > 0) {
             UserNotice::send($info['app_id'], $info['user_id'], \App\Models\UserNotice::TypeFeedbackReply, "留言回复", $info['recover_content']);
         }
 
