@@ -41,6 +41,11 @@ class UserFeedback extends Model
     protected $fillable = [
         'app_id',
         'user_id',
+        'uuid',
+        'device',
+        'platform',
+        'os_version',
+        'ip',
         'market_channel',
         'version',
         'type',
@@ -54,6 +59,26 @@ class UserFeedback extends Model
         'create_time',
         'update_time',
     ];
+
+    /**
+     * 账号反馈与当前设备的匿名反馈；缺少身份时不能匹配其他匿名用户。
+     */
+    public function scopeForClient(\Illuminate\Database\Eloquent\Builder $query, int $appId, int $userId, string $uuid): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where('app_id', $appId)->where(function ($query) use ($userId, $uuid) {
+            if ($userId > 0) {
+                $query->where('user_id', $userId);
+            } else {
+                $query->whereRaw('1 = 0');
+            }
+
+            if ($uuid !== '') {
+                $query->orWhere(function ($query) use ($uuid) {
+                    $query->where('user_id', 0)->where('uuid', $uuid);
+                });
+            }
+        });
+    }
 
     public function user()
     {

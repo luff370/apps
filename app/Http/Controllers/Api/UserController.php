@@ -88,11 +88,16 @@ class UserController extends Controller
      */
     public function feedback(Request $request)
     {
-        $feedback = $request->all();
+        $feedback = $request->only(['type', 'content', 'images', 'email', 'phone']);
         $feedback['user_id'] = $this->optionalUserId();
         $feedback['app_id'] = $this->getAppId();
         $feedback['version'] = $this->getAppVersion();
         $feedback['market_channel'] = $this->getMarketChannel();
+        $feedback['uuid'] = $this->getUuid() ?? '';
+        $feedback['device'] = $this->getDevice() ?? '';
+        $feedback['platform'] = $this->getPlatform() ?? '';
+        $feedback['os_version'] = $this->getOsVersion() ?? '';
+        $feedback['ip'] = $request->getClientIp() ?? '';
 
         UserFeedback::query()->create($feedback);
 
@@ -122,8 +127,7 @@ class UserController extends Controller
     public function feedbackList()
     {
         $list = UserFeedback::query()
-            ->where('user_id', authUserId())
-            ->where('app_id', $this->getAppId())
+            ->forClient((int) $this->getAppId(), $this->optionalUserId(), $this->getUuid() ?? '')
             ->select([
                 'id',
                 'type',
