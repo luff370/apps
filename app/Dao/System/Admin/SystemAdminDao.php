@@ -102,6 +102,9 @@ class SystemAdminDao extends BaseDao
      */
     public function checkRoleUse(int $id): bool
     {
-        return (bool) $this->getModel()->newQuery()->whereFindInSet('roles', $id)->count();
+        return $this->getModel()->newQuery()
+            ->where('is_del', 0)
+            ->whereRaw('FIND_IN_SET(?, roles)', [$id])
+            ->exists();
     }
 }
