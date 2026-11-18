@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Risk;
 
 use App\Exceptions\AdminException;
 use App\Http\Controllers\Admin\Controller;
+use App\Services\Risk\Ledger\IpNormalizer;
 use App\Services\Risk\Ledger\ReleaseRule;
 use App\Services\Risk\MonitorAccountService;
 use App\Services\Risk\PublishingMonitorService;
@@ -93,6 +94,25 @@ class RiskLedgerController extends Controller
         }
 
         return $this->success($data);
+    }
+
+    public function removeDossier($id)
+    {
+        $ip = IpNormalizer::ipFor((string) $id);
+        if ($ip === '') {
+            return $this->fail('IP 档案不存在');
+        }
+        try {
+            $result = $this->engine->removeIp(
+                $ip,
+                (int) adminId(),
+                (string) (adminInfo()['real_name'] ?? adminInfo()['account'] ?? '管理员')
+            );
+        } catch (AdminException $e) {
+            return $this->fail($e->getMessage());
+        }
+
+        return $this->success($result);
     }
 
     public function relations($id)

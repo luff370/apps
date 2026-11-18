@@ -69,6 +69,8 @@ class RiskActivityAndReleaseQueryTest extends TestCase
         $this->assertFalse($method->invoke($engine, $scope, $occurred->getTimestamp()));
         DB::table('risk_activity_events')->where('id', $id)->update(['received_at' => $occurred->copy()->addSeconds(120)->toDateTimeString()]);
         $this->assertTrue($method->invoke($engine, $scope, $occurred->getTimestamp()));
+        Carbon::setTestNow($occurred->copy()->addMinutes(10));
+        $this->assertTrue($method->invoke($engine, $scope, $occurred->getTimestamp()));
         Carbon::setTestNow();
     }
 

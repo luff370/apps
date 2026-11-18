@@ -153,7 +153,7 @@ class RiskDossierService
             $query->where('app_id', $filter['app_id']);
         }
         if (! empty($filter['event_kind'])) {
-            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'release_revoke']];
+            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'manual_release', 'release_revoke']];
             $query->whereIn('event_type', $kinds[$filter['event_kind']] ?? [$filter['event_kind']]);
         }
         if (! empty($filter['reason_code'])) {
@@ -169,7 +169,7 @@ class RiskDossierService
             ->where('ip', $ip)
             ->selectRaw('DATE(occurred_at) as day, COUNT(*) as total')
             ->selectRaw("SUM(event_type IN ('risk_hit','intake','reintake')) as risk_count")
-            ->selectRaw("SUM(event_type IN ('auto_release','release_revoke')) as action_count")
+            ->selectRaw("SUM(event_type IN ('auto_release','manual_release','release_revoke')) as action_count")
             ->groupBy(DB::raw('DATE(occurred_at)'))
             ->orderBy('day')
             ->get() : null;

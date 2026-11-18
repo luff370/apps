@@ -3,6 +3,7 @@
 namespace App\Services\Risk;
 
 use App\Models\SystemApp;
+use App\Services\Risk\Ledger\ReleaseRule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -55,13 +56,16 @@ class RiskProbabilityService
             ->where('collected_at', '<', $endAt->toDateTimeString())
             ->distinct('ip')
             ->count('ip');
-        $base['net_released_ip_count'] = (int) DB::table('risk_ip_exits')
-            ->where('status', 'effective')
-            ->where('exited_at', '>=', $startAt->toDateTimeString())
-            ->where('exited_at', '<', $endAt->toDateTimeString())
-            ->distinct('ip')
-            ->count('ip');
+        $base['net_released_ip_count'] = (int) DB::table('risk_ip_exits as e')
+            ->join('risk_releases as r', 'r.id', '=', 'e.release_id')
+            ->where('r.rule_id', ReleaseRule::ID)
+            ->where('e.status', 'effective')
+            ->where('e.exited_at', '>=', $startAt->toDateTimeString())
+            ->where('e.exited_at', '<', $endAt->toDateTimeString())
+            ->distinct('e.ip')
+            ->count('e.ip');
         $base['raw_release_count'] = (int) DB::table('risk_releases')
+            ->where('rule_id', ReleaseRule::ID)
             ->where('released_at', '>=', $startAt->toDateTimeString())
             ->where('released_at', '<', $endAt->toDateTimeString())
             ->count();
@@ -108,12 +112,14 @@ class RiskProbabilityService
                 ->selectRaw('DATE(collected_at) as day, COUNT(DISTINCT ip) as intake')
                 ->groupBy(DB::raw('DATE(collected_at)'))
                 ->pluck('intake', 'day');
-            $released = DB::table('risk_ip_exits')
-                ->where('status', 'effective')
-                ->where('exited_at', '>=', $start->toDateTimeString())
-                ->where('exited_at', '<', $rangeEnd->toDateTimeString())
-                ->selectRaw('DATE(exited_at) as day, COUNT(DISTINCT ip) as released')
-                ->groupBy(DB::raw('DATE(exited_at)'))
+            $released = DB::table('risk_ip_exits as e')
+                ->join('risk_releases as r', 'r.id', '=', 'e.release_id')
+                ->where('r.rule_id', ReleaseRule::ID)
+                ->where('e.status', 'effective')
+                ->where('e.exited_at', '>=', $start->toDateTimeString())
+                ->where('e.exited_at', '<', $rangeEnd->toDateTimeString())
+                ->selectRaw('DATE(e.exited_at) as day, COUNT(DISTINCT e.ip) as released')
+                ->groupBy(DB::raw('DATE(e.exited_at)'))
                 ->pluck('released', 'day');
         }
         for ($cursor = $start->copy(); $cursor->toDateString() <= $endDay; $cursor->addDay()) {

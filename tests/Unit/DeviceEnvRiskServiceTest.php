@@ -210,7 +210,47 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertContains('env_field_count_mismatch', $context['validation']['errors']);
         $this->assertContains('device_env_digest_mismatch', $context['validation']['errors']);
         $this->assertContains('native_probe_protocol_mismatch', $context['validation']['errors']);
-        $this->assertGreaterThanOrEqual(30, $context['score']);
+        $this->assertSame(20, $context['score']);
+        $this->assertSame(0, $context['decision']['compliance_mode']);
+        $this->assertSame(1, $context['decision']['ad_switch']);
+    }
+
+    public function test_protocol_mismatch_does_not_force_compliance_when_probe_is_otherwise_clean(): void
+    {
+        $payload = [
+            'pv' => 9,
+            'pf' => 'android',
+            'np' => false,
+            'nv' => 1,
+            'nq' => true,
+            'nm' => true,
+            'ea' => false,
+            'ev' => 2,
+            'ef' => 7,
+        ];
+        $payload['eg'] = $this->digest($payload);
+        $payload += ['ts' => time(), 'nc' => 'nonce-protocol-soft', 'ver' => '1'];
+
+        $context = $this->service->inspect($this->requestWith($this->seal($payload)));
+
+        $this->assertSame(['native_probe_protocol_mismatch'], $context['reasons']);
+        $this->assertSame(5, $context['score']);
+        $this->assertSame(0, $context['decision']['compliance_mode']);
+        $this->assertSame(1, $context['decision']['ad_switch']);
+    }
+
+    public function test_client_ad_block_still_reaches_compliance_when_a_hard_signal_is_present(): void
+    {
+        $context = $this->inspectPayload([
+            'vp' => true,
+            'ea' => false,
+        ], 'vpn-blocks-ads');
+
+        $this->assertContains('vpn', $context['reasons']);
+        $this->assertContains('env_blocks_ads', $context['reasons']);
+        $this->assertSame(60, $context['score']);
+        $this->assertSame(1, $context['decision']['compliance_mode']);
+        $this->assertSame(0, $context['decision']['ad_switch']);
     }
 
     public function test_behavior_rules_require_complete_signal_combinations(): void

@@ -125,6 +125,15 @@ class DeviceEnvRiskService
         'ver' => 'ver',
     ];
 
+    /**
+     * 接入漂移信号。命中后只加少量分数，且不能单独触发客户端关广告时的合规抬分。
+     */
+    private const SOFT_VALIDATION_REASONS = [
+        'native_probe_protocol_mismatch',
+        'device_env_digest_mismatch',
+        'env_field_count_mismatch',
+    ];
+
     public function inspect(Request $request): array
     {
         // Device-Env 与业务接口混淆是两套机制：
@@ -440,13 +449,17 @@ class DeviceEnvRiskService
         $add((bool) ($probe['is_jailbroken'] ?? false), 15, 'jailbroken');
         $add((int) ($probe['suspicious_a11y_count'] ?? 0) >= 1, 10, 'suspicious_a11y');
         $add(array_key_exists('drm_ok', $probe) && $probe['drm_ok'] === false, 10, 'drm_failed');
-        $add(in_array('native_probe_protocol_mismatch', $validationErrors, true), 15, 'native_probe_protocol_mismatch');
+        // 协议不匹配多见于探针还没采集完，或客户端版本漂移。只作轻量留痕，不能单独关广告或进入合规。
+        $add(in_array('native_probe_protocol_mismatch', $validationErrors, true), 5, 'native_probe_protocol_mismatch');
         $add(in_array('device_env_digest_mismatch', $validationErrors, true), 10, 'device_env_digest_mismatch');
         $add(in_array('env_field_count_mismatch', $validationErrors, true), 5, 'env_field_count_mismatch');
 
         // 客户端已经执行硬门禁时，服务端至少提升到合规阈值，保证广告与 AI 策略一致。
+        // 只有协议/摘要/字段数这类接入漂移时不抬分：探针未完成也会上报 env_allows_ads=false，
+        // 若一并抬到合规线，名单会把「设备探针协议不匹配」直接记成高风险阻断。
         $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
-        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < $complianceThreshold) {
+        $softOnly = $reasons !== [] && array_diff($reasons, self::SOFT_VALIDATION_REASONS) === [];
+        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < $complianceThreshold && ! $softOnly) {
             $score = $complianceThreshold;
             $reasons[] = 'env_blocks_ads';
         }

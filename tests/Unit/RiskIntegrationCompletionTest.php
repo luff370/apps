@@ -188,6 +188,43 @@ class RiskIntegrationCompletionTest extends TestCase
         $this->assertNull(app(RiskReleaseEngine::class)->tryRelease(DB::table('risk_scopes')->first()));
     }
 
+    public function test_qualified_online_usage_still_releases_after_the_worker_is_late(): void
+    {
+        $scope = $this->collect();
+        foreach (range(0, 61) as $i) {
+            $at = Carbon::now()->subSeconds(1830 - $i * 30);
+            DB::table('risk_activity_events')->insert(['event_id' => 'late-'.$i, 'session_id' => 'late', 'app_id' => 1, 'device_identity' => 'device-a',
+                'event_seq' => $i + 1, 'monotonic_elapsed_ms' => $i * 30000, 'online_verified' => 1, 'projected_at' => now(),
+                'foreground' => 1, 'screen_interactive' => 1, 'interaction' => 1, 'occurred_at' => $at->toDateTimeString(), 'received_at' => $at->toDateTimeString()]);
+        }
+        Carbon::setTestNow(Carbon::now()->addMinutes(10));
+
+        $release = app(RiskReleaseEngine::class)->tryRelease($scope);
+
+        $this->assertNotNull($release);
+        $this->assertSame('released', DB::table('risk_scopes')->value('state'));
+    }
+
+    public function test_manual_ip_removal_releases_active_scopes_and_clears_the_same_basis(): void
+    {
+        $this->collect();
+        $result = app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 7, '运营甲');
+
+        $this->assertTrue($result['changed']);
+        $this->assertSame(1, $result['scope_count']);
+        $this->assertSame('released', $result['state']);
+        $this->assertSame('released', DB::table('risk_scopes')->value('state'));
+        $this->assertSame('manual-ip-removal', DB::table('risk_releases')->value('rule_id'));
+        $this->assertSame('从风控名单移除', DB::table('risk_timeline')->where('event_type', 'manual_release')->value('title'));
+        $this->assertSame('运营甲', DB::table('risk_timeline')->where('event_type', 'manual_release')->value('operator_name'));
+        $base = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $this->assertSame(0, app(RiskPolicyService::class)->overlay($base, 1, 'device-a', ['app_version' => '1.0', 'market_channel' => 'huawei'])['compliance_mode']);
+
+        $again = app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 7, '运营甲');
+        $this->assertFalse($again['changed']);
+        $this->assertSame(1, DB::table('risk_releases')->count());
+    }
+
     public function test_authenticated_activity_links_account_without_rewriting_intake_snapshot_and_populates_timeline(): void
     {
         $this->collect();
