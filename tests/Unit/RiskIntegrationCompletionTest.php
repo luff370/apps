@@ -190,10 +190,21 @@ class RiskIntegrationCompletionTest extends TestCase
         $downgrade = app(RiskReleaseEngine::class)->tryRelease($scope);
         $this->assertTrue($downgrade['downgraded']);
         $this->assertSame(0, DB::table('risk_releases')->count());
-        $confirmed = app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 1, 'admin', [
-            'request_id' => 'confirm-after-online-observation', 'expected_state' => 'watch',
-            'expected_version' => (int) DB::table('risk_ip_dossiers')->value('resource_version'),
-        ]);
+        $engine = app(RiskReleaseEngine::class);
+        $this->assertNull($engine->tryRelease($scope));
+
+        // A retry of the first evaluation cannot advance the second stage.
+        $this->assertSame(0, DB::table('risk_releases')->count());
+        Carbon::setTestNow(Carbon::now()->addSeconds(30));
+        $at = Carbon::now()->toDateTimeString();
+        DB::table('risk_activity_events')->insert(['event_id' => 'live-after-review', 'session_id' => 'live', 'app_id' => 1, 'device_identity' => 'device-a',
+            'event_seq' => 63, 'monotonic_elapsed_ms' => 1860000, 'online_verified' => 1, 'projected_at' => now(),
+            'foreground' => 1, 'screen_interactive' => 1, 'interaction' => 1, 'occurred_at' => $at, 'received_at' => $at]);
+        $confirmed = $engine->tryRelease($scope);
+        $this->assertSame('released', $confirmed['state']);
+        $this->assertSame('continuous-use-release', DB::table('risk_releases')->value('rule_id'));
+        $this->assertSame('auto_release', DB::table('risk_timeline')->whereNotNull('release_id')->value('event_type'));
+        $this->assertNull($engine->tryRelease($scope));
         $release = ['id' => $confirmed['release_id']];
         $base = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
         $policy = app(RiskPolicyService::class);
@@ -212,6 +223,28 @@ class RiskIntegrationCompletionTest extends TestCase
         $this->assertSame(0, $policy->overlay(['score' => 0, 'reasons' => [], 'compliance_mode' => 0, 'ad_switch' => 1], 1, 'device-a', [])['compliance_mode']);
         $this->assertSame('restored', app(RiskReleaseEngine::class)->revoke($release['id'], 'same-request', 1, 1, 'admin')['result']);
         $this->assertNull(app(RiskReleaseEngine::class)->tryRelease(DB::table('risk_scopes')->first()));
+    }
+
+    public function test_mixed_reasons_and_hard_blocks_keep_observation_out_of_automatic_safe_release(): void
+    {
+        $scope = $this->collect();
+        DB::table('risk_scopes')->where('id', $scope->id)->update(['review_stage' => 'observation',
+            'reviewed_at' => now()->subHour(), 'review_reasons' => json_encode(['vpn', 'hook'])]);
+        foreach (range(0, 61) as $i) {
+            $at = Carbon::now()->subSeconds(1830 - $i * 30)->toDateTimeString();
+            DB::table('risk_activity_events')->insert(['event_id' => 'mixed-'.$i, 'session_id' => 'mixed', 'app_id' => 1, 'device_identity' => 'device-a',
+                'event_seq' => $i + 1, 'monotonic_elapsed_ms' => $i * 30000, 'online_verified' => 1, 'projected_at' => now(),
+                'foreground' => 1, 'screen_interactive' => 1, 'interaction' => 1, 'occurred_at' => $at, 'received_at' => $at]);
+        }
+        $engine = app(RiskReleaseEngine::class);
+        $this->assertNull($engine->tryRelease($scope));
+        $this->assertSame('manual_confirmation_required', DB::table('risk_scopes')->value('last_skip_reason'));
+        DB::table('risk_scopes')->where('id', $scope->id)->update(['review_reasons' => json_encode(['vpn', 'native_probe_protocol_mismatch'])]);
+        DB::table('risk_hard_blocks')->insert(['app_id' => 1, 'device_identity' => 'device-a', 'kind' => 'reviewing_visit',
+            'evidence_key' => 'observe-hard', 'evidence' => '{}', 'occurred_at' => now()]);
+        $this->assertNull($engine->tryRelease($scope));
+        $this->assertSame('reviewing_visit', DB::table('risk_scopes')->value('last_skip_reason'));
+        $this->assertSame(0, DB::table('risk_releases')->count());
     }
 
     public function test_qualified_online_usage_still_enters_observation_after_the_worker_is_late(): void

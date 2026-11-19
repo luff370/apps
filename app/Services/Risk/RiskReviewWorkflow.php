@@ -4,12 +4,21 @@ namespace App\Services\Risk;
 
 use App\Exceptions\AdminException;
 use App\Services\Risk\Ledger\ReasonCatalog;
+use App\Services\Risk\Ledger\ReleaseRule;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /** Explicit dispositions are scoped to App + device and the reviewed set of reasons. */
 class RiskReviewWorkflow
 {
+    public function canReleaseAutomatically(object $scope): bool
+    {
+        $signals = array_diff($this->baseline($scope), ['env_blocks_ads']);
+
+        return $scope->reviewed_at !== null && $signals !== []
+            && array_diff($signals, ReleaseRule::AUTO_SAFE_REASONS) === [];
+    }
+
     public function matching(int $appId, string $device, array $decision): ?object
     {
         $scopes = DB::table('risk_scopes')->where('app_id', $appId)->where('device_identity', $device)

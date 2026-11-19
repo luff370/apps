@@ -14,6 +14,7 @@ class UsageWindow
         int $gapSeconds = ReleaseRule::GAP_SECONDS,
         int $idleSeconds = ReleaseRule::IDLE_STOP_SECONDS,
         int $backgroundSplitSeconds = ReleaseRule::BACKGROUND_SPLIT_SECONDS,
+        ?int $interactionAfter = null,
     ): array {
         usort($events, static function (array $a, array $b) {
             return $a['at'] <=> $b['at'] ?: (($a['seq'] ?? 0) <=> ($b['seq'] ?? 0));
@@ -76,7 +77,7 @@ class UsageWindow
             // 后台或锁屏上报不能刷新有效交互时间，也不能触发达标后的释放。
             if (! empty($event['interaction']) && $event['foreground'] && $event['screen_interactive']) {
                 $lastInteraction = $event['at'];
-                if ($frozen === null && $thresholdAt !== null && $event['at'] > $thresholdAt) {
+                if ($frozen === null && $thresholdAt !== null && $event['at'] > max($thresholdAt, $interactionAfter ?? $thresholdAt)) {
                     $frozen = [
                         'qualified' => true,
                         'effective_seconds' => $accum,
