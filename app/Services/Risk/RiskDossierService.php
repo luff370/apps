@@ -153,7 +153,7 @@ class RiskDossierService
             $query->where('app_id', $filter['app_id']);
         }
         if (! empty($filter['event_kind'])) {
-            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'manual_release', 'release_revoke']];
+            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'manual_release', 'release_revoke', 'risk_downgrade', 'rule_correction']];
             $query->whereIn('event_type', $kinds[$filter['event_kind']] ?? [$filter['event_kind']]);
         }
         if (! empty($filter['reason_code'])) {
@@ -169,7 +169,7 @@ class RiskDossierService
             ->where('ip', $ip)
             ->selectRaw('DATE(occurred_at) as day, COUNT(*) as total')
             ->selectRaw("SUM(event_type IN ('risk_hit','intake','reintake')) as risk_count")
-            ->selectRaw("SUM(event_type IN ('auto_release','manual_release','release_revoke')) as action_count")
+            ->selectRaw("SUM(event_type IN ('auto_release','manual_release','release_revoke','risk_downgrade','rule_correction')) as action_count")
             ->groupBy(DB::raw('DATE(occurred_at)'))
             ->orderBy('day')
             ->get() : null;
@@ -305,11 +305,12 @@ class RiskDossierService
     {
         $markets = $this->json($row->markets);
         $apps = $this->json($row->apps);
-        $tags = $this->json($row->tags);
+        $tags = array_values(array_filter($this->json($row->tags), fn ($tag) => ($tag['code'] ?? '') !== 'screen_projection'));
         $state = (string) $row->state;
         $record = [
             'id' => IpNormalizer::idFor($row->ip),
             'ip' => $row->ip,
+            'resource_version' => (int) $row->resource_version,
             'ip_version' => IpNormalizer::version($row->ip),
             'state' => $state,
             'current_decision' => $row->current_decision,
@@ -335,7 +336,7 @@ class RiskDossierService
             'first_risk_at' => $row->first_risk_at ? $this->iso($row->first_risk_at) : null,
             'last_activity_at' => $row->last_activity_at ? $this->iso($row->last_activity_at) : null,
             'last' => $row->last_activity_at,
-            'levelLabel' => $state === 'released' ? '已解除' : ($state === 'high' ? '高风险' : '待观察'),
+            'levelLabel' => $state === 'released' ? '安全区' : ($state === 'high' ? '高风险' : '低风险观察'),
             'color' => $state === 'released' ? 'success' : ($state === 'high' ? 'error' : 'warning'),
             'status' => $state === 'released' ? 'IP 已解除' : ($row->current_decision ?: '处置中'),
             'events' => [],

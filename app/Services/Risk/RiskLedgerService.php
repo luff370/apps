@@ -112,6 +112,20 @@ class RiskLedgerService
             return;
         }
 
+        // Old queued probes must not recreate a disposition for a retired signal.
+        // Reassess an in-memory copy only; the original audit row remains immutable.
+        $corrected = ProjectionRiskRepair::correctedDecision($log);
+        if ($corrected !== null) {
+            $log = clone $log;
+            $log->risk_score = $corrected['score'];
+            $log->risk_reasons = $corrected['reasons'];
+            $log->compliance_mode = $corrected['compliance_mode'];
+            $log->ad_switch = $corrected['ad_switch'];
+            $probe = $log->probe_json;
+            $probe['_risk_basis'] = ['hash' => RiskPolicyService::basis($corrected), 'decision' => $corrected];
+            $log->probe_json = $probe;
+        }
+
         // 主键插入占位。对不存在的行 SELECT FOR UPDATE 会锁住主键间隙，
         // 相邻 source_log_id 落在同一间隙，随后的 INSERT 互相等待，触发 1213。
         DB::transaction(function () use ($log, $logId, $deferDossier) {
@@ -126,6 +140,23 @@ class RiskLedgerService
             $ip = IpNormalizer::normalize($log->client_ip);
             if ($ip !== '') {
                 $this->lockIp($ip);
+            }
+            $probe = is_array($log->probe_json) ? $log->probe_json : [];
+            unset($probe['_review_match']);
+            $log = clone $log;
+            $log->probe_json = $probe;
+            $raw = $probe['_risk_basis']['decision'] ?? ['score' => (int) $log->risk_score, 'reasons' => $log->risk_reasons ?? [], 'compliance_mode' => (int) $log->compliance_mode, 'ad_switch' => (int) $log->ad_switch];
+            $reviewed = app(RiskReviewWorkflow::class)->matching((int) $log->app_id, DeviceEnvRiskView::identityFromLog($log), $raw);
+            if ($reviewed && ! array_filter(app(RiskReleaseEngine::class)->blockers($reviewed, true), fn ($block) => ! empty($block['prevent']))
+                && app(RiskReviewEvidence::class)->statusAt((int) $log->app_id, DeviceEnvRiskView::identityFromLog($log), (string) $log->app_version, (string) $log->market_channel, $occurredAt) !== 'blocked') {
+                $log = clone $log;
+                $effective = app(RiskReviewWorkflow::class)->decision($raw, $reviewed);
+                $log->risk_score = $effective['score'];
+                $log->risk_reasons = $effective['reasons'];
+                $log->compliance_mode = $effective['compliance_mode'];
+                $log->ad_switch = $effective['ad_switch'];
+                $probe['_review_match'] = $reviewed->review_stage;
+                $log->probe_json = $probe;
             }
             $decision = DeviceEnvRiskView::decision((int) $log->risk_score, (int) $log->compliance_mode, (int) $log->ad_switch);
             $coverage = $this->coverage($log);
@@ -168,6 +199,11 @@ class RiskLedgerService
                 app(RiskReviewEvidence::class)->observe((int) $log->app_id, $device, (string) $log->app_version, (string) $log->market_channel, $occurredAt);
             }
             $risky = in_array($decision, ['verify', 'limit', 'block'], true);
+            // An inherited restriction must not create a new disposition backed only by protocol drift.
+            if (($raw['reasons'] ?? []) === ['native_probe_protocol_mismatch']
+                && $log->risk_reasons === ['native_probe_protocol_mismatch']) {
+                $risky = false;
+            }
             if ($risky && $coverage !== 'visit') {
                 $this->recordAccess('probe:'.$logId, (int) $log->app_id, $device, $probe['_user_id'] ?? null, $ip, (string) $log->app_version, (string) $log->market_channel, 'guard', $decision, $occurredAt, $occurredAt);
             }
@@ -295,7 +331,10 @@ class RiskLedgerService
                 return;
             }
             $codes = array_values(array_unique(array_merge($this->codes($scope->reason_codes), $reasons)));
+            $newAfterReview = $scope->review_stage === 'observation' && ($probe['_review_match'] ?? '') !== 'observation';
             DB::table('risk_scopes')->where('id', $scope->id)->update([
+                'review_stage' => ($probe['_review_match'] ?? '') === 'observation' ? 'observation' : 'enforced',
+                'review_reasons' => ($probe['_review_match'] ?? '') === 'observation' ? $scope->review_reasons : null,
                 'basis_hash' => $basisHash,
                 'reason_codes' => json_encode($codes, JSON_UNESCAPED_UNICODE),
                 'risk_level' => $this->higherLevel((string) $scope->risk_level, $level),
@@ -303,7 +342,9 @@ class RiskLedgerService
                 'risk_score' => max((int) $scope->risk_score, (int) $log->risk_score),
                 'market_channel' => $log->market_channel ?: $scope->market_channel,
                 'version_name' => $log->app_version ?: $scope->version_name,
-                'evidence_after_hold_at' => $scope->evidence_after_hold_at,
+                'hold_at' => $newAfterReview ? $occurredAt->toDateTimeString() : $scope->hold_at,
+                'auto_release_hold_version' => $newAfterReview ? \App\Services\Risk\Ledger\ReleaseRule::VERSION : $scope->auto_release_hold_version,
+                'evidence_after_hold_at' => $newAfterReview ? null : $scope->evidence_after_hold_at,
                 'updated_at' => now(),
             ]);
             if (! empty($probe['_user_id'])) {
@@ -326,6 +367,9 @@ class RiskLedgerService
             'device_identity' => $device,
             'install_id' => $log->device_sn ?: $device,
             'basis_hash' => $basisHash,
+            'review_stage' => ($probe['_review_match'] ?? '') === 'observation' ? 'observation' : 'enforced',
+            'review_reasons' => ($probe['_review_match'] ?? '') === 'observation' ? json_encode($probe['_risk_basis']['decision']['reasons'] ?? $reasons) : null,
+            'reviewed_at' => ($probe['_review_match'] ?? '') === 'observation' ? now() : null,
             'identity_kind' => $probe['_identity_kind'] ?? 'legacy',
             'policy_eligible' => $eligible,
             'user_id' => ! empty($probe['_user_id']) ? (string) $probe['_user_id'] : null,
@@ -449,10 +493,12 @@ class RiskLedgerService
         }
         $collected = $scopes->min('collected_at');
         $last = DB::table('risk_timeline')->where('ip', $ip)->max('occurred_at') ?: $scopes->max('updated_at');
-        $last = max($last, (string) DB::table('risk_ip_dossiers')->where('ip', $ip)->value('last_activity_at'));
+        $previous = DB::table('risk_ip_dossiers')->where('ip', $ip)->first(['last_activity_at', 'state', 'current_decision', 'tags']);
+        $last = max($last, (string) ($previous->last_activity_at ?? ''));
+        $currentDecision = $active->isEmpty() ? 'released' : ($active->contains('decision', 'block') ? 'block' : ($active->contains('decision', 'limit') ? 'limit' : 'verify'));
         DB::table('risk_ip_dossiers')->updateOrInsert(['ip' => $ip], [
             'state' => $state,
-            'current_decision' => $active->isEmpty() ? 'released' : ($active->contains('decision', 'block') ? 'block' : ($active->contains('decision', 'limit') ? 'limit' : 'verify')),
+            'current_decision' => $currentDecision,
             'active_scope_count' => $active->count(),
             'device_count' => count($devices),
             'account_count' => count($accounts),
@@ -466,6 +512,9 @@ class RiskLedgerService
             'updated_at' => now(),
             'created_at' => now(),
         ]);
+        if ($previous && ($previous->state !== $state || $previous->current_decision !== $currentDecision || json_decode((string) $previous->tags, true) !== array_values($tags))) {
+            DB::table('risk_ip_dossiers')->where('ip', $ip)->increment('resource_version');
+        }
     }
 
     public function scopeEvent(int $scopeId, string $ip, string $type, Carbon $at, bool $activeAfter, ?int $releaseId): void

@@ -21,6 +21,7 @@ class RiskQueryOptimizationTest extends TestCase
         (require database_path('migrations/2026_10_30_160000_complete_risk_integration.php'))->up();
         (require database_path('migrations/2026_10_30_170000_isolate_historical_risk_scopes.php'))->up();
         (require database_path('migrations/2026_10_30_180000_async_risk_activity_projection.php'))->up();
+        (require database_path('migrations/2026_11_19_160000_add_risk_review_stages.php'))->up();
         Schema::create('system_apps', function (Blueprint $table) {
             $table->id();
             $table->string('name');
@@ -76,6 +77,15 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertCount(2, DB::getQueryLog());
         $this->assertSame(1, $this->service()->list(['keyword' => '192.0.2.1', 'compact' => true, 'include_options' => false], 1, 20)['count']);
         $this->assertCount(10000, $this->service()->list(['include_options' => false], 1, 1)['list'][0]['devices']);
+    }
+
+    public function test_projection_tag_is_hidden_without_deleting_the_stored_evidence(): void
+    {
+        $this->dossier('192.0.2.1');
+        DB::table('risk_ip_dossiers')->update(['tags' => '[{"code":"screen_projection","label":"正在投屏"},{"code":"root","label":"已 Root"}]']);
+        $result = $this->service()->list(['compact' => true, 'include_options' => false], 1, 20);
+        $this->assertSame(['root'], array_column($result['list'][0]['tags'], 'code'));
+        $this->assertStringContainsString('screen_projection', DB::table('risk_ip_dossiers')->value('tags'));
     }
 
     public function test_dossier_activity_dates_filter_full_days_counts_states_and_pages(): void

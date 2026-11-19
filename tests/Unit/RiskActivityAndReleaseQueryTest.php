@@ -22,6 +22,7 @@ class RiskActivityAndReleaseQueryTest extends TestCase
         (require database_path('migrations/2026_10_30_160000_complete_risk_integration.php'))->up();
         (require database_path('migrations/2026_10_30_170000_isolate_historical_risk_scopes.php'))->up();
         (require database_path('migrations/2026_10_30_180000_async_risk_activity_projection.php'))->up();
+        (require database_path('migrations/2026_11_19_160000_add_risk_review_stages.php'))->up();
     }
 
     public function test_activity_uses_uuid_for_device_and_server_install_identity(): void

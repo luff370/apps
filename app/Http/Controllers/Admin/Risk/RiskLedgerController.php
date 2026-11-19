@@ -106,10 +106,11 @@ class RiskLedgerController extends Controller
             $result = $this->engine->removeIp(
                 $ip,
                 (int) adminId(),
-                (string) (adminInfo()['real_name'] ?? adminInfo()['account'] ?? '管理员')
+                (string) (adminInfo()['real_name'] ?? adminInfo()['account'] ?? '管理员'),
+                request()->only(['request_id', 'expected_state', 'expected_version'])
             );
         } catch (AdminException $e) {
-            return $this->fail($e->getMessage());
+            return $this->fail($e->getMessage(), null, $e->getCode() ?: 400);
         }
 
         return $this->success($result);

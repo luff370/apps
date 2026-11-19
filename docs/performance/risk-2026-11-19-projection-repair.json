@@ -1,0 +1,32 @@
+{
+  "environment": "local",
+  "checked_on": "2026-11-19",
+  "migration": "2026_11_19_160000_add_risk_review_stages",
+  "until_scope_id": 7073,
+  "dry_run": {
+    "scanned": 25,
+    "eligible": 0,
+    "released": 0,
+    "skipped_other_risk": 25,
+    "has_more": false
+  },
+  "apply": {
+    "scanned": 25,
+    "eligible": 0,
+    "released": 0,
+    "skipped_other_risk": 25,
+    "has_more": false
+  },
+  "candidate_original_logs_unchanged": true,
+  "ledger_cursor_id": 1991486,
+  "source_max_id": 1991486,
+  "activity_pending": false,
+  "production_deployed": false,
+  "validation": {
+    "phpunit_tests": 88,
+    "phpunit_assertions": 631,
+    "frontend_behavior_suites": 2,
+    "frontend_lint_passed": true,
+    "production_build_passed": true
+  }
+}

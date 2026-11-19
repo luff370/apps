@@ -6,7 +6,7 @@ class ReleaseRule
 {
     public const ID = 'continuous-use-release';
 
-    public const VERSION = '2';
+    public const VERSION = '3';
 
     public const THRESHOLD_SECONDS = 1800;
 
@@ -23,7 +23,7 @@ class ReleaseRule
     {
         $minutes = (int) floor($seconds / 60);
 
-        return "本次有效前台使用 {$minutes} 分钟，达到 30 分钟阈值后仍有操作，且没有有效的禁止自动释放条件。只解除本次对应的应用和设备。";
+        return "本次有效前台使用 {$minutes} 分钟，达到 30 分钟阈值后仍有操作，且没有有效的禁止条件。对应应用和设备降为低风险观察，进入安全区仍需人工再次确认。";
     }
 
     public static function payload(): array
@@ -36,6 +36,8 @@ class ReleaseRule
                 'same_app_same_device' => true,
                 'background_and_lock_screen_excluded' => true,
                 'requires_interaction_after_threshold' => true,
+                'target_stage' => 'observation',
+                'safe_requires_manual_confirmation' => true,
             ],
             'provisional' => [
                 'idle_stop_seconds' => self::IDLE_STOP_SECONDS,

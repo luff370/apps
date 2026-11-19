@@ -19,7 +19,6 @@ class ReasonCatalog
         'jailbroken' => '已越狱',
         'multi_open' => '多开环境',
         'screen_captured' => '正在录屏',
-        'screen_projection' => '正在投屏',
     ];
 
     public static function label(string $code): string
@@ -32,13 +31,13 @@ class ReasonCatalog
         if (is_string($reasons) && $reasons !== '') {
             $reasons = explode('+', $reasons);
         }
-        if (!is_array($reasons)) {
+        if (! is_array($reasons)) {
             return [];
         }
         $codes = [];
         foreach ($reasons as $reason) {
             $code = strtolower(trim((string) $reason));
-            if ($code !== '' && !in_array($code, $codes, true)) {
+            if ($code !== '' && $code !== 'screen_projection' && ! in_array($code, $codes, true)) {
                 $codes[] = $code;
             }
         }

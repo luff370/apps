@@ -71,14 +71,7 @@ class DeviceEnvRiskView
 
     public static function blockReason($reasons): string
     {
-        if (is_string($reasons) && $reasons !== '') {
-            return $reasons;
-        }
-        if (!is_array($reasons) || $reasons === []) {
-            return '';
-        }
-
-        return implode('+', array_values(array_unique(array_filter($reasons))));
+        return implode('+', \App\Services\Risk\Ledger\ReasonCatalog::normalizeList($reasons));
     }
 
     public static function eventType(RiskProbeLog $log): string
@@ -151,7 +144,7 @@ class DeviceEnvRiskView
             'market_channel' => $channels[$channel] ?? $channel,
             'version' => (string) ($log->app_version ?? ''),
             'hardware_hash' => self::fingerprint($log->device_sn ?: $identity),
-            'sensor_hash' => self::fingerprint((string) ($probe['sensor_static_score'] ?? '') . '|' . $identity),
+            'sensor_hash' => self::fingerprint((string) ($probe['sensor_static_score'] ?? '').'|'.$identity),
             'install_id' => (string) ($log->device_sn ?: $identity),
             'risk_score' => $score,
             'risk_level' => self::level($score),

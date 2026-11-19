@@ -2,12 +2,20 @@
 
 namespace Tests\Unit;
 
-use Tests\TestCase;
 use App\Models\RiskProbeLog;
 use App\Support\Services\DeviceEnvRiskView;
+use Tests\TestCase;
 
 class DeviceEnvRiskViewTest extends TestCase
 {
+    public function test_projection_is_hidden_from_historical_risk_reasons(): void
+    {
+        $this->assertSame('', DeviceEnvRiskView::blockReason(['screen_projection']));
+        $this->assertSame('root', DeviceEnvRiskView::blockReason('screen_projection+root'));
+        $this->assertSame(['screen_captured'], \App\Services\Risk\Ledger\ReasonCatalog::normalizeList(['screen_projection', 'screen_captured']));
+        $this->assertArrayNotHasKey('screen_projection', \App\Services\Risk\Ledger\ReasonCatalog::LABELS);
+    }
+
     public function test_it_maps_score_to_page_level_and_decision(): void
     {
         $this->assertSame('normal', DeviceEnvRiskView::level(10));

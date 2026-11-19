@@ -29,6 +29,7 @@ class RiskIntegrationCompletionTest extends TestCase
         (require database_path('migrations/2026_10_30_160000_complete_risk_integration.php'))->up();
         (require database_path('migrations/2026_10_30_170000_isolate_historical_risk_scopes.php'))->up();
         (require database_path('migrations/2026_10_30_180000_async_risk_activity_projection.php'))->up();
+        (require database_path('migrations/2026_11_19_160000_add_risk_review_stages.php'))->up();
         Schema::create('risk_probe_logs', function (Blueprint $t) {
             $t->id();
             foreach (array_unique(array_merge(RiskProbeLog::adminListColumns(), (new RiskProbeLog)->getFillable(), ['updated_at', 'route', 'probe_json', 'device_identity', 'touch_sample_count', 'click_sample_count', 'swipe_sample_count'])) as $name) {
@@ -89,6 +90,25 @@ class RiskIntegrationCompletionTest extends TestCase
         app(RiskLedgerService::class)->applyLog($log);
 
         return DB::table('risk_scopes')->first();
+    }
+
+    public function test_protocol_mismatch_does_not_recollect_on_another_ip_under_an_existing_disposition(): void
+    {
+        $this->collect();
+        $raw = ['score' => 5, 'reasons' => ['native_probe_protocol_mismatch'], 'compliance_mode' => 0, 'ad_switch' => 1];
+        $effective = app(RiskPolicyService::class)->overlay($raw, 1, 'device-a', []);
+        $this->assertSame(1, $effective['compliance_mode']);
+
+        $log = RiskProbeLog::query()->first()->replicate();
+        $log->client_ip = '192.0.2.2';
+        $log->risk_reasons = $effective['reasons'];
+        $log->probe_json = ['_risk_basis' => ['decision' => $raw]];
+        $log->save();
+        app(RiskLedgerService::class)->applyLog($log);
+
+        $this->assertSame(1, DB::table('risk_scopes')->count());
+        $this->assertSame('vpn', DB::table('risk_reason_evidence')->value('code'));
+        $this->assertSame(['native_probe_protocol_mismatch'], $log->fresh()->risk_reasons);
     }
 
     public function test_historical_scopes_are_statistics_only_and_new_hits_create_an_independent_policy_scope(): void
@@ -167,8 +187,14 @@ class RiskIntegrationCompletionTest extends TestCase
                 'event_seq' => $i + 1, 'monotonic_elapsed_ms' => $i * 30000, 'online_verified' => 1, 'projected_at' => now(),
                 'foreground' => 1, 'screen_interactive' => 1, 'interaction' => 1, 'occurred_at' => $at, 'received_at' => $at]);
         }
-        $release = app(RiskReleaseEngine::class)->tryRelease($scope);
-        $this->assertNotNull($release);
+        $downgrade = app(RiskReleaseEngine::class)->tryRelease($scope);
+        $this->assertTrue($downgrade['downgraded']);
+        $this->assertSame(0, DB::table('risk_releases')->count());
+        $confirmed = app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 1, 'admin', [
+            'request_id' => 'confirm-after-online-observation', 'expected_state' => 'watch',
+            'expected_version' => (int) DB::table('risk_ip_dossiers')->value('resource_version'),
+        ]);
+        $release = ['id' => $confirmed['release_id']];
         $base = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
         $policy = app(RiskPolicyService::class);
         DB::flushQueryLog();
@@ -183,12 +209,12 @@ class RiskIntegrationCompletionTest extends TestCase
         $this->assertSame($new, $policy->overlay($new, 1, 'device-a', ['app_version' => '1.0', 'market_channel' => 'huawei']));
         $result = app(RiskReleaseEngine::class)->revoke($release['id'], 'same-request', 1, 1, 'admin');
         $this->assertSame('revoked', $result['status']);
-        $this->assertSame(1, $policy->overlay(['score' => 0, 'reasons' => [], 'compliance_mode' => 0, 'ad_switch' => 1], 1, 'device-a', [])['compliance_mode']);
+        $this->assertSame(0, $policy->overlay(['score' => 0, 'reasons' => [], 'compliance_mode' => 0, 'ad_switch' => 1], 1, 'device-a', [])['compliance_mode']);
         $this->assertSame('restored', app(RiskReleaseEngine::class)->revoke($release['id'], 'same-request', 1, 1, 'admin')['result']);
         $this->assertNull(app(RiskReleaseEngine::class)->tryRelease(DB::table('risk_scopes')->first()));
     }
 
-    public function test_qualified_online_usage_still_releases_after_the_worker_is_late(): void
+    public function test_qualified_online_usage_still_enters_observation_after_the_worker_is_late(): void
     {
         $scope = $this->collect();
         foreach (range(0, 61) as $i) {
@@ -201,28 +227,141 @@ class RiskIntegrationCompletionTest extends TestCase
 
         $release = app(RiskReleaseEngine::class)->tryRelease($scope);
 
-        $this->assertNotNull($release);
-        $this->assertSame('released', DB::table('risk_scopes')->value('state'));
+        $this->assertTrue($release['downgraded']);
+        $this->assertSame('observation', DB::table('risk_scopes')->value('review_stage'));
+        $this->assertSame('active', DB::table('risk_scopes')->value('state'));
     }
 
-    public function test_manual_ip_removal_releases_active_scopes_and_clears_the_same_basis(): void
+    public function test_manual_ip_review_requires_two_explicit_confirmations_and_retries_do_not_advance_twice(): void
     {
         $this->collect();
-        $result = app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 7, '运营甲');
-
-        $this->assertTrue($result['changed']);
-        $this->assertSame(1, $result['scope_count']);
-        $this->assertSame('released', $result['state']);
-        $this->assertSame('released', DB::table('risk_scopes')->value('state'));
-        $this->assertSame('manual-ip-removal', DB::table('risk_releases')->value('rule_id'));
-        $this->assertSame('从风控名单移除', DB::table('risk_timeline')->where('event_type', 'manual_release')->value('title'));
-        $this->assertSame('运营甲', DB::table('risk_timeline')->where('event_type', 'manual_release')->value('operator_name'));
+        $engine = app(RiskReleaseEngine::class);
+        $first = ['request_id' => 'manual-lower-1', 'expected_state' => 'high', 'expected_version' => 1];
+        $result = $engine->removeIp('192.0.2.1', 7, '运营甲', $first);
+        $this->assertSame('watch', $result['state']);
+        $this->assertSame(0, DB::table('risk_releases')->count());
+        $this->assertSame($result, $engine->removeIp('192.0.2.1', 7, '运营甲', $first));
+        $this->assertSame('observation', DB::table('risk_scopes')->value('review_stage'));
+        $second = ['request_id' => 'manual-confirm-2', 'expected_state' => 'watch', 'expected_version' => 2];
+        $safe = $engine->removeIp('192.0.2.1', 7, '运营甲', $second);
+        $this->assertSame('released', $safe['state']);
+        $this->assertSame('safe', DB::table('risk_scopes')->value('review_stage'));
+        $this->assertSame('manual-reviewed-safe', DB::table('risk_releases')->value('rule_id'));
+        $this->assertSame('低风险确认进入安全区', DB::table('risk_timeline')->where('event_type', 'manual_release')->value('title'));
         $base = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
-        $this->assertSame(0, app(RiskPolicyService::class)->overlay($base, 1, 'device-a', ['app_version' => '1.0', 'market_channel' => 'huawei'])['compliance_mode']);
-
-        $again = app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 7, '运营甲');
-        $this->assertFalse($again['changed']);
+        $this->assertSame(0, app(RiskPolicyService::class)->overlay($base, 1, 'device-a', [])['compliance_mode']);
+        $this->assertSame($safe, $engine->removeIp('192.0.2.1', 7, '运营甲', $second));
         $this->assertSame(1, DB::table('risk_releases')->count());
+    }
+
+    public function test_reviewed_subset_and_version_change_do_not_recollect_but_new_risk_escalates(): void
+    {
+        $base = ['score' => 60, 'reasons' => ['sensor_static', 'native_probe_protocol_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $log = RiskProbeLog::query()->create(['app_id' => 1, 'status' => 'ok', 'risk_score' => 60,
+            'risk_reasons' => $base['reasons'], 'compliance_mode' => 1, 'ad_switch' => 0,
+            'user_uuid' => 'device-a', 'device_sn' => 'install-a', 'client_ip' => '192.0.2.1',
+            'app_version' => '2.6.3', 'market_channel' => 'huawei', 'probe_json' => ['_risk_basis' => ['decision' => $base, 'hash' => RiskPolicyService::basis($base)]]]);
+        $ledger = app(RiskLedgerService::class);
+        $ledger->applyLog($log);
+        $engine = app(RiskReleaseEngine::class);
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'subset-lower', 'expected_state' => 'high', 'expected_version' => 1]);
+        $subset = ['score' => 5, 'reasons' => ['native_probe_protocol_mismatch'], 'compliance_mode' => 0, 'ad_switch' => 1];
+        $policy = app(RiskPolicyService::class);
+        $effective = $policy->overlay($subset, 1, 'device-a', ['app_version' => '2.6.4', 'market_channel' => 'huawei']);
+        $this->assertSame(0, $effective['compliance_mode']);
+        $this->assertSame(1, $effective['ad_switch']);
+        $incoming = $log->replicate();
+        $incoming->app_version = '2.6.4';
+        $incoming->risk_reasons = $subset['reasons'];
+        $incoming->probe_json = ['_risk_basis' => ['decision' => $subset, 'hash' => RiskPolicyService::basis($subset)]];
+        $incoming->save();
+        $ledger->applyLog($incoming);
+        $this->assertSame(1, DB::table('risk_scopes')->count());
+        $this->assertSame(0, DB::table('risk_timeline')->where('event_type', 'reintake')->count());
+        $this->assertSame('watch', DB::table('risk_ip_dossiers')->value('state'));
+        $this->assertSame(60, (int) RiskProbeLog::query()->where('id', $incoming->id)->value('risk_score'));
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'subset-safe', 'expected_state' => 'watch', 'expected_version' => 2]);
+        $this->assertSame(0, $policy->overlay($subset, 1, 'device-a', ['app_version' => '2.6.4'])['score']);
+        $known = $incoming->replicate();
+        $known->save();
+        $ledger->applyLog($known);
+        $this->assertSame(0, DB::table('risk_scopes')->where('state', 'active')->count());
+        $novel = ['score' => 80, 'reasons' => ['hook'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $this->assertSame($novel, $policy->overlay($novel, 1, 'device-a', []));
+        $new = $known->replicate();
+        $new->risk_score = 80;
+        $new->risk_reasons = ['hook'];
+        $new->probe_json = ['_risk_basis' => ['decision' => $novel, 'hash' => RiskPolicyService::basis($novel)]];
+        $new->save();
+        $ledger->applyLog($new);
+        $this->assertSame(1, DB::table('risk_scopes')->where('state', 'active')->where('review_stage', 'enforced')->count());
+        $this->assertSame('high', DB::table('risk_ip_dossiers')->value('state'));
+        $this->assertSame(80, $policy->overlay($subset, 1, 'device-a', [])['score']);
+    }
+
+    public function test_a_new_request_with_stale_state_cannot_accidentally_confirm_twice(): void
+    {
+        $this->collect();
+        $engine = app(RiskReleaseEngine::class);
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'first-lower', 'expected_state' => 'high', 'expected_version' => 1]);
+        try {
+            $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'different-request-stale-page', 'expected_state' => 'high', 'expected_version' => 1]);
+            $this->fail('Stale confirmation must not enter the safe area');
+        } catch (\App\Exceptions\AdminException $exception) {
+            $this->assertSame(409, $exception->getCode());
+        }
+        $this->assertSame('observation', DB::table('risk_scopes')->value('review_stage'));
+        $this->assertSame(0, DB::table('risk_releases')->count());
+        $this->assertSame(1, DB::table('risk_review_actions')->count());
+    }
+
+    public function test_new_risk_during_observation_requires_fresh_usage_and_invalidates_stale_safe_confirmation(): void
+    {
+        $scope = $this->collect();
+        $engine = app(RiskReleaseEngine::class);
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'observe-before-new-risk', 'expected_state' => 'high', 'expected_version' => 1]);
+        $source = RiskProbeLog::query()->first()->replicate();
+        $source->risk_reasons = ['hook'];
+        $source->probe_json = ['_risk_basis' => ['decision' => ['score' => 80, 'reasons' => ['hook'], 'compliance_mode' => 1, 'ad_switch' => 0]]];
+        $source->save();
+        app(RiskLedgerService::class)->applyLog($source);
+        $fresh = DB::table('risk_scopes')->where('id', $scope->id)->first();
+        $this->assertSame('enforced', $fresh->review_stage);
+        $this->assertNotNull($fresh->hold_at);
+        $this->assertNull($fresh->evidence_after_hold_at);
+        $this->assertNull($engine->tryRelease($fresh));
+        $this->assertSame('same_rule_hold', DB::table('risk_scopes')->where('id', $scope->id)->value('last_skip_reason'));
+        $this->expectException(\App\Exceptions\AdminException::class);
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'stale-safe-after-hook', 'expected_state' => 'watch', 'expected_version' => 2]);
+    }
+
+    public function test_a_new_reviewing_visit_overrides_a_previous_safe_confirmation_immediately(): void
+    {
+        $this->collect();
+        $engine = app(RiskReleaseEngine::class);
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'review-lower', 'expected_state' => 'high', 'expected_version' => 1]);
+        $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'review-safe', 'expected_state' => 'watch', 'expected_version' => 2]);
+        DB::table('app_version_plans')->insert(['id' => 1, 'app_id' => 1]);
+        DB::table('app_version_plan_tasks')->insert(['plan_id' => 1, 'version' => '1.0', 'market_channel' => 'huawei', 'submitted_at' => '2026-10-30 12:00:00', 'status' => '审核中']);
+        app(RiskReviewEvidence::class)->captureApp(1);
+        $raw = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $this->assertSame(1, app(RiskPolicyService::class)->overlay($raw, 1, 'device-a', ['app_version' => '1.0', 'market_channel' => 'huawei'])['compliance_mode']);
+        $source = RiskProbeLog::query()->first()->replicate();
+        $source->created_at = Carbon::now();
+        $source->save();
+        app(RiskLedgerService::class)->applyLog($source);
+        $this->assertSame(1, DB::table('risk_scopes')->where('state', 'active')->count());
+        $this->assertSame('high', DB::table('risk_ip_dossiers')->value('state'));
+        $this->assertTrue(app(RiskReviewEvidence::class)->locked(1, 'device-a'));
+    }
+
+    public function test_hard_review_blocks_prevent_manual_downgrade(): void
+    {
+        $this->collect();
+        DB::table('risk_hard_blocks')->insert(['app_id' => 1, 'device_identity' => 'device-a', 'kind' => 'reviewing_visit',
+            'evidence_key' => 'review-lock', 'evidence' => '{}', 'occurred_at' => now()]);
+        $this->expectException(\App\Exceptions\AdminException::class);
+        app(RiskReleaseEngine::class)->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'blocked-lower', 'expected_state' => 'high', 'expected_version' => 1]);
     }
 
     public function test_authenticated_activity_links_account_without_rewriting_intake_snapshot_and_populates_timeline(): void
@@ -336,10 +475,10 @@ class RiskIntegrationCompletionTest extends TestCase
         $this->assertTrue(app(\App\Services\Risk\RiskWorkDispatcher::class)->activity());
         \Illuminate\Support\Facades\Artisan::call('queue:work', ['connection' => 'risk', '--queue' => 'risk', '--once' => true, '--sleep' => 0, '--tries' => 1]);
         $this->assertSame(0, DB::table('risk_activity_events')->whereNull('projected_at')->count());
-        $this->assertSame(1, DB::table('risk_releases')->count());
-        $this->assertSame('released', DB::table('risk_scopes')->value('state'));
+        $this->assertSame(0, DB::table('risk_releases')->count());
+        $this->assertSame('observation', DB::table('risk_scopes')->value('review_stage'));
         $this->assertSame(0, app(\App\Services\Risk\RiskActivityProjector::class)->sync());
-        $this->assertSame(1, DB::table('risk_releases')->count());
+        $this->assertSame(0, DB::table('risk_releases')->count());
     }
 
     public function test_failed_queue_publication_keeps_source_for_scheduled_recovery(): void

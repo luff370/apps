@@ -24,14 +24,17 @@ class RunRiskAutoRelease extends Command
             return self::SUCCESS;
         }
         $released = 0;
+        $downgraded = 0;
         foreach ($scopes as $scope) {
             $result = $engine->tryRelease($scope);
-            if ($result && empty($result['duplicate'])) {
+            if (! empty($result['downgraded'])) {
+                $downgraded++;
+            } elseif ($result && empty($result['duplicate'])) {
                 $released++;
             }
         }
         Cache::forever('risk:auto-release:cursor', (int) $scopes->last()->id);
-        $this->info('检查 '.$scopes->count().' 个有效范围，新释放 '.$released.' 条');
+        $this->info('检查 '.$scopes->count().' 个有效范围，新释放 '.$released.' 条，降为低风险观察 '.$downgraded.' 条');
 
         return self::SUCCESS;
     }

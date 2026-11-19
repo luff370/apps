@@ -140,10 +140,12 @@ class AppsService extends Service
     {
         $markets = $this->marketsByChannel($app['markets'] ?? []);
         $latestVersionUpdatedAt = null;
+        $syncedChannels = [];
 
         foreach ($listedTasks as $task) {
             $channel = (string)$task['market_channel'];
-            if ($channel === '') {
+            // 查询已按上架时间、ID 倒序排列，同一市场只取最新的一条。
+            if ($channel === '' || isset($syncedChannels[$channel])) {
                 continue;
             }
 
@@ -158,6 +160,7 @@ class AppsService extends Service
                 'source_type' => 'version_plan',
                 'source_task_id' => (int)$task['id'],
             ]);
+            $syncedChannels[$channel] = true;
 
             $latestVersionUpdatedAt = $this->maxCarbon($latestVersionUpdatedAt, $versionUpdatedAt);
         }

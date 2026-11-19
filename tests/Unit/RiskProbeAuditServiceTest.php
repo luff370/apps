@@ -64,7 +64,7 @@ class RiskProbeAuditServiceTest extends TestCase
             'app_id' => '123',
             'probe' => [
                 'probe_v' => 9, 'env_schema_v' => 2, 'platform' => 'android',
-                'nc' => 'secret-nonce', 'env_allows_ads' => false,
+                'nc' => 'secret-nonce', 'env_allows_ads' => false, 'screen_projection_active' => true,
                 'touch_sample_count' => 12, 'touch_timing_entropy' => 55,
                 'click_sample_count' => 3, 'swipe_sample_count' => 2,
             ],
@@ -88,6 +88,7 @@ class RiskProbeAuditServiceTest extends TestCase
         $log = RiskProbeLog::query()->firstOrFail();
         $this->assertSame(hash('sha256', 'secret-nonce'), $log->nonce_hash);
         $this->assertArrayNotHasKey('nc', $log->probe_json);
+        $this->assertTrue($log->probe_json['screen_projection_active']);
         $this->assertSame(60, $log->risk_score);
         $this->assertSame(1, $log->compliance_mode);
         $this->assertSame('device-001', $log->device_sn);

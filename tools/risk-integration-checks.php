@@ -24,6 +24,7 @@ if (DB::connection()->getDriverName() !== 'sqlite' || DB::connection()->getDatab
 (require database_path('migrations/2026_10_30_160000_complete_risk_integration.php'))->up();
 (require database_path('migrations/2026_10_30_170000_isolate_historical_risk_scopes.php'))->up();
         (require database_path('migrations/2026_10_30_180000_async_risk_activity_projection.php'))->up();
+        (require database_path('migrations/2026_11_19_160000_add_risk_review_stages.php'))->up();
 Schema::create('risk_probe_logs', function (Blueprint $t) {
     $t->id();
     foreach (array_unique(array_merge(RiskProbeLog::adminListColumns(), ['route', 'touch_sample_count', 'click_sample_count', 'swipe_sample_count', 'device_identity'])) as $name) {

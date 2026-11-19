@@ -45,6 +45,9 @@ class RiskReleaseEngine
             if (! $scope || $scope->state !== 'active' || ! (bool) $scope->policy_eligible) {
                 return null;
             }
+            if ($scope->review_stage === 'observation') {
+                return $this->skip($scope, 'manual_confirmation_required');
+            }
             if (DB::table('risk_activity_events')->where('app_id', $scope->app_id)->where('device_identity', $scope->device_identity)->whereNull('projected_at')->exists()) {
                 return $this->skip($scope, 'activity_projection_pending');
             }
@@ -69,93 +72,10 @@ class RiskReleaseEngine
                     return $this->skip($scope, (string) $blocker['type']);
                 }
             }
-            $key = sprintf(
-                'scope:%d:rule:%s:%s:session:%s',
-                $scope->id,
-                ReleaseRule::ID,
-                ReleaseRule::VERSION,
-                $measured['session_id']
-            );
-            $existing = DB::table('risk_releases')->where('idempotency_key', $key)->first();
-            if ($existing) {
-                return ['id' => (int) $existing->id, 'duplicate' => true];
-            }
+            $key = hash('sha256', 'auto-observe:'.$scope->id.':'.$scope->hold_at.':'.$scope->basis_hash.':'.$measured['session_id']);
 
-            $now = Carbon::now('Asia/Shanghai');
-            $names = SystemApp::idToNameMap();
-            $releaseId = DB::table('risk_releases')->insertGetId([
-                'ip' => $scope->ip,
-                'released_at' => $now->toDateTimeString(),
-                'status' => 'released',
-                'rule_id' => ReleaseRule::ID,
-                'rule_version' => ReleaseRule::VERSION,
-                'resource_version' => 1,
-                'idempotency_key' => $key,
-                'evidence' => json_encode([
-                    'session_id' => $measured['session_id'],
-                    'effective_foreground_seconds' => $measured['effective_seconds'],
-                    'threshold_reached_at' => Carbon::createFromTimestamp($measured['threshold_reached_at'])->timezone('Asia/Shanghai')->toIso8601String(),
-                    'last_interaction_at' => Carbon::createFromTimestamp($measured['qualifying_interaction_at'])->timezone('Asia/Shanghai')->toIso8601String(),
-                    'hard_blockers' => [],
-                    'received_time_bounded' => true,
-                    'usage_protocol_version' => 2,
-                ], JSON_UNESCAPED_UNICODE),
-                'explanation' => ReleaseRule::describe((int) $measured['effective_seconds']),
-                'ip_fully_released' => 0,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            DB::table('risk_release_scopes')->insert([
-                'release_id' => $releaseId,
-                'scope_id' => $scope->id,
-                'app_id' => $scope->app_id,
-                'app_name' => $names[(int) $scope->app_id] ?? '',
-                'device_identity' => $scope->device_identity,
-                'install_id' => $scope->install_id,
-                'user_id' => $scope->user_id,
-                'market_channel' => $scope->market_channel,
-                'reason_codes' => $scope->reason_codes,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-            DB::table('risk_scopes')->where('id', $scope->id)->update([
-                'state' => 'released',
-                'released_at' => $now->toDateTimeString(),
-                'release_id' => $releaseId,
-                'updated_at' => now(),
-            ]);
-            $this->ledger->scopeEvent((int) $scope->id, $scope->ip, 'release', $now, false, $releaseId);
-            $activeLeft = DB::table('risk_scopes')->where('ip', $scope->ip)->where('state', 'active')->where('policy_eligible', true)->count();
-            $fully = $activeLeft === 0;
-            if ($fully) {
-                DB::table('risk_ip_exits')->insert([
-                    'ip' => $scope->ip,
-                    'exited_at' => $now->toDateTimeString(),
-                    'release_id' => $releaseId,
-                    'status' => 'effective',
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-            DB::table('risk_releases')->where('id', $releaseId)->update(['ip_fully_released' => $fully ? 1 : 0]);
-            $this->ledger->timeline(
-                $scope->ip,
-                'auto_release',
-                $now,
-                null,
-                (string) $scope->device_identity,
-                $this->ledger->codes($scope->reason_codes),
-                (string) $scope->decision,
-                (string) $scope->risk_level,
-                (int) $scope->id,
-                '自动释放',
-                $releaseId,
-                'system',
-                '自动规则引擎'
-            );
-            $this->ledger->refreshDossier($scope->ip);
+            return app(RiskReviewWorkflow::class)->downgrade(collect([$scope]), $scope->ip, 0, '自动规则引擎', $key);
 
-            return ['id' => $releaseId, 'ip_fully_released' => $fully];
         });
     }
 
@@ -163,15 +83,22 @@ class RiskReleaseEngine
      * 运营从风控名单移除一个 IP：解除该 IP 下全部仍生效的范围，并留下可追溯的释放记录。
      * 与自动释放共用后续策略：相同依据再次命中时不再处置；依据变化或仍有硬拦截时会重新收录。
      */
-    public function removeIp(string $ip, int $operatorId, string $operatorName): array
+    public function removeIp(string $ip, int $operatorId, string $operatorName, array $transition = []): array
     {
         $ip = IpNormalizer::normalize($ip);
         if ($ip === '' || ! DB::table('risk_ip_dossiers')->where('ip', $ip)->exists()) {
             throw new AdminException('IP 档案不存在');
         }
 
-        return DB::transaction(function () use ($ip, $operatorId, $operatorName) {
+        return DB::transaction(function () use ($ip, $operatorId, $operatorName, $transition) {
             $this->ledger->lockIp($ip);
+            $workflow = app(RiskReviewWorkflow::class);
+            $requestId = (string) ($transition['request_id'] ?? '');
+            if ($prior = $workflow->prior($requestId, $ip)) {
+                return $prior;
+            }
+            $dossier = DB::table('risk_ip_dossiers')->where('ip', $ip)->lockForUpdate()->first();
+            $workflow->validate($dossier, $transition);
             $scopes = DB::table('risk_scopes')->where('ip', $ip)->where('state', 'active')->lockForUpdate()->get();
             if ($scopes->isEmpty()) {
                 $this->ledger->refreshDossier($ip);
@@ -179,6 +106,17 @@ class RiskReleaseEngine
                 return ['changed' => false, 'state' => 'released', 'release_id' => null, 'scope_count' => 0];
             }
 
+            foreach ($scopes as $scope) {
+                foreach ($this->blockers($scope, true) as $blocker) {
+                    if (! empty($blocker['prevent'])) {
+                        throw new AdminException('存在审核或名单硬限制，不能降级或确认安全区');
+                    }
+                }
+            }
+            if ($dossier->state === 'high') {
+                return $workflow->downgrade($scopes, $ip, $operatorId, $operatorName, $requestId);
+            }
+            $beforeScopes = $scopes->map(fn ($scope) => (array) $scope)->all();
             $now = Carbon::now('Asia/Shanghai');
             $names = SystemApp::idToNameMap();
             $codes = [];
@@ -191,16 +129,17 @@ class RiskReleaseEngine
                 'ip' => $ip,
                 'released_at' => $now->toDateTimeString(),
                 'status' => 'released',
-                'rule_id' => 'manual-ip-removal',
+                'rule_id' => 'manual-reviewed-safe',
                 'rule_version' => '1',
                 'resource_version' => 1,
                 'idempotency_key' => 'manual-ip:'.$ip.':'.$now->format('YmdHis.u'),
                 'evidence' => json_encode([
                     'manual' => true,
                     'operator_id' => $operatorId,
+                    'operator_name' => $operatorName,
                     'scope_ids' => $scopes->pluck('id')->map(fn ($id) => (int) $id)->all(),
                 ], JSON_UNESCAPED_UNICODE),
-                'explanation' => '运营人员将该 IP 从风控名单移除，并解除当前全部处置范围。',
+                'explanation' => '低风险观察后，经管理员再次确认进入安全区。仅已复核风险依据不再重复收录，新风险仍重新处置。',
                 'ip_fully_released' => 0,
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -220,6 +159,13 @@ class RiskReleaseEngine
                     'updated_at' => now(),
                 ]);
                 DB::table('risk_scopes')->where('id', $scope->id)->update([
+                    'risk_score' => 0,
+                    'risk_level' => 'normal',
+                    'decision' => 'pass',
+                    'review_stage' => 'safe',
+                    'review_reasons' => json_encode($workflow->baseline($scope)),
+                    'reviewed_at' => $now,
+                    'basis_hash' => null,
                     'state' => 'released',
                     'released_at' => $now->toDateTimeString(),
                     'release_id' => $releaseId,
@@ -250,19 +196,22 @@ class RiskReleaseEngine
                 '',
                 '',
                 (int) $first->id,
-                '从风控名单移除',
+                '低风险确认进入安全区',
                 $releaseId,
                 'admin',
                 $operatorName
             );
             $this->ledger->refreshDossier($ip);
 
-            return [
+            $result = [
                 'changed' => true,
                 'state' => (string) DB::table('risk_ip_dossiers')->where('ip', $ip)->value('state'),
                 'release_id' => $releaseId,
                 'scope_count' => $scopes->count(),
             ];
+            $result = $workflow->record($ip, $operatorId, $operatorName, $requestId, 'watch', 'released', $beforeScopes, $result);
+
+            return $result;
         });
     }
 
@@ -289,6 +238,9 @@ class RiskReleaseEngine
             $release = DB::table('risk_releases')->where('id', $releaseId)->lockForUpdate()->first();
             if (! $release) {
                 throw new AdminException('释放记录不存在');
+            }
+            if ($release->rule_id === ProjectionRiskRepair::RULE_ID) {
+                throw new AdminException('规则修正记录不支持恢复已下线的投屏处置');
             }
             // A concurrent retry may have committed while this request waited for the IP lock.
             $prior = DB::table('risk_revocations')->where('request_id', $requestId)->lockForUpdate()->first();
@@ -332,6 +284,10 @@ class RiskReleaseEngine
                 }
                 DB::table('risk_scopes')->where('id', $scope->id)->update([
                     'state' => 'active',
+                    'review_stage' => $scope->review_reasons ? 'observation' : 'enforced',
+                    'risk_score' => $release->rule_id === 'manual-reviewed-safe' ? 30 : $scope->risk_score,
+                    'risk_level' => $release->rule_id === 'manual-reviewed-safe' ? 'watch' : $scope->risk_level,
+                    'decision' => $release->rule_id === 'manual-reviewed-safe' ? 'verify' : $scope->decision,
                     'released_at' => null,
                     'release_id' => null,
                     'auto_release_hold_version' => ReleaseRule::VERSION,

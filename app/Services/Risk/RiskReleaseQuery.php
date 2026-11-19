@@ -125,7 +125,7 @@ class RiskReleaseQuery
             if ($scope->market_channel) {
                 $markets[$scope->market_channel] = $scope->market_channel;
             }
-            foreach (json_decode((string) $scope->reason_codes, true) ?: [] as $code) {
+            foreach (ReasonCatalog::normalizeList(json_decode((string) $scope->reason_codes, true) ?: []) as $code) {
                 $tags[$code] = $code;
             }
             if ($account === '' && $scope->user_id) {
@@ -142,8 +142,8 @@ class RiskReleaseQuery
             'day' => $releasedAt->format('Y-m-d'),
             'time' => $releasedAt->format('H:i:s'),
             'status' => $row->status,
-            'can_revoke' => $row->status === 'released',
-            'rule' => '连续使用达到 30 分钟',
+            'can_revoke' => $row->status === 'released' && $row->rule_id !== ProjectionRiskRepair::RULE_ID,
+            'rule' => $row->rule_id === ProjectionRiskRepair::RULE_ID ? '投屏规则历史修正' : ($row->rule_id === 'manual-reviewed-safe' ? '人工确认进入安全区' : '连续使用达到 30 分钟'),
             'code' => $row->rule_id ?: ReleaseRule::ID,
             'version' => 'v'.($row->rule_version ?: ReleaseRule::VERSION),
             'condition' => (string) $row->explanation,
@@ -171,7 +171,7 @@ class RiskReleaseQuery
                 'install_id' => $scope->install_id,
                 'user_id' => $scope->user_id,
                 'market_channel' => $scope->market_channel,
-                'reason_codes' => json_decode((string) $scope->reason_codes, true) ?: [],
+                'reason_codes' => ReasonCatalog::normalizeList(json_decode((string) $scope->reason_codes, true) ?: []),
             ])->all();
             $payload['tag_labels'] = array_map(fn ($code) => ['code' => $code, 'label' => ReasonCatalog::label($code)], array_values($tags));
         }
@@ -182,9 +182,9 @@ class RiskReleaseQuery
     private function timeline(object $row, ?object $revocation, Carbon $releasedAt): array
     {
         $items = [[
-            'title' => '自动释放完成',
+            'title' => $row->rule_id === ProjectionRiskRepair::RULE_ID ? '投屏历史处置修正' : ($row->rule_id === 'manual-reviewed-safe' ? '人工确认进入安全区' : '自动释放完成'),
             'at' => $releasedAt->format('Y-m-d H:i:s'),
-            'operator' => '自动规则引擎',
+            'operator' => (json_decode((string) $row->evidence, true)['operator_name'] ?? '自动规则引擎'),
             'detail' => (string) $row->explanation,
         ]];
         if ($revocation && in_array($revocation->result, ['restored', 'partial', 'already_revoked'], true)) {

@@ -368,6 +368,12 @@ class DeviceEnvRiskService
         ]);
     }
 
+    /** Reassess stored evidence without request parsing, policy overlays or database writes. */
+    public function reassessProbe(array $probe, array $validationErrors = []): array
+    {
+        return $this->score($probe, $validationErrors);
+    }
+
     private function score(array $probe, array $validationErrors = []): array
     {
         $score = 0;
@@ -397,7 +403,7 @@ class DeviceEnvRiskService
         $add((bool) ($probe['touch_coordinate_oob'] ?? false), 80, 'touch_coordinate_oob');
         $add((bool) ($probe['sensor_data_dead'] ?? false), 70, 'sensor_data_dead');
         $add((bool) ($probe['screen_is_captured'] ?? false), 70, 'screen_captured');
-        $add((bool) ($probe['screen_projection_active'] ?? false), 70, 'screen_projection');
+        // Projection is retained in the original probe for audit only; it is not a risk signal.
         $add((bool) ($probe['build_emulator_fingerprint'] ?? false), 50, 'emulator_fingerprint');
         $add((bool) ($probe['input_source_not_touchscreen'] ?? false), 60, 'input_not_touchscreen');
         $add((bool) ($probe['release_debuggable'] ?? false), 60, 'release_debuggable');
@@ -459,7 +465,8 @@ class DeviceEnvRiskService
         // 若一并抬到合规线，名单会把「设备探针协议不匹配」直接记成高风险阻断。
         $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
         $softOnly = $reasons !== [] && array_diff($reasons, self::SOFT_VALIDATION_REASONS) === [];
-        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < $complianceThreshold && ! $softOnly) {
+        $projectionOnly = ! empty($probe['screen_projection_active']) && $reasons === [];
+        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < $complianceThreshold && ! $softOnly && ! $projectionOnly) {
             $score = $complianceThreshold;
             $reasons[] = 'env_blocks_ads';
         }
@@ -467,12 +474,13 @@ class DeviceEnvRiskService
         // 总分保持在 100 分制；阈值可通过环境变量调整，不需要修改评分代码。
         $score = min(100, $score);
         $adBlockThreshold = (int) config('api_obfuscation.device_env.ad_block_score_threshold', 40);
+        $protocolMismatchOnly = $reasons === ['native_probe_protocol_mismatch'];
 
         return [
             'score' => $score,
             'reasons' => array_values(array_unique($reasons)),
-            'compliance_mode' => $score >= $complianceThreshold ? 1 : 0,
-            'ad_switch' => $score >= $adBlockThreshold ? 0 : 1,
+            'compliance_mode' => ! $protocolMismatchOnly && $score >= $complianceThreshold ? 1 : 0,
+            'ad_switch' => ! $protocolMismatchOnly && $score >= $adBlockThreshold ? 0 : 1,
         ];
     }
 

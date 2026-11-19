@@ -2,11 +2,11 @@
 
 namespace Tests\Unit;
 
-use ReflectionMethod;
-use Tests\TestCase;
+use App\Support\Services\DeviceEnvRiskService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use App\Support\Services\DeviceEnvRiskService;
+use ReflectionMethod;
+use Tests\TestCase;
 
 class DeviceEnvRiskServiceTest extends TestCase
 {
@@ -60,7 +60,7 @@ class DeviceEnvRiskServiceTest extends TestCase
         $request = Request::create('/api/app/info', 'POST', [], [], [], [
             'HTTP_APP_ID' => '10048',
             'HTTP_PACKAGE_NAME' => 'com.he.dahu',
-            'HTTP_' . strtoupper($alias) => $sealed,
+            'HTTP_'.strtoupper($alias) => $sealed,
         ]);
 
         $context = $this->service->inspect($request);
@@ -217,6 +217,8 @@ class DeviceEnvRiskServiceTest extends TestCase
 
     public function test_protocol_mismatch_does_not_force_compliance_when_probe_is_otherwise_clean(): void
     {
+        // A configuration threshold alone must not make this diagnostic signal enforceable.
+        config(['api_obfuscation.device_env.ad_block_score_threshold' => 5, 'api_obfuscation.device_env.compliance_score_threshold' => 5]);
         $payload = [
             'pv' => 9,
             'pf' => 'android',
@@ -296,9 +298,28 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertSame(0, $gyro['score']);
     }
 
+    public function test_projection_is_audit_only_even_when_legacy_client_disables_ads(): void
+    {
+        foreach ([true, false] as $allowsAds) {
+            $context = $this->inspectPayload(['pj' => true, 'ea' => $allowsAds], 'projection-only-'.(int) $allowsAds);
+            $this->assertTrue($context['probe']['screen_projection_active']);
+            $this->assertSame(0, $context['score']);
+            $this->assertSame([], $context['reasons']);
+            $this->assertSame(0, $context['decision']['compliance_mode']);
+            $this->assertSame(1, $context['decision']['ad_switch']);
+        }
+        $otherRisk = $this->inspectPayload(['pj' => true, 'mk' => true], 'projection-with-monkey');
+        $this->assertSame(100, $otherRisk['score']);
+        $this->assertSame(['monkey'], $otherRisk['reasons']);
+        $recording = $this->inspectPayload(['sc' => true], 'recording-still-risk');
+        $this->assertSame(70, $recording['score']);
+        $this->assertContains('screen_captured', $recording['reasons']);
+    }
+
     private function inspectPayload(array $payload, string $nonce): array
     {
         $payload += ['ts' => time(), 'nc' => $nonce, 'ver' => '1'];
+
         return $this->service->inspect($this->requestWith($this->seal($payload)));
     }
 
