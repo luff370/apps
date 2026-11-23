@@ -19,13 +19,13 @@ class VersionPlanTaskDateTimeTest extends TestCase
         require_once database_path('migrations/2026_07_03_000003_create_app_version_plan_tasks_table.php');
         (new \CreateAppVersionPlansTable())->up();
         (new \CreateAppVersionPlanTasksTable())->up();
+        (require database_path('migrations/2026_11_23_000001_split_version_plan_owners.php'))->up();
     }
 
     public function test_task_times_survive_storage_listing_and_copying_at_minute_precision(): void
     {
         $plan = AppVersionPlan::query()->create([
             'app_id' => 1, 'title' => '版本更新计划', 'version' => '1.2.0',
-            'planned_release_at' => '2026-10-30',
         ]);
         $service = new VersionPlanService();
         $createTask = new \ReflectionMethod($service, 'createTask');
@@ -44,7 +44,8 @@ class VersionPlanTaskDateTimeTest extends TestCase
         }
 
         $result = $service->listByApp(1)[0];
-        $this->assertSame('2026-10-30', $result['planned_release_at']);
+        $this->assertArrayNotHasKey('planned_release_at', $result);
+        $this->assertArrayNotHasKey('owner_name', $result['tasks'][0]);
         $this->assertSame('2026-10-29 09:07', $result['tasks'][0]['submitted_at']);
         $this->assertSame('2026-10-30 18:42', $result['tasks'][0]['listed_at']);
         $this->assertSame('2026-10-28 00:00', $result['tasks'][1]['submitted_at']);

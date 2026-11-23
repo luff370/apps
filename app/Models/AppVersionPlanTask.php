@@ -19,7 +19,6 @@ class AppVersionPlanTask extends BaseModel
         'market_channel',
         'name',
         'version',
-        'owner_name',
         'status',
         'submitted_at',
         'listed_at',

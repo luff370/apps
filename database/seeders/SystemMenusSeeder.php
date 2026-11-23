@@ -59,6 +59,7 @@ class SystemMenusSeeder extends Seeder
             }
             if (in_array('admin-app-apps', $grantedAuth, true) && isset($this->authToId['apps-create'])) {
                 $next[] = $this->authToId['apps-create'];
+                $next[] = $this->authToId['admin-app-version-update-tasks'];
             }
             if (array_intersect($grantedAuth, ['admin-app', 'app-payments']) && isset($this->authToId['app-pay-contacts'])) {
                 $next[] = $this->authToId['app-pay-contacts'];
@@ -290,6 +291,7 @@ class SystemMenusSeeder extends Seeder
                         'menu_path' => '/admin/app/apps/index',
                         'unique_auth' => 'admin-app-apps',
                         'children' => [
+                            ['menu_name' => '版本更新任务', 'sort' => 98, 'menu_path' => '/admin/app/apps/version_tasks', 'header' => 'app', 'unique_auth' => 'admin-app-version-update-tasks'],
                             ['menu_name' => '添加应用', 'is_show' => 0, 'menu_path' => '', 'unique_auth' => 'apps-create'],
                         ],
                     ],

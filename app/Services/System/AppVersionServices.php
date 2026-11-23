@@ -84,7 +84,7 @@ class AppVersionServices extends Service
         }
 
         $field[] = Form::hidden('id', $info['id'] ?? 0);
-        $field[] = Form::select('app_id', '所属应用', $info['app_id'] ?? 0)->options(FormOptions::systemApps())->requiredNum();
+        $field[] = Form::select('app_id', '所属应用', $info['app_id'] ?? 0)->options(FormOptions::systemApps())->filterable(true)->requiredNum();
         $field[] = Form::select('platform', '上架渠道', (string)($info['platform'] ?? ''))->options(FormOptions::marketChannel())->required();
         $field[] = Form::input('version', '版本号', $info['version'] ?? '')->col(24)->required();
         $field[] = Form::input('info', '版本介绍', $info['info'] ?? '')->type('textarea');

@@ -183,7 +183,7 @@ class RiskListService extends Service
             ['label' => '硬件指纹', 'value' => 'hardware_hash'],
         ])->required();
         $field[] = Form::input('target_value', '目标值', $info['target_value'] ?? '')->required();
-        $field[] = Form::select('app_id', '应用', (int) ($info['app_id'] ?? 0))->setOptions($apps);
+        $field[] = Form::select('app_id', '应用', (int) ($info['app_id'] ?? 0))->setOptions($apps)->filterable(true);
         $field[] = Form::select('decision', '强制决策', $info['decision'] ?? ($listType === RiskList::TYPE_WATCHLIST ? 'verify' : 'block'))->setOptions([
             ['label' => '正常访问', 'value' => 'pass'],
             ['label' => '增加验证', 'value' => 'verify'],

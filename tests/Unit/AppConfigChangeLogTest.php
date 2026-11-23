@@ -27,6 +27,7 @@ class AppConfigChangeLogTest extends TestCase
         require_once database_path('migrations/2026_07_03_000003_create_app_version_plan_tasks_table.php');
         (new \CreateAppVersionPlansTable())->up();
         (new \CreateAppVersionPlanTasksTable())->up();
+        (require database_path('migrations/2026_11_23_000001_split_version_plan_owners.php'))->up();
         Schema::table('app_config', fn(Blueprint $table) => $table->unique(['app_id', 'channel', 'key']));
         Schema::create('system_apps', function (Blueprint $table) {
             $table->id();

@@ -6,12 +6,14 @@ use App\Exceptions\AdminException;
 use App\Models\AppConfig;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
+use App\Models\SystemAdmin;
 use App\Models\SystemApp;
 use App\Support\Services\FormOptions;
 use App\Services\Service;
 use App\Services\System\AppVersionServices;
 use App\Support\Services\AppConfigService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
@@ -22,27 +24,67 @@ class VersionPlanService extends Service
 
     public const PLAN_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
 
+    public function listTasks(array $filters, array $admin): array
+    {
+        $owner = (string)($filters['owner'] ?? 'me');
+        $query = AppVersionPlan::query()
+            ->with(['tasks', 'app:id,name'])
+            ->whereHas('app', fn($app) => $app->where('is_del', 0));
+
+        if ($owner !== 'all') {
+            $selected = $owner === 'me' || $owner === (string)($admin['id'] ?? '')
+                ? $admin
+                : (SystemAdmin::query()->where('is_del', 0)->find((int)$owner, ['account', 'real_name'])?->toArray() ?? []);
+            $this->filterByOwners($query, FormOptions::adminOwnerLabels($selected));
+        }
+
+        if (!empty($filters['app_id'])) {
+            $query->where('app_id', (int)$filters['app_id']);
+        }
+        if (in_array($filters['status'] ?? '', self::PLAN_STATUSES, true)) {
+            $query->where('status', $filters['status']);
+        }
+        if (in_array($filters['priority'] ?? '', self::PLAN_PRIORITIES, true)) {
+            $query->where('priority', $filters['priority']);
+        }
+        if (!empty($filters['channel'])) {
+            $query->whereHas('tasks', fn($tasks) => $tasks->where('market_channel', $filters['channel']));
+        }
+        $keyword = trim((string)($filters['keyword'] ?? ''));
+        if ($keyword !== '') {
+            $query->where(fn($plan) => $plan->where('title', 'like', "%{$keyword}%")
+                ->orWhere('version', 'like', "%{$keyword}%")
+                ->orWhereHas('tasks', fn($tasks) => $tasks->where('version', 'like', "%{$keyword}%")));
+        }
+
+        $page = $query->orderByDesc('updated_at')->orderByDesc('id')
+            ->paginate(min(100, max(1, (int)($filters['limit'] ?? 20))), ['*'], 'page', max(1, (int)($filters['page'] ?? 1)));
+
+        return [
+            'list' => $page->getCollection()->map(fn(AppVersionPlan $plan) => $this->formatPlan($plan) + [
+                'app_id' => $plan->app_id,
+                'app_name' => $plan->app?->name ?? '',
+            ])->all(),
+            'count' => $page->total(),
+            'owner_options' => FormOptions::systemAdmins(),
+            'current_admin_id' => (string)($admin['id'] ?? ''),
+        ];
+    }
+
+    private function filterByOwners(Builder $query, array $labels): void
+    {
+        $query->where(fn($plan) => $plan->whereIn('developer_name', $labels)
+            ->orWhereIn('operator_name', $labels));
+    }
+
     /**
-     * 首页待办：负责人是当前管理员，且计划还在开发中或待上架。
-     *
-     * 负责人既可能记在计划上，也可能只记在某个渠道任务上，两种都算待办。
-     * 返回字段只保留首页滚动条和跳转弹窗需要的内容。
+     * 首页待办包含当前管理员负责的开发中和待上架计划。
      */
     public function todoPlansForAdmin(array $admin): array
     {
-        $labels = FormOptions::adminOwnerLabels($admin);
-        if ($labels === []) {
-            return [];
-        }
-
-        $plans = AppVersionPlan::query()
-            ->with('tasks')
-            ->where(function ($query) use ($labels) {
-                $query->whereIn('owner_name', $labels)
-                    ->orWhereHas('tasks', function ($taskQuery) use ($labels) {
-                        $taskQuery->whereIn('owner_name', $labels);
-                    });
-            })
+        $query = AppVersionPlan::query();
+        $this->filterByOwners($query, FormOptions::adminOwnerLabels($admin));
+        $plans = $query
             ->orderByDesc('updated_at')
             ->orderByDesc('id')
             ->get();
@@ -65,7 +107,9 @@ class VersionPlanService extends Service
                 'app_name' => (string)$appNames[$appId],
                 'status' => $status,
                 'version' => (string)$plan->version,
-                'remark' => (string)($plan->remark ?? ''),
+                'remark' => $plan->remark_is_html
+                    ? trim(html_entity_decode(strip_tags(str_replace(['</p>', '<br>'], ' ', (string)$plan->remark)), ENT_QUOTES | ENT_HTML5, 'UTF-8'))
+                    : (string)($plan->remark ?? ''),
             ];
         }
 
@@ -116,6 +160,9 @@ class VersionPlanService extends Service
         if (empty($data['tasks']) || !is_array($data['tasks'])) {
             throw new AdminException('请至少添加一个渠道任务');
         }
+        if (strlen((string)($data['remark'] ?? '')) > 65535) {
+            throw new AdminException('计划备注内容过长，请缩短后保存');
+        }
 
         return DB::transaction(function () use ($appId, $data) {
             $planId = (int)($data['id'] ?? $this->parseLocalId($data['local_id'] ?? '', 'plan_'));
@@ -133,8 +180,9 @@ class VersionPlanService extends Service
                 'version' => (string)$data['version'],
                 'status' => $this->normalizePlanStatus((string)($data['status'] ?? '')),
                 'priority' => $this->normalizePlanPriority((string)($data['priority'] ?? '')),
-                'owner_name' => (string)($data['owner_name'] ?? ''),
-                'planned_release_at' => $this->dateOrNull($data['planned_release_at'] ?? null),
+                'developer_name' => (string)($data['developer_name'] ?? $data['owner_name'] ?? $plan->developer_name ?? ''),
+                'operator_name' => (string)($data['operator_name'] ?? $data['owner_name'] ?? $plan->operator_name ?? ''),
+                'remark_is_html' => (bool)($data['remark_is_html'] ?? false),
                 'remark' => (string)($data['remark'] ?? ''),
             ]);
             $plan->save();
@@ -189,13 +237,13 @@ class VersionPlanService extends Service
         }
 
         return DB::transaction(function () use ($source) {
-            $copy = $source->replicate();
+            $copy = $source->replicate(['owner_name', 'planned_release_at']);
             $copy->title = $source->title . ' 副本';
             $copy->status = '开发中';
             $copy->save();
 
             foreach ($source->tasks as $task) {
-                $nextTask = $task->replicate();
+                $nextTask = $task->replicate(['owner_name']);
                 $nextTask->plan_id = $copy->id;
                 $nextTask->status = $this->normalizeTaskStatus((string)$nextTask->status);
                 $nextTask->save();
@@ -354,7 +402,6 @@ class VersionPlanService extends Service
             'market_channel' => (string)$task['market_channel'],
             'name' => (string)($task['name'] ?? ''),
             'version' => (string)$task['version'],
-            'owner_name' => (string)($task['owner_name'] ?? ''),
             'status' => $this->normalizeTaskStatus((string)($task['status'] ?? '')),
             'submitted_at' => $this->dateTimeOrNull($task['submitted_at'] ?? null),
             'listed_at' => $this->dateTimeOrNull($task['listed_at'] ?? null),
@@ -434,8 +481,9 @@ class VersionPlanService extends Service
             'version' => (string)$plan->version,
             'status' => $this->normalizePlanStatus((string)$plan->status),
             'priority' => $this->normalizePlanPriority((string)$plan->priority),
-            'owner_name' => (string)$plan->owner_name,
-            'planned_release_at' => $this->dateText($plan->planned_release_at),
+            'developer_name' => (string)$plan->developer_name,
+            'operator_name' => (string)$plan->operator_name,
+            'remark_is_html' => (bool)$plan->remark_is_html,
             'remark' => (string)($plan->remark ?? ''),
             'created_at' => $this->dateTimeText($plan->created_at),
             'updated_at' => $this->dateTimeText($plan->updated_at),
@@ -452,7 +500,6 @@ class VersionPlanService extends Service
             'market_channel' => (string)$task->market_channel,
             'name' => (string)$task->name,
             'version' => (string)$task->version,
-            'owner_name' => (string)$task->owner_name,
             'status' => $this->normalizeTaskStatus((string)$task->status),
             'submitted_at' => $this->dateTimeText($task->submitted_at),
             'listed_at' => $this->dateTimeText($task->listed_at),
@@ -518,17 +565,6 @@ class VersionPlanService extends Service
         }
 
         return 0;
-    }
-
-    private function dateOrNull($value): ?string
-    {
-        // 前端可能传空字符串或完整时间，这里统一压成日期字段可接受的格式。
-        return empty($value) ? null : substr((string)$value, 0, 10);
-    }
-
-    private function dateText($value): string
-    {
-        return empty($value) ? '' : date('Y-m-d', strtotime((string)$value));
     }
 
     private function dateTimeOrNull($value): ?string

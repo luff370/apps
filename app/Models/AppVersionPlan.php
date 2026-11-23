@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class AppVersionPlan extends BaseModel
@@ -10,6 +11,7 @@ class AppVersionPlan extends BaseModel
 
     protected $casts = [
         'app_id' => 'int',
+        'remark_is_html' => 'boolean',
     ];
 
     protected $fillable = [
@@ -18,10 +20,16 @@ class AppVersionPlan extends BaseModel
         'version',
         'status',
         'priority',
-        'owner_name',
-        'planned_release_at',
+        'developer_name',
+        'operator_name',
+        'remark_is_html',
         'remark',
     ];
+
+    public function app(): BelongsTo
+    {
+        return $this->belongsTo(SystemApp::class, 'app_id');
+    }
 
     public function tasks(): HasMany
     {

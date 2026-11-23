@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Admin\App;
 
 use App\Exceptions\AdminException;
+use App\Exceptions\AuthException;
 use App\Http\Controllers\Admin\Controller;
+use App\Models\SystemMenu;
 use App\Services\App\VersionPlanService;
+use App\Services\System\Admin\SystemRoleServices;
 
 class VersionPlanController extends Controller
 {
@@ -22,6 +25,22 @@ class VersionPlanController extends Controller
     public function index($appId)
     {
         return $this->success($this->service->listByApp((int)$appId));
+    }
+
+    public function tasks(SystemRoleServices $roles)
+    {
+        $admin = adminInfo();
+        if ($admin['level'] && !SystemMenu::query()
+            ->where('unique_auth', 'admin-app-version-update-tasks')
+            ->where('is_del', 0)
+            ->whereIn('id', $roles->getRoleIds($admin['roles']))
+            ->exists()) {
+            throw new AuthException(110000);
+        }
+
+        return $this->success($this->service->listTasks(request()->only([
+            'owner', 'app_id', 'status', 'priority', 'channel', 'keyword', 'page', 'limit',
+        ]), $admin));
     }
 
     /**
