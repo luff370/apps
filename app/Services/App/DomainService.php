@@ -48,9 +48,7 @@ class DomainService extends Service
     public function saveDomain(array $data): void
     {
         $id = (int) ($data['id'] ?? 0);
-        $domain = trim((string) ($data['domain'] ?? ''));
-        $domain = preg_replace('#^https?://#i', '', $domain);
-        $domain = rtrim($domain, '/');
+        $domain = self::normalizeHost($data['domain'] ?? '');
         $subject = trim((string) ($data['subject'] ?? ''));
         if ($domain === '') {
             throw new AdminException('请输入域名');
@@ -87,6 +85,52 @@ class DomainService extends Service
         }
 
         $this->dao->save($payload);
+    }
+
+    public static function normalizeHost($value): string
+    {
+        $host = preg_replace('#^https?://#i', '', trim((string)$value));
+        $host = preg_split('~[/?#]~', $host, 2)[0];
+
+        return strtolower(rtrim($host, '.'));
+    }
+
+    public function findOrCreateForMerchant(string $domain, string $subject, string $expireAt): AppDomain
+    {
+        $domains = $this->dao->newQuery()->lockForUpdate();
+        $record = (clone $domains)->where('domain', $domain)->first();
+        if (!$record) {
+            if (strlen($domain) > 191 || !str_contains($domain, '.') || !filter_var($domain, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME)) {
+                throw new AdminException('请输入有效的商户域名，如 example.com');
+            }
+
+            $date = $this->merchantCreationDate($expireAt);
+            $record = $domains->createOrFirst(['domain' => $domain], [
+                'subject' => trim($subject),
+                'expire_at' => $date,
+                'status' => 1,
+                'risk_level' => AppDomain::RISK_LOW,
+            ]);
+        }
+        if ($record->status !== 1) {
+            throw new AdminException('该域名已停用，请在域名管理中启用后再使用');
+        }
+
+        return $record;
+    }
+
+    private function merchantCreationDate(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            throw new AdminException('请选择域名到期日期');
+        }
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[ T]\d{2}:\d{2}:\d{2})?$/D', $value, $parts)
+            || !checkdate((int)$parts[2], (int)$parts[3], (int)$parts[1])) {
+            throw new AdminException('请输入有效的域名到期日期');
+        }
+
+        return substr($value, 0, 10);
     }
 
     public function normalizeRiskLevel($value): int

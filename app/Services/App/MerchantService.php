@@ -9,7 +9,7 @@ use App\Models\Merchant;
 use App\Services\Service;
 use App\Support\Services\FormBuilder as Form;
 use App\Support\Services\FormOptions;
-use DateTimeInterface;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Class MerchantService
@@ -19,7 +19,7 @@ class MerchantService extends Service
     /**
      * MerchantService constructor.
      */
-    public function __construct(MerchantDao $dao)
+    public function __construct(MerchantDao $dao, private DomainService $domains)
     {
         $this->dao = $dao;
     }
@@ -70,7 +70,10 @@ class MerchantService extends Service
         }
 
         $data = $info->toArray();
-        $data['domain_expire_at'] = $data['domain_expired_date'] ?? '';
+        $domain = AppDomain::query()->where('domain', $data['domain'])->first();
+        $data['domain_expire_at'] = $domain
+            ? ($domain->expire_at?->toDateString() ?? '')
+            : ($data['domain_expired_date'] ?? '');
         $data['agreement_templates'] = $data['agreement_templates'] ?: [];
 
         return $data;
@@ -82,7 +85,12 @@ class MerchantService extends Service
     public function createUpdateForm(array $info = []): array
     {
         $f[] = Form::text('name', '公司名称', $info['name'] ?? '')->required();
-        $f[] = Form::select('domain', '商户域名', $info['domain'] ?? '')->options($this->enabledDomainOptions())->required();
+        if (empty($info['id'])) {
+            $f[] = Form::text('domain', '商户域名', $info['domain'] ?? '')->required();
+            $f[] = Form::date('domain_expire_at', '域名到期日期', $info['domain_expire_at'] ?? '')->required();
+        } else {
+            $f[] = Form::select('domain', '商户域名', $info['domain'] ?? '')->options($this->enabledDomainOptions())->filterable(true)->required();
+        }
         $f[] = Form::text('api_domain', '接口域名', $info['api_domain'] ?? '')->required();
         $f[] = Form::text('image_domain', '图片域名', $info['image_domain'] ?? '')->required();
         $f[] = Form::text('server_subject', '服务器主体', $info['server_subject'] ?? '');
@@ -100,11 +108,30 @@ class MerchantService extends Service
     {
         $saveData = $this->normalizeSaveData($data);
         $this->validateMerchantData($saveData);
-        if (!empty($data['id'])) {
-            return $this->update((int)$data['id'], $saveData);
-        }
+        return DB::transaction(function () use ($data, $saveData) {
+            if (!empty($data['id'])) {
+                $id = (int)$data['id'];
+                $merchant = $this->dao->newQuery()->lockForUpdate()->find($id);
+                if (!$merchant) {
+                    throw new AdminException(400594);
+                }
+                $domain = $this->resolveSelectedDomain($merchant, $saveData['domain']);
+                $saveData['domain'] = $domain?->domain ?? $merchant->domain;
+                $saveData['domain_expired_date'] = $domain ? $domain->expire_at?->toDateString() : $merchant->domain_expired_date;
 
-        return $this->dao->newQuery()->create($saveData);
+                return $this->update($id, $saveData);
+            }
+
+            $domain = $this->domains->findOrCreateForMerchant(
+                $saveData['domain'],
+                $saveData['name'],
+                (string)(($data['domain_expire_at'] ?? '') ?: ($data['domain_expired_date'] ?? ''))
+            );
+            $saveData['domain'] = $domain->domain;
+            $saveData['domain_expired_date'] = $domain->expire_at?->toDateString();
+
+            return $this->dao->newQuery()->create($saveData);
+        }, 3);
     }
 
     /**
@@ -114,15 +141,13 @@ class MerchantService extends Service
     {
         $templates = $this->normalizeAgreementTemplates($data['agreement_templates'] ?? []);
 
-        $domain = $this->normalizeDomainHost($data['domain'] ?? '');
-        $appDomain = $this->resolveAppDomain($domain, !empty($data['id']));
+        $domain = DomainService::normalizeHost($data['domain'] ?? '');
         $apiDomain = $this->withHttps($this->normalizeDomainHost($data['api_domain'] ?? '') ?: $this->withSubdomain($domain, 'api'));
         $imageDomain = $this->withHttps($this->normalizeDomainHost($data['image_domain'] ?? '') ?: $this->withSubdomain($domain, 'img'));
 
         return [
             'name' => (string)($data['name'] ?? ''),
             'domain' => $domain,
-            'domain_expired_date' => $this->formatDomainExpire($appDomain),
             'api_domain' => $apiDomain,
             'image_domain' => $imageDomain,
             'server_subject' => (string)($data['server_subject'] ?? ''),
@@ -157,7 +182,7 @@ class MerchantService extends Service
             throw new AdminException('请输入法人名称');
         }
         if (trim((string)($data['domain'] ?? '')) === '') {
-            throw new AdminException('请选择商户域名');
+            throw new AdminException('请输入或选择商户域名');
         }
         if (trim((string)($data['api_domain'] ?? '')) === '') {
             throw new AdminException('请输入接口域名');
@@ -214,38 +239,15 @@ class MerchantService extends Service
         return FormOptions::toFormOptions($domains);
     }
 
-    private function resolveAppDomain(string $domain, bool $allowDisabled): ?AppDomain
+    private function resolveSelectedDomain(Merchant $merchant, string $host): ?AppDomain
     {
-        if ($domain === '') {
-            return null;
-        }
-
-        $query = AppDomain::query()->where('domain', $domain);
-        if (!$allowDisabled) {
-            $query->where('status', 1);
-        }
-        $info = $query->first();
-        if (!$info) {
-            throw new AdminException('请选择域名管理中启用状态的域名');
-        }
-        if (!$allowDisabled && (int) $info['status'] !== 1) {
+        $current = DomainService::normalizeHost($merchant->domain) === $host;
+        $domain = AppDomain::query()->where('domain', $host)->lockForUpdate()->first();
+        if (!$current && (!$domain || $domain->status !== 1)) {
             throw new AdminException('请选择域名管理中启用状态的域名');
         }
 
-        return $info;
-    }
-
-    private function formatDomainExpire(?AppDomain $appDomain): string
-    {
-        if (!$appDomain || empty($appDomain['expire_at'])) {
-            return '';
-        }
-        $expire = $appDomain['expire_at'];
-        if ($expire instanceof DateTimeInterface) {
-            return $expire->format('Y-m-d');
-        }
-
-        return substr((string) $expire, 0, 10);
+        return $domain;
     }
 
     private function normalizeDomainHost($domain): string
