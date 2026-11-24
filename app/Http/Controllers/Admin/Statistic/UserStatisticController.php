@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers\Admin\Statistic;
 
+use App\Exceptions\AuthException;
 use App\Http\Controllers\Admin\Controller;
+use App\Models\SystemMenu;
 use App\Services\Statistics\UserStatisticsService;
+use App\Services\System\Admin\SystemRoleServices;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -38,6 +41,31 @@ class UserStatisticController extends Controller
         $request->validate(['app_id' => 'required|integer|min:1']);
 
         return $this->success($service->reportByChannel($this->reportFilter($request)));
+    }
+
+    public function getDeviceList(Request $request, UserStatisticsService $service, SystemRoleServices $roles): JsonResponse
+    {
+        $admin = $request->adminInfo();
+        if ($admin['level'] && !SystemMenu::query()
+            ->where('unique_auth', 'data-statistic-user-statistics')
+            ->where('is_del', 0)
+            ->whereIn('id', $roles->getRoleIds($admin['roles']))
+            ->exists()) {
+            throw new AuthException(110000);
+        }
+
+        $filters = $request->validate([
+            'app_id' => 'nullable|integer|min:0',
+            'market_channel' => 'nullable|string|max:64',
+            'start_date' => 'required|date_format:Y-m-d',
+            'end_date' => 'required|date_format:Y-m-d|after_or_equal:start_date',
+            'keyword' => 'nullable|string|max:128',
+            'registered' => 'nullable|in:0,1',
+            'page' => 'nullable|integer|min:1',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        return $this->success($service->reportDevices($filters));
     }
 
     private function reportFilter(Request $request): array

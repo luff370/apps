@@ -4,11 +4,13 @@ namespace App\Services\Statistics;
 
 use App\Models\SystemApp;
 use App\Models\User;
+use App\Models\UserAccessLog;
 use App\Models\UserStatistic;
 use App\Models\UserUuid;
 use App\Services\Service;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Redis;
 
 class UserStatisticsService extends Service
@@ -335,6 +337,76 @@ class UserStatisticsService extends Service
         );
 
         return $list;
+    }
+
+    public function reportDevices(array $filter): array
+    {
+        [$start, $end, $appId, $marketChannel] = $this->reportFilter($filter);
+        $devices = $this->newUuidQuery($start, $end, $appId, $marketChannel);
+        $users = User::query()
+            ->whereColumn('users.app_id', 'user_uuids.app_id')
+            ->whereColumn('users.uuid', 'user_uuids.uuid')
+            ->where('users.is_del', 0);
+        $accounts = (clone $users)->where('users.is_reg', 1);
+        $deviceCodes = (clone $users)->whereNotNull('users.device_sn')->where('users.device_sn', '<>', '');
+        $access = UserAccessLog::query()
+            ->whereColumn('user_access_log.app_id', 'user_uuids.app_id')
+            ->whereColumn('user_access_log.uuid', 'user_uuids.uuid')
+            ->whereColumn('user_access_log.created_at', '>=', 'user_uuids.created_at');
+
+        $registered = (string) ($filter['registered'] ?? '');
+        if ($registered === '1') {
+            $devices->whereExists((clone $accounts)->toBase());
+        } elseif ($registered === '0') {
+            $devices->whereNotExists((clone $accounts)->toBase());
+        }
+
+        $keyword = trim((string) ($filter['keyword'] ?? ''));
+        if ($keyword !== '') {
+            $match = '%' . strtr($keyword, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
+            $devices->where(function (Builder $query) use ($accounts, $deviceCodes, $match, $keyword) {
+                $query->whereRaw("user_uuids.uuid LIKE ? ESCAPE '!'", [$match])
+                    ->orWhereExists((clone $deviceCodes)->whereRaw("users.device_sn LIKE ? ESCAPE '!'", [$match])->toBase());
+                if (ctype_digit($keyword) && strlen($keyword) <= 20) {
+                    $query->orWhereExists((clone $accounts)->where('users.id', $keyword)->toBase());
+                }
+            });
+        }
+
+        $page = $devices->select('user_uuids.*')->addSelect([
+            'registered_user_id' => $accounts->select('users.id')->orderByDesc('users.id')->limit(1),
+            'device_code' => $deviceCodes->select('users.device_sn')->orderByDesc('users.id')->limit(1),
+            'latest_access_id' => $access->select('user_access_log.id')->orderByDesc('user_access_log.created_at')
+                ->orderByDesc('user_access_log.id')->limit(1),
+        ])->orderByDesc('user_uuids.created_at')->orderByDesc('user_uuids.id')
+            ->paginate(min(100, max(1, (int) ($filter['limit'] ?? 20))), ['*'], 'page', max(1, (int) ($filter['page'] ?? 1)));
+
+        $rows = $page->getCollection();
+        $apps = SystemApp::query()->whereIn('id', $rows->pluck('app_id')->unique())->pluck('name', 'id');
+        $logs = UserAccessLog::query()->whereIn('id', $rows->pluck('latest_access_id')->filter())
+            ->get(['id', 'os', 'created_at'])->keyBy('id');
+
+        return [
+            'count' => $page->total(),
+            'list' => $rows->map(function (UserUuid $row) use ($apps, $logs) {
+                $log = $logs->get($row->latest_access_id);
+                return [
+                    'id' => (string) $row->id,
+                    'uuid' => $row->uuid,
+                    'install_id' => $row->device_code,
+                    'app_id' => (string) $row->app_id,
+                    'app_name' => (string) $apps->get($row->app_id, ''),
+                    'market_channel' => $row->market_channel,
+                    'channel_name' => SystemApp::marketChannelDisplayName($row->market_channel),
+                    'version' => $row->version,
+                    'device_model' => null,
+                    'os_version' => $log?->os,
+                    'user_id' => $row->registered_user_id ? (string) $row->registered_user_id : null,
+                    'first_seen_at' => $row->created_at?->toDateTimeString(),
+                    'last_seen_at' => ($log?->created_at ?? $row->created_at)?->toDateTimeString(),
+                ];
+            })->all(),
+        ];
     }
 
     private function channelCounts($query, string $aggregate): array
