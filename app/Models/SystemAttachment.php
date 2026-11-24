@@ -6,6 +6,7 @@
 
 namespace App\Models;
 
+use App\Exceptions\AdminException;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -51,7 +52,27 @@ class SystemAttachment extends Model
         'image_type',
         'module_type',
         'real_name',
+        'plan_remark_draft',
     ];
+
+    public static function isPlanRemarkPath(string $path): bool
+    {
+        return preg_match('~^attach/\d{4}/\d{2}/plan-remark-[a-f0-9]{32}\.(?:png|jpg|gif|webp|bmp)$~D', ltrim($path, '/')) === 1;
+    }
+
+    public static function planRemarkDraftKey($token, int $adminId): string
+    {
+        if ($adminId <= 0 || !is_string($token) || !preg_match('/^[a-f0-9]{32}$/D', $token)) {
+            throw new AdminException('计划备注图片草稿无效');
+        }
+
+        return hash('sha256', $adminId . ':' . $token);
+    }
+
+    public static function planRemarkDraftPrefix(string $draftKey): string
+    {
+        return 'plan-remark-' . substr($draftKey, 0, 16);
+    }
 
     /**
      * 图片类型搜索器

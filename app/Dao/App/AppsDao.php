@@ -22,6 +22,9 @@ class AppsDao extends BaseDao
     {
         $query = $this->newQuery();
         $query->where("is_del", 0);
+        if (!empty($where['pin_admin_app'])) {
+            $query->orderByRaw('CASE WHEN id = ? THEN 0 ELSE 1 END', [SystemApp::ADMIN_APP_ID]);
+        }
 
         if (!empty($where['mer_id'])) {
             $query->where('mer_id', $where['mer_id']);

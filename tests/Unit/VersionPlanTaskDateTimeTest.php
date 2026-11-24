@@ -5,7 +5,9 @@ namespace Tests\Unit;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
 use App\Services\App\VersionPlanService;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class VersionPlanTaskDateTimeTest extends TestCase
@@ -15,6 +17,10 @@ class VersionPlanTaskDateTimeTest extends TestCase
         parent::setUp();
         config(['database.default' => 'sqlite', 'database.connections.sqlite.database' => ':memory:']);
         DB::purge('sqlite');
+        Schema::create('system_apps', function (Blueprint $table) {
+            $table->id();
+            $table->string('platform')->default('ios');
+        });
         require_once database_path('migrations/2026_07_03_000002_create_app_version_plans_table.php');
         require_once database_path('migrations/2026_07_03_000003_create_app_version_plan_tasks_table.php');
         (new \CreateAppVersionPlansTable())->up();

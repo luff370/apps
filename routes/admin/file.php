@@ -16,6 +16,7 @@ Route::name('file')->prefix('file')->namespace('File')->group(function () {
     Route::put('file/update/{id}', 'SystemAttachmentController@update');
     //上传图片
     Route::post('upload', 'SystemAttachmentController@upload');
+    Route::post('plan_remark_images/discard', 'SystemAttachmentController@discardPlanRemarkImages');
     //附件分类管理资源路由
     Route::resource('category', 'SystemAttachmentCategoryController');
     //获取上传类型

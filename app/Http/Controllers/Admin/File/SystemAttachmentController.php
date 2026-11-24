@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Admin\File;
 
 use Illuminate\Http\Request;
 use App\Http\Controllers\Admin\Controller;
+use App\Models\SystemAttachment;
+use App\Models\SystemAttachmentCategory;
 use App\Services\System\Attachment\SystemAttachmentServices;
 
 /**
@@ -67,9 +69,21 @@ class SystemAttachmentController extends Controller
             return $this->fail('请选择上传的文件');
         }
 
-        $fileUrl = $this->service->upload((int) $pid, $file, $type, $upload_type, $menuName);
+        $draft = $request->input('remark_draft_token');
+        $draftKey = $menuName === SystemAttachmentCategory::PLAN_REMARK_KEY && $draft !== null
+            ? SystemAttachment::planRemarkDraftKey($draft, (int) adminId())
+            : null;
+        $fileUrl = $this->service->upload((int) $pid, $file, $type, $upload_type, $menuName, $draftKey);
 
         return $this->success(['src' => $fileUrl], '上传成功');
+    }
+
+    public function discardPlanRemarkImages(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $key = SystemAttachment::planRemarkDraftKey($request->input('remark_draft_token'), (int) adminId());
+        $this->service->discardPlanRemarkDraft($key);
+
+        return $this->success('已清理备注草稿图片');
     }
 
     /**

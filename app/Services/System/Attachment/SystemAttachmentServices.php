@@ -7,6 +7,9 @@ namespace App\Services\System\Attachment;
 use App\Services\Service;
 use App\Exceptions\AdminException;
 use App\Exceptions\UploadException;
+use App\Models\SystemAttachment;
+use App\Models\SystemAttachmentCategory;
+use Illuminate\Support\Facades\DB;
 use App\Services\Other\UploadService;
 use Illuminate\Support\Facades\Storage;
 use App\Dao\System\Attachment\SystemAttachmentDao;
@@ -55,9 +58,15 @@ class SystemAttachmentServices extends Service
     public function getImageList(array $where)
     {
         [$page, $limit] = $this->getPageValue();
+        $where['plan_remark_draft'] = null;
         $list = $this->dao->getList($where, $page, $limit);
         $site_url = sys_config('site_url');
         foreach ($list as &$item) {
+            if (SystemAttachment::isPlanRemarkPath((string) $item['name'])) {
+                $item['satt_dir'] = url($item['satt_dir']);
+                $item['att_dir'] = url($item['att_dir']);
+                continue;
+            }
             if ($site_url) {
                 $item['satt_dir'] = (strpos($item['satt_dir'], $site_url) !== false || strstr($item['satt_dir'], 'http') !== false) ? $item['satt_dir'] : $site_url . $item['satt_dir'];
                 $item['att_dir'] = (strpos($item['att_dir'], $site_url) !== false || strstr($item['att_dir'], 'http') !== false) ? $item['satt_dir'] : $site_url . $item['att_dir'];
@@ -118,8 +127,13 @@ class SystemAttachmentServices extends Service
      * @throws \Psr\Container\ContainerExceptionInterface
      * @throws \Psr\Container\NotFoundExceptionInterface
      */
-    public function upload(int $pid, \Illuminate\Http\UploadedFile $file, string $type,  $upload_type = 0,   $menuName = ''): string
+    public function upload(int $pid, \Illuminate\Http\UploadedFile $file, string $type, $upload_type = 0, $menuName = '', ?string $planRemarkDraft = null): string
     {
+        if ($planRemarkDraft !== null && ($type !== '' || !SystemAttachment::isPlanRemarkPath(
+            'attach/' . date('Y/m') . '/' . $file->getClientOriginalName()
+        ))) {
+            throw new UploadException('计划备注图片文件名无效');
+        }
         // 阿里云类型
         // if ($upload_type == 0) {
         //     $upload_type = sys_config('upload_type', 1);
@@ -146,14 +160,24 @@ class SystemAttachmentServices extends Service
         }
 
         $upload_type = 1;
+        $storage = Storage::disk('public');
+        $path = null;
         try {
-            $storage = Storage::disk('public');
-            $uploadPath = DS . 'attach' . DS . date('Y') . DS . date('m');
+            $uploadPath = 'attach/' . date('Y/m');
             if (!$file->isValid()) {
                 throw new UploadException($file->getErrorMessage());
             }
 
-            $path = $storage->putFileAs($uploadPath, $file, $file->getClientOriginalName());
+            if ($menuName === SystemAttachmentCategory::PLAN_REMARK_KEY) {
+                $pid = app(SystemAttachmentCategoryServices::class)->planRemarkCategoryId();
+            }
+
+            $filename = $file->getClientOriginalName();
+            if ($planRemarkDraft !== null) {
+                $filename = SystemAttachment::planRemarkDraftPrefix($planRemarkDraft)
+                    . bin2hex(random_bytes(8)) . '.' . $file->getClientOriginalExtension();
+            }
+            $path = $storage->putFileAs($uploadPath, $file, $filename);
             if ($path === false) {
                 throw new UploadException('文件保存失败，请检查上传大小限制、磁盘权限或临时目录配置');
             }
@@ -171,13 +195,37 @@ class SystemAttachmentServices extends Service
                 $data['module_type'] = 1;
                 $data['time'] = time();
                 $data['pid'] = $pid;
+                if ($planRemarkDraft !== null) {
+                    $data['plan_remark_draft'] = $planRemarkDraft;
+                }
                 $this->dao->save($data);
             }
 
             return $url;
         } catch (\Exception $e) {
+            if ($planRemarkDraft !== null && $path) {
+                $storage->delete($path);
+            }
             throw new UploadException($e->getMessage());
         }
+    }
+
+    public function discardPlanRemarkDraft(string $draftKey): void
+    {
+        DB::transaction(function () use ($draftKey) {
+            $attachments = $this->dao->newQuery()->where('plan_remark_draft', $draftKey)->lockForUpdate()->get();
+            $storage = Storage::disk('public');
+            foreach ($attachments as $attachment) {
+                $path = $attachment->name;
+                if (!SystemAttachment::isPlanRemarkPath($path)) {
+                    continue;
+                }
+                if ($storage->exists($path) && !$storage->delete($path)) {
+                    throw new AdminException('清理备注图片失败，请重试');
+                }
+                $attachment->delete();
+            }
+        });
     }
 
     /**

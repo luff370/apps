@@ -20,6 +20,9 @@ namespace App\Models;
  */
 class SystemAttachmentCategory extends Model
 {
+    public const PLAN_REMARK_KEY = 'plan_remark';
+    public const PLAN_REMARK_NAME = '计划备注';
+
 	protected $table = 'system_attachment_category';
 	public $timestamps = false;
 

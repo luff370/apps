@@ -35,6 +35,12 @@ class SystemApp extends Model
 
     const UPDATED_AT = 'update_time';
 
+    public const PLATFORM_WEB = 'web';
+    public const PLATFORM_MINI_PROGRAM = 'mini_program';
+    public const ADMIN_APP_ID = 10077;
+
+    private const MINI_PROGRAM_CHANNELS = ['wechat' => '微信', 'alipay' => '支付宝'];
+
     protected $casts = [
         'mer_id' => 'int',
         'markets' => 'json',
@@ -88,6 +94,8 @@ class SystemApp extends Model
             'ios' => '苹果',
             'android' => '安卓',
             'hongmeng' => '鸿蒙',
+            self::PLATFORM_WEB => 'Web',
+            self::PLATFORM_MINI_PROGRAM => '小程序',
         ];
     }
 
@@ -107,7 +115,16 @@ class SystemApp extends Model
             'pp' => 'pp助手',
             'uc' => 'UC助手',
             '360' => '360',
-        ];
+        ] + self::MINI_PROGRAM_CHANNELS;
+    }
+
+    public static function versionPlanChannels(?string $platform): array
+    {
+        return match ($platform) {
+            self::PLATFORM_WEB => [],
+            self::PLATFORM_MINI_PROGRAM => self::MINI_PROGRAM_CHANNELS,
+            default => array_diff_key(self::marketChannelsMap(), self::MINI_PROGRAM_CHANNELS),
+        };
     }
 
     /**

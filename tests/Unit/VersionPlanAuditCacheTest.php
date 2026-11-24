@@ -2,13 +2,20 @@
 
 namespace Tests\Unit;
 
+use App\Dao\App\AppsDao;
+use App\Dao\System\Attachment\SystemAttachmentDao;
+use App\Exceptions\AdminException;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
+use App\Models\SystemAttachment;
 use App\Services\App\VersionPlanService;
 use App\Services\System\AppVersionServices;
+use App\Services\System\Attachment\SystemAttachmentServices;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class VersionPlanAuditCacheTest extends TestCase
@@ -29,6 +36,8 @@ class VersionPlanAuditCacheTest extends TestCase
             $table->integer('id')->primary();
             $table->integer('is_del')->default(0);
             $table->string('name')->default('');
+            $table->string('platform')->default('ios');
+            $table->string('package_name')->default('');
             $table->text('markets')->nullable();
         });
         Schema::create('risk_review_history', function (Blueprint $table) {
@@ -40,6 +49,101 @@ class VersionPlanAuditCacheTest extends TestCase
             $table->dateTime('submitted_at')->nullable();
             $table->dateTime('listed_at')->nullable();
         });
+    }
+
+    public function test_pinned_admin_app_sorts_before_pagination_and_respects_filters(): void
+    {
+        DB::table('system_apps')->insert([
+            ['id' => 10077, 'platform' => 'web'],
+            ['id' => 10100, 'platform' => 'android'],
+            ['id' => 10101, 'platform' => 'android'],
+        ]);
+        $dao = app(AppsDao::class);
+        $options = ['pin_admin_app' => true];
+        $this->assertSame([10077, 10101], $dao->getAll($options, ['id'], ['id' => 'desc'], [], 2, 1)->pluck('id')->all());
+        $this->assertSame([10100], $dao->getAll($options, ['id'], ['id' => 'desc'], [], 2, 2)->pluck('id')->all());
+        $this->assertSame([10101, 10100], $dao->getAll($options + ['platform' => 'android'], ['id'], ['id' => 'desc'])->pluck('id')->all());
+    }
+
+    public function test_web_plan_can_be_created_updated_and_copied_without_channel_tasks(): void
+    {
+        DB::table('system_apps')->insert(['id' => 10077, 'platform' => 'web']);
+        $service = app(VersionPlanService::class);
+        $input = ['title' => 'Web 更新', 'version' => '1.0'];
+        $plan = $service->savePlan(10077, $input);
+        $this->assertSame([], $plan['tasks']);
+
+        $updated = $service->savePlan(10077, ['id' => $plan['id'], 'status' => '已上架', 'tasks' => []] + $input);
+        $this->assertSame('已上架', $updated['status']);
+        $this->assertSame([], $updated['tasks']);
+        $this->assertSame([], $service->copyPlan(10077, $plan['id'])['tasks']);
+        $this->assertSame(0, AppVersionPlanTask::query()->count());
+    }
+
+    public function test_mini_program_plan_accepts_wechat_and_alipay_and_rejects_native_channels(): void
+    {
+        DB::table('system_apps')->insert(['id' => 10, 'platform' => 'mini_program']);
+        $service = app(VersionPlanService::class);
+        $input = ['title' => '小程序发布', 'version' => '2.0'];
+        $plan = $service->savePlan(10, $input + ['tasks' => [
+            ['market_channel' => 'wechat', 'version' => '2.0'],
+            ['market_channel' => 'alipay', 'version' => '2.0'],
+        ]]);
+        $this->assertSame(['wechat', 'alipay'], array_column($plan['tasks'], 'market_channel'));
+        $copy = $service->copyPlan(10, $plan['id']);
+        $this->assertSame(['wechat', 'alipay'], array_column($copy['tasks'], 'market_channel'));
+
+        $this->expectException(AdminException::class);
+        $this->expectExceptionMessage('小程序渠道请选择微信或支付宝');
+        $service->savePlan(10, $input + ['tasks' => [['market_channel' => 'ios', 'version' => '2.0']]]);
+    }
+
+    public function test_discard_removes_only_unpublished_images_in_the_current_remark_draft(): void
+    {
+        DB::table('system_apps')->insert(['id' => 10077, 'platform' => 'web']);
+        Schema::create('system_attachment_category', function (Blueprint $table) {
+            $table->id();
+            $table->integer('pid');
+            $table->string('name');
+            $table->string('enname');
+        });
+        Schema::create('system_attachment', function (Blueprint $table) {
+            $table->id('att_id');
+            foreach (['name', 'real_name', 'att_dir', 'satt_dir', 'att_type'] as $column) {
+                $table->string($column);
+            }
+            foreach (['pid', 'module_type', 'image_type', 'att_size', 'time'] as $column) {
+                $table->integer($column);
+            }
+        });
+        (require database_path('migrations/2026_11_24_000002_add_plan_remark_draft_to_attachments.php'))->up();
+        $storage = Storage::fake('public');
+        $media = app(SystemAttachmentServices::class);
+        $plans = app(VersionPlanService::class);
+        $draft = SystemAttachment::planRemarkDraftKey(str_repeat('a', 32), 1);
+        $otherDraft = SystemAttachment::planRemarkDraftKey(str_repeat('a', 32), 2);
+        $upload = fn($key) => $media->upload(0, UploadedFile::fake()
+            ->create('plan-remark-' . str_repeat('b', 32) . '.png', 1, 'image/png'), '', 0, 'plan_remark', $key);
+        $saved = $upload($draft);
+        $unused = $upload($draft);
+        $unrelated = $upload($otherDraft);
+
+        $this->assertSame(0, app(SystemAttachmentDao::class)->count(['plan_remark_draft' => null]));
+        $form = ['title' => 'Web 更新', 'version' => '1.0', 'remark_is_html' => true];
+        $plans->savePlan(10077, $form + ['remark' => '<img src="' . $saved . '">'], $draft);
+        $media->discardPlanRemarkDraft($draft);
+        $media->discardPlanRemarkDraft($draft);
+
+        $this->assertSame(1, app(SystemAttachmentDao::class)->count(['plan_remark_draft' => null]));
+        $this->assertSame(1, SystemAttachment::query()->where('plan_remark_draft', $otherDraft)->count());
+        foreach ([$saved, $unrelated] as $url) {
+            $storage->assertExists(substr(parse_url($url, PHP_URL_PATH), strlen('/storage/')));
+        }
+        $storage->assertMissing(substr(parse_url($unused, PHP_URL_PATH), strlen('/storage/')));
+
+        $this->expectException(AdminException::class);
+        $this->expectExceptionMessage('有备注图片已被清理');
+        $plans->savePlan(10077, $form + ['remark' => '<img src="' . $unused . '">'], $draft);
     }
 
     public function test_todo_plans_keep_only_my_developing_and_pending_plans(): void
@@ -119,12 +223,20 @@ class VersionPlanAuditCacheTest extends TestCase
             'operator_name' => 'zhang', 'status' => '待上架', 'priority' => 'P1',
             'remark' => '<p>备注<img src="/uploads/screenshot.png"></p>', 'remark_is_html' => true,
         ]);
-        $operation->tasks()->create(['market_channel' => 'ios', 'version' => '2.0.1']);
+        $operation->tasks()->create(['market_channel' => 'ios', 'version' => '2.0.1', 'status' => '已上架']);
         $other = AppVersionPlan::query()->create([
             'app_id' => 2, 'title' => '他人的计划', 'version' => '3.0', 'developer_name' => '李四',
         ]);
         AppVersionPlan::query()->create([
             'app_id' => 3, 'title' => '已删除应用的计划', 'version' => '4.0', 'operator_name' => '张三',
+        ]);
+        $listed = AppVersionPlan::query()->create([
+            'app_id' => 2, 'title' => '已上架计划', 'version' => '5.0', 'status' => '已上架',
+            'operator_name' => '张三',
+        ]);
+        $legacyListed = AppVersionPlan::query()->create([
+            'app_id' => 2, 'title' => '旧版已完成计划', 'version' => '6.0', 'status' => '已完成',
+            'operator_name' => '张三',
         ]);
 
         $service = app(VersionPlanService::class);
@@ -146,6 +258,10 @@ class VersionPlanAuditCacheTest extends TestCase
         $this->assertTrue($filtered['list'][0]['remark_is_html']);
         $this->assertSame($operation->remark, $filtered['list'][0]['remark']);
         $this->assertSame(3, $service->listTasks(['owner' => 'all', 'limit' => 1], $admin)['count']);
+        $this->assertSame(5, $service->listTasks(['owner' => 'all', 'hide_listed' => 'false', 'limit' => 1], $admin)['count']);
+        $onlyListed = $service->listTasks(['status' => '已上架', 'hide_listed' => '0'], $admin);
+        $this->assertSame([$legacyListed->id, $listed->id], array_column($onlyListed['list'], 'id'));
+        $this->assertSame(['已上架', '已上架'], array_column($onlyListed['list'], 'status'));
         $this->assertEqualsCanonicalizing(
             [$other->id, $operation->id],
             array_column($service->listTasks(['owner' => '6'], $admin)['list'], 'id')

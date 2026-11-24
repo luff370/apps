@@ -28,6 +28,7 @@ class AppsController extends Controller
             ['mer_id', ''],
         ]);
         $where['is_del'] = 0;
+        $where['pin_admin_app'] = true;
         $data = $this->service->getAllByPage($where, ['*'], ['id' => 'desc'], ['merchant']);
         $data['market_channels'] = SystemApp::marketChannelsMap();
 
@@ -91,7 +92,13 @@ class AppsController extends Controller
      */
     public function show($id)
     {
-        return $this->success($this->service->getRow($id));
+        $app = $this->service->getRow($id);
+        if ($app) {
+            $app['platform_name'] = SystemApp::platformsMap()[$app->platform] ?? $app->platform;
+            $app['version_plan_channels'] = SystemApp::versionPlanChannels($app->platform);
+        }
+
+        return $this->success($app);
     }
 
 

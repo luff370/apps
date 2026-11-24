@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin\App;
 use App\Exceptions\AdminException;
 use App\Exceptions\AuthException;
 use App\Http\Controllers\Admin\Controller;
+use App\Models\SystemAttachment;
 use App\Models\SystemMenu;
 use App\Services\App\VersionPlanService;
 use App\Services\System\Admin\SystemRoleServices;
@@ -39,7 +40,7 @@ class VersionPlanController extends Controller
         }
 
         return $this->success($this->service->listTasks(request()->only([
-            'owner', 'app_id', 'status', 'priority', 'channel', 'keyword', 'page', 'limit',
+            'owner', 'app_id', 'status', 'priority', 'channel', 'keyword', 'hide_listed', 'page', 'limit',
         ]), $admin));
     }
 
@@ -61,7 +62,10 @@ class VersionPlanController extends Controller
      */
     public function save($appId)
     {
-        $plan = $this->service->savePlan((int)$appId, request()->all());
+        $data = request()->all();
+        $draft = $data['remark_draft_token'] ?? null;
+        $draftKey = $draft === null ? null : SystemAttachment::planRemarkDraftKey($draft, (int) adminId());
+        $plan = $this->service->savePlan((int)$appId, $data, $draftKey);
 
         return $this->success($plan, '保存成功');
     }

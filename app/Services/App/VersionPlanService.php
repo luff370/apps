@@ -6,6 +6,7 @@ use App\Exceptions\AdminException;
 use App\Models\AppConfig;
 use App\Models\AppVersionPlan;
 use App\Models\AppVersionPlanTask;
+use App\Models\SystemAttachment;
 use App\Models\SystemAdmin;
 use App\Models\SystemApp;
 use App\Support\Services\FormOptions;
@@ -41,8 +42,15 @@ class VersionPlanService extends Service
         if (!empty($filters['app_id'])) {
             $query->where('app_id', (int)$filters['app_id']);
         }
-        if (in_array($filters['status'] ?? '', self::PLAN_STATUSES, true)) {
-            $query->where('status', $filters['status']);
+        $listedStatuses = ['已上架', '已完成'];
+        if (filter_var($filters['hide_listed'] ?? true, FILTER_VALIDATE_BOOLEAN)) {
+            $query->whereNotIn('status', $listedStatuses);
+        }
+        $status = $filters['status'] ?? '';
+        if ($status === '已上架') {
+            $query->whereIn('status', $listedStatuses);
+        } elseif (in_array($status, self::PLAN_STATUSES, true)) {
+            $query->where('status', $status);
         }
         if (in_array($filters['priority'] ?? '', self::PLAN_PRIORITIES, true)) {
             $query->where('priority', $filters['priority']);
@@ -149,7 +157,7 @@ class VersionPlanService extends Service
      *
      * @throws AdminException
      */
-    public function savePlan(int $appId, array $data): array
+    public function savePlan(int $appId, array $data, ?string $remarkDraftKey = null): array
     {
         if ($appId <= 0) {
             throw new AdminException('应用ID不能为空');
@@ -157,14 +165,20 @@ class VersionPlanService extends Service
         if (empty($data['title']) || empty($data['version'])) {
             throw new AdminException('计划名称和目标版本不能为空');
         }
-        if (empty($data['tasks']) || !is_array($data['tasks'])) {
-            throw new AdminException('请至少添加一个渠道任务');
-        }
         if (strlen((string)($data['remark'] ?? '')) > 65535) {
             throw new AdminException('计划备注内容过长，请缩短后保存');
         }
 
-        return DB::transaction(function () use ($appId, $data) {
+        return DB::transaction(function () use ($appId, $data, $remarkDraftKey) {
+            $platform = SystemApp::query()->find($appId)?->platform;
+            $isWeb = $platform === SystemApp::PLATFORM_WEB;
+            if (!$isWeb && (empty($data['tasks']) || !is_array($data['tasks']))) {
+                throw new AdminException('请至少添加一个渠道任务');
+            }
+            if ($platform === SystemApp::PLATFORM_MINI_PROGRAM) {
+                $this->validateMiniProgramTasks($data['tasks']);
+            }
+
             $planId = (int)($data['id'] ?? $this->parseLocalId($data['local_id'] ?? '', 'plan_'));
             $plan = $planId > 0
                 ? AppVersionPlan::query()->where('app_id', $appId)->find($planId)
@@ -186,6 +200,14 @@ class VersionPlanService extends Service
                 'remark' => (string)($data['remark'] ?? ''),
             ]);
             $plan->save();
+
+            if ($remarkDraftKey !== null && $plan->remark_is_html) {
+                $this->publishRemarkImages((string) $plan->remark, $remarkDraftKey);
+            }
+
+            if ($isWeb) {
+                return $this->formatPlan($plan->load('tasks'));
+            }
 
             // 计划任务属于一个小集合，整体重建比逐条 diff 更稳定，也避免遗留已删除渠道。
             app(\App\Services\Risk\RiskReviewEvidence::class)->captureApp($appId);
@@ -221,6 +243,24 @@ class VersionPlanService extends Service
         });
     }
 
+    private function publishRemarkImages(string $remark, string $draftKey): void
+    {
+        $prefix = SystemAttachment::planRemarkDraftPrefix($draftKey);
+        preg_match_all('~/(attach/\d{4}/\d{2}/' . $prefix . '[a-f0-9]{16}\.(?:png|jpg|gif|webp|bmp))(?=["\x27?#])~', $remark, $matches);
+        $paths = array_unique($matches[1]);
+        if (!$paths) {
+            return;
+        }
+
+        $attachments = SystemAttachment::query()->whereIn('name', $paths)->lockForUpdate()->get();
+        if ($attachments->count() !== count($paths)
+            || $attachments->contains(fn($attachment) => $attachment->plan_remark_draft !== null && $attachment->plan_remark_draft !== $draftKey)) {
+            throw new AdminException('有备注图片已被清理，请重新粘贴后保存');
+        }
+        SystemAttachment::query()->whereIn('name', $paths)->where('plan_remark_draft', $draftKey)
+            ->update(['plan_remark_draft' => null]);
+    }
+
     /**
      * 复制计划会新建主计划和任务，复制后的记录默认回到开发中。
      *
@@ -237,12 +277,18 @@ class VersionPlanService extends Service
         }
 
         return DB::transaction(function () use ($source) {
+            $platform = SystemApp::query()->find($source->app_id)?->platform;
+            $tasks = $platform === SystemApp::PLATFORM_WEB ? [] : $source->tasks;
+            if ($platform === SystemApp::PLATFORM_MINI_PROGRAM) {
+                $this->validateMiniProgramTasks($source->tasks->toArray());
+            }
+
             $copy = $source->replicate(['owner_name', 'planned_release_at']);
             $copy->title = $source->title . ' 副本';
             $copy->status = '开发中';
             $copy->save();
 
-            foreach ($source->tasks as $task) {
+            foreach ($tasks as $task) {
                 $nextTask = $task->replicate(['owner_name']);
                 $nextTask->plan_id = $copy->id;
                 $nextTask->status = $this->normalizeTaskStatus((string)$nextTask->status);
@@ -388,6 +434,21 @@ class VersionPlanService extends Service
             return Carbon::parse($value)->startOfDay();
         } catch (\Throwable $e) {
             return null;
+        }
+    }
+
+    private function validateMiniProgramTasks(array $tasks): void
+    {
+        if (!$tasks) {
+            throw new AdminException('请至少添加一个渠道任务');
+        }
+
+        $channels = SystemApp::versionPlanChannels(SystemApp::PLATFORM_MINI_PROGRAM);
+        foreach ($tasks as $task) {
+            $channel = is_array($task) ? ($task['market_channel'] ?? '') : '';
+            if (!is_string($channel) || !isset($channels[$channel])) {
+                throw new AdminException('小程序渠道请选择微信或支付宝');
+            }
         }
     }
 

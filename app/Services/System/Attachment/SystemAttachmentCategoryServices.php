@@ -6,6 +6,8 @@ namespace App\Services\System\Attachment;
 
 use App\Services\Service;
 use App\Exceptions\AdminException;
+use App\Models\SystemAttachmentCategory;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route as Url;
 use App\Support\Services\FormBuilder as Form;
 use App\Dao\System\Attachment\SystemAttachmentCategoryDao;
@@ -28,6 +30,29 @@ class SystemAttachmentCategoryServices extends Service
     public function __construct(SystemAttachmentCategoryDao $dao)
     {
         $this->dao = $dao;
+    }
+
+    public function planRemarkCategoryId(): int
+    {
+        $findCategory = fn() => $this->dao->newQuery()
+            ->where('enname', SystemAttachmentCategory::PLAN_REMARK_KEY)
+            ->orWhere('name', SystemAttachmentCategory::PLAN_REMARK_NAME)
+            ->orderBy('id');
+
+        $category = $findCategory()->first();
+        if ($category) {
+            return (int) $category->id;
+        }
+
+        return DB::transaction(function () use ($findCategory) {
+            $category = $findCategory()->lockForUpdate()->first() ?? $this->dao->save([
+                'pid' => 0,
+                'name' => SystemAttachmentCategory::PLAN_REMARK_NAME,
+                'enname' => SystemAttachmentCategory::PLAN_REMARK_KEY,
+            ]);
+
+            return (int) $category->id;
+        }, 3);
     }
 
 
