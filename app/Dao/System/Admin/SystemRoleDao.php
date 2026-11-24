@@ -35,6 +35,15 @@ class SystemRoleDao extends BaseDao
         return $this->search($where)->pluck($field ?: 'role_name', $key ?: 'id')->toArray();
     }
 
+    public function getActiveRoleRules(array $roleIds): array
+    {
+        return $this->getModel()->newQuery()
+            ->whereIn('id', $roleIds)
+            ->where('status', 1)
+            ->pluck('rules')
+            ->all();
+    }
+
     /**
      * 获取身份列表
      *

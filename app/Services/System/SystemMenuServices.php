@@ -67,19 +67,19 @@ class SystemMenuServices extends Service
     /**
      * 获取后台权限菜单和权限
      *
-     * @param $roleId
+     * @param array $roleIds
      * @param int $level
      *
      * @return array
      */
-    public function getMenusList($roleId, int $level)
+    public function getMenusList(array $roleIds, int $level)
     {
-        /** @var SystemRoleServices $systemRoleServices */
-        $systemRoleServices = app(SystemRoleServices::class);
-        $rules = $systemRoleServices->getRoleArray(['status' => 1, 'id' => $roleId], 'rules');
-        $rulesStr = Arr::unique($rules);
-        $menusList = $this->dao->getMenusRole(['route' => $level ? $rulesStr : '']);
-        $unique = $this->dao->getMenusUnique(['unique' => $level ? $rulesStr : '']);
+        $menuIds = $level ? app(SystemRoleServices::class)->getRoleIds($roleIds) : [];
+        if ($level && !$menuIds) {
+            return [[], []];
+        }
+        $menusList = $this->dao->getMenusRole(['route' => $menuIds]);
+        $unique = $this->dao->getMenusUnique(['unique' => $menuIds]);
 
         return [Arr::getMenuIviewList($this->getMenusData($menusList)), $unique];
     }

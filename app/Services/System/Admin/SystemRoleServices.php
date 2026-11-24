@@ -166,14 +166,19 @@ class SystemRoleServices extends Service
     /**
      * 获取权限id
      *
-     * @param array $rules
+     * @param array $roleIds
      *
      * @return array
      */
-    public function getRoleIds(array $rules)
+    public function getRoleIds(array $roleIds): array
     {
-        $rules = $this->dao->getColumn([['id', 'IN', $rules], ['status', '=', '1']], 'rules', 'id');
+        if (!$roleIds) {
+            return [];
+        }
 
-        return array_unique(explode(',', implode(',', $rules)));
+        $rules = $this->dao->getActiveRoleRules($roleIds);
+        $menuIds = array_map('trim', explode(',', implode(',', $rules)));
+
+        return array_values(array_unique(array_filter($menuIds)));
     }
 }
