@@ -68,7 +68,20 @@ class RiskLedgerController extends Controller
     {
         [$page, $limit] = $this->page();
 
-        return $this->success($this->dossiers->list([
+        return $this->success($this->dossiers->list($this->dossierFilters() + [
+            'compact' => request()->boolean('compact'),
+            'include_options' => request()->boolean('include_options', true),
+        ], $page, $limit));
+    }
+
+    public function dossierTagStats()
+    {
+        return $this->success($this->dossiers->tagStats($this->dossierFilters()));
+    }
+
+    private function dossierFilters(): array
+    {
+        return [
             'keyword' => request()->input('keyword', ''),
             'market_channel' => request()->input('market_channel', ''),
             'app_id' => request()->input('app_id', ''),
@@ -76,9 +89,7 @@ class RiskLedgerController extends Controller
             'start_date' => request()->input('start_date', ''),
             'end_date' => request()->input('end_date', ''),
             'state' => request()->input('state', ''),
-            'compact' => request()->boolean('compact'),
-            'include_options' => request()->boolean('include_options', true),
-        ], $page, $limit));
+        ];
     }
 
     public function dossierOptions()

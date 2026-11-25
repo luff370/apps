@@ -38,6 +38,27 @@ class RiskDossierService
         ];
     }
 
+    public function tagStats(array $filter): array
+    {
+        $counts = [];
+        $this->filtered($filter, false)->select(['ip', 'tags'])->chunkById(500, function ($rows) use (&$counts) {
+            foreach ($rows as $row) {
+                $codes = ReasonCatalog::normalizeList(array_column($this->json($row->tags), 'code'));
+                foreach ($codes as $code) {
+                    $counts[$code] = ($counts[$code] ?? 0) + 1;
+                }
+            }
+        }, 'ip');
+
+        arsort($counts);
+        $tags = [];
+        foreach ($counts as $code => $count) {
+            $tags[] = ['code' => (string) $code, 'count' => $count];
+        }
+
+        return ['tags' => $tags, 'total' => array_sum($counts)];
+    }
+
     public function detail(string $id, bool $withRelations = true): ?array
     {
         $ip = IpNormalizer::ipFor($id);

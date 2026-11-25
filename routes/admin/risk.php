@@ -43,6 +43,7 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
 
     Route::get('ip-dossiers', 'RiskLedgerController@dossiers');
     Route::get('ip-dossiers/options', 'RiskLedgerController@dossierOptions');
+    Route::get('ip-dossiers/tag-stats', 'RiskLedgerController@dossierTagStats');
     Route::get('ip-dossiers/{id}', 'RiskLedgerController@dossier');
     Route::delete('ip-dossiers/{id}', 'RiskLedgerController@removeDossier');
     Route::get('ip-dossiers/{id}/relations', 'RiskLedgerController@relations');

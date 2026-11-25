@@ -88,6 +88,30 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertStringContainsString('screen_projection', DB::table('risk_ip_dossiers')->value('tags'));
     }
 
+    public function test_dossier_tag_stats_count_each_tag_once_per_ip_across_batches(): void
+    {
+        $rows = [];
+        foreach (range(1, 501) as $id) {
+            $rows[] = [
+                'ip' => '2001:db8::'.dechex($id),
+                'state' => 'high',
+                'last_activity_at' => '2026-11-05 12:00:00',
+                'tags' => '[{"code":"vpn"},{"code":"vpn"},{"code":"root"},{"code":"screen_projection"}]',
+            ];
+        }
+        foreach (array_chunk($rows, 100) as $batch) {
+            DB::table('risk_ip_dossiers')->insert($batch);
+        }
+        $this->dossier('192.0.2.1', 'watch');
+        $this->dossier('192.0.2.2', 'high');
+
+        $stats = $this->service()->tagStats(['state' => 'high', 'start_date' => '2026-11-05']);
+
+        $this->assertSame(1002, $stats['total']);
+        $this->assertSame(['vpn' => 501, 'root' => 501], array_column($stats['tags'], 'count', 'code'));
+        $this->assertSame(['tags' => [], 'total' => 0], $this->service()->tagStats(['state' => 'watch', 'start_date' => '2026-11-05']));
+    }
+
     public function test_dossier_activity_dates_filter_full_days_counts_states_and_pages(): void
     {
         foreach ([
