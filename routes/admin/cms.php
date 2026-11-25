@@ -10,6 +10,7 @@ Route::name('cms')->prefix('cms')->namespace('Cms')->group(function () {
     // 内容管理
     Route::resource('content', 'ContentController');
     // 内容生成
+    Route::get('generate/collections', 'ContentController@generateCollections');
     Route::post('generate', 'ContentController@generate');
     // 排序
     Route::put('content/{id}/{field}/{value}', 'ContentController@setFieldValue');

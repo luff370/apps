@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\SuperAdminMiddleware;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -7,30 +8,30 @@ use Illuminate\Support\Facades\Route;
  */
 
 Route::name('setting')->prefix('setting')->namespace('Setting')->group(function () {
-    //管理员资源路由
-    Route::resource('admin', 'SystemAdminController');                                                                                                            //修改状态
-    Route::put('set_status/{id}/{status}', 'SystemAdminController@set_status')->name('SystemAdminSetStatus')->where(['id' => '[0-9]+', 'status' => '[0-9]+']);    //获取当前管理员信息
+    Route::middleware(SuperAdminMiddleware::class)->group(function () {
+        Route::resource('admin', 'SystemAdminController');
+        Route::put('set_status/{id}/{status}', 'SystemAdminController@set_status')
+            ->name('SystemAdminSetStatus')->where(['id' => '[0-9]+', 'status' => '[0-9]+']);
+
+        Route::get('role', 'SystemRoleController@index');
+        Route::get('role/create', 'SystemRoleController@create');
+        Route::get('role/{id}/edit', 'SystemRoleController@edit');
+        Route::post('role/{id}', 'SystemRoleController@save');
+        Route::put('role/set_status/{id}/{status}', 'SystemRoleController@set_status')
+            ->where(['id' => '[0-9]+', 'status' => '[0-9]+']);
+        Route::delete('role/{id}', 'SystemRoleController@delete');
+
+        Route::resource('menus', 'SystemMenuController');
+        Route::get('ruleList', 'SystemMenuController@ruleList');
+        Route::put('menus/show/{id}', 'SystemMenuController@setShow')->name('SystemMenusShow');
+    });
+
+    //获取当前管理员信息
     Route::get('info', 'SystemAdminController@info')->name('SystemAdminInfo');
     //修改当前管理员信息
     Route::put('update_admin', 'SystemAdminController@update_admin')->name('SystemAdminUpdateAdmin');
     //设置文件管理密码
     Route::put('set_file_password', 'SystemAdminController@set_file_password')->name('SystemAdminSetFilePassword');
-    //权限菜单资源路由
-    Route::resource('menus', 'SystemMenuController');                                                                                                            //未添加的权限规则列表
-    Route::get('ruleList', 'SystemMenuController@ruleList');
-    //修改显示
-    Route::put('menus/show/{id}', 'SystemMenuController@setShow')->name('SystemMenusShow');
-    //身份列表
-    Route::get('role', 'SystemRoleController@index');                                                                                                             //身份权限列表
-    Route::get('role/create', 'SystemRoleController@create');
-    //编辑详情
-    Route::get('role/{id}/edit', 'SystemRoleController@edit');                                                                                                    //保存新建或编辑
-    Route::post('role/{id}', 'SystemRoleController@save');
-    //修改身份状态
-    Route::put('role/set_status/{id}/{status}', 'SystemRoleController@set_status')->where(['id' => '[0-9]+', 'status' => '[0-9]+']);
-    //删除身份
-    Route::delete('role/{id}', 'SystemRoleController@delete');
-
     //配置分类资源路由
     Route::resource('config_class', 'SystemConfigTabController');
     //修改配置分类状态

@@ -146,7 +146,9 @@ class SystemMenu extends Model
      */
     public function searchRuleAttr(Builder $query, $value)
     {
-        $query->whereIn('id', $value)->where('is_del', 0)->orWhere('pid', 0);
+        $query->where(function (Builder $query) use ($value) {
+            $query->whereIn('id', $value)->orWhere('pid', 0);
+        })->where('is_del', 0);
     }
 
     /**

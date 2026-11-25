@@ -420,7 +420,7 @@ class CommonController extends Controller
     {
         /** @var SystemMenuServices $menusServices */
         $menusServices = app(SystemMenuServices::class);
-        $list = $menusServices->getSearchList();
+        $list = $menusServices->getSearchList((int) adminInfo()['level']);
         $counts = $menusServices->getColumn([
             ['is_show', '=', 1],
             ['auth_type', '=', 1],

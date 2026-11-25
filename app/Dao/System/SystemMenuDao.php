@@ -31,13 +31,14 @@ class SystemMenuDao extends BaseDao
      *
      * @return \Illuminate\Database\Eloquent\Builder[]|\Illuminate\Database\Eloquent\Collection
      */
-    public function getMenusRole(array $where, ?array $field = [])
+    public function getMenusRole(array $where, ?array $field = [], array $excludedAuth = [])
     {
         if (!$field) {
             $field = ['id', 'menu_name', 'icon', 'pid', 'sort', 'menu_path', 'is_show', 'header', 'is_header', 'is_show_path'];
         }
 
-        return $this->search($where)->select($field)->orderByRaw('sort DESC,id DESC')->get();
+        return $this->search($where)->whereNotIn('unique_auth', $excludedAuth)
+            ->select($field)->orderByRaw('sort DESC,id DESC')->get();
     }
 
     /**
@@ -47,9 +48,10 @@ class SystemMenuDao extends BaseDao
      *
      * @return array
      */
-    public function getMenusUnique(array $where): array
+    public function getMenusUnique(array $where, array $excludedAuth = []): array
     {
-        return $this->search($where)->where('unique_auth', '<>', '')->pluck('unique_auth')->toArray();
+        return $this->search($where)->whereNotIn('unique_auth', $excludedAuth)
+            ->where('unique_auth', '<>', '')->pluck('unique_auth')->toArray();
     }
 
     /**
@@ -121,9 +123,10 @@ class SystemMenuDao extends BaseDao
     /**
      * 搜索列表
      */
-    public function getSearchList()
+    public function getSearchList(array $excludedAuth = [])
     {
         return $this->search(['is_show' => 1, 'auth_type' => 1, 'is_del' => 0, 'is_show_path' => 0])
+            ->whereNotIn('unique_auth', $excludedAuth)
             ->selectRaw('id,pid,menu_name,menu_path,unique_auth,sort')->orderByRaw('sort DESC')->get();
     }
 }

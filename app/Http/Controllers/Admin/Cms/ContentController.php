@@ -108,6 +108,11 @@ class ContentController extends Controller
         return $this->success(100002);
     }
 
+    public function generateCollections(): \Illuminate\Http\JsonResponse
+    {
+        return $this->success($this->service->getCollectionOptions(request()->integer('app_id')));
+    }
+
     /**
      * 保存文章数据
      */

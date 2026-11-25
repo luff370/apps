@@ -13,6 +13,8 @@ use App\Support\Utils\Bilibili;
 use App\Models\ArticleAiCreation;
 use App\Models\ArticleAiDialogue;
 use App\Exceptions\AdminException;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Class ArticleServices
@@ -254,6 +256,20 @@ class ContentService extends Service
         return $info;
     }
 
+    public function getCollectionOptions(int $appId): array
+    {
+        if ($appId <= 0) {
+            return [];
+        }
+
+        return $this->collectionsForApp($appId)->orderByDesc('id')->get(['id', 'title'])->toArray();
+    }
+
+    private function collectionsForApp(int $appId): Builder
+    {
+        return Article::query()->where('app_id', $appId)->where('type', Article::TypeCollectionType);
+    }
+
     /**
      * 生成文章
      *
@@ -261,8 +277,12 @@ class ContentService extends Service
      */
     public function generate(array $data)
     {
-        if (!empty($data['article_id'])) {
-            $article = $this->dao->newQuery()->findOrFail($data['article_id']);
+        $collectionId = ($data['type'] ?? '') === 'collections' ? (int)($data['article_id'] ?? 0) : 0;
+        if ($collectionId) {
+            $article = $this->collectionsForApp((int)($data['app_id'] ?? 0))->find($collectionId);
+            if (!$article) {
+                throw new AdminException('所选合集不存在或不属于当前应用');
+            }
         } else {
             if (empty($data['app_id'])) {
                 throw new AdminException('创建内容，请选择所属应用');
@@ -285,7 +305,7 @@ class ContentService extends Service
                 }
 
                 // 创建新文章
-                if (empty($data['article_id'])) {
+                if (!$collectionId) {
                     $article->title = $content['title'];
                     $article->source = 'bilibili';
                     $article->image = $content['pic'];
@@ -321,42 +341,44 @@ class ContentService extends Service
                     }
                     $article->save();
                 } else {
-                    // 原有内容添加课节信息
-                    if ($article->type == Article::TypeCollectionType) {
-                        $course = [];
-                        $courseCount = ArticleCourse::query()->where('nid', $article->id)->count();
-
-                        foreach ($content['pages'] as $item) {
-                            $course[] = [
-                                'nid' => $article->id,
-                                'lesson_number' => $courseCount + $item['page'],
-                                'title' => $item['part'],
-                                'source' => 'bilibili',
-                                'image' => $content['pic'],
-                                'code' => $item['cid'] ?? '',
-                                'duration' => $item['duration'] ?? 0,
-                            ];
-                        }
-
-                        ArticleCourse::query()->insert($course);
-
-                        $article->collections += $content['videos'];
-                        $article->duration += $content['duration'];
-                    } else {
-                        $article->collections = 1;
-                        $article->duration = $content['duration'];
-                    }
-
-                    if (($article->code === '' || $article->code === null) && !empty($data['code'])) {
-                        $article->code = $data['code'];
-                    }
-
-                    $article->save();
+                    $this->appendCollectionLessons($article, $content, (string)$data['code']);
                 }
 
                 break;
             default:
                 throw new AdminException('未定义的数据来源类型');
         }
+    }
+
+    private function appendCollectionLessons(Article $collection, array $content, string $code): void
+    {
+        DB::transaction(function () use ($collection, $content, $code) {
+            $article = $this->collectionsForApp($collection->app_id)->lockForUpdate()->find($collection->id);
+            if (!$article) {
+                throw new AdminException('所选合集不存在或不属于当前应用');
+            }
+
+            $lastLessonNumber = (int) ArticleCourse::query()->where('nid', $article->id)->max('lesson_number');
+            $lessons = [];
+            foreach ($content['pages'] as $item) {
+                $lessons[] = [
+                    'nid' => $article->id,
+                    'lesson_number' => $lastLessonNumber + $item['page'],
+                    'title' => $item['part'],
+                    'source' => 'bilibili',
+                    'image' => $content['pic'],
+                    'code' => $item['cid'] ?? '',
+                    'duration' => $item['duration'] ?? 0,
+                ];
+            }
+            ArticleCourse::query()->insert($lessons);
+
+            $article->collections += $content['videos'];
+            $article->duration += $content['duration'];
+            if (($article->code === '' || $article->code === null) && $code !== '') {
+                $article->code = $code;
+            }
+            $article->save();
+        });
     }
 }

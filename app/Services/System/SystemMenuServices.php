@@ -17,12 +17,19 @@ use App\Services\System\Admin\SystemRoleServices;
  * @method save(array $data) 保存数据
  * @method get(int $id, ?array $field = []) 获取数据
  * @method update($id, array $data, ?string $key = null) 修改数据
- * @method getSearchList() 主页搜索
  * @method getColumn(array $where, string $field, ?string $key = '') 主页搜索
  * @method getVisitName(string $rule) 根据访问地址获得菜单名
  */
 class SystemMenuServices extends Service
 {
+    private const HOME_AUTH = 'admin-index-index';
+    private const SUPER_ADMIN_ONLY = [
+        'setting-system-admin',
+        'setting-system-role',
+        'setting-system-list',
+        'setting-system-menus',
+    ];
+
     /**
      * 初始化
      * SystemMenuServices constructor.
@@ -76,12 +83,21 @@ class SystemMenuServices extends Service
     {
         $menuIds = $level ? app(SystemRoleServices::class)->getRoleIds($roleIds) : [];
         if ($level && !$menuIds) {
-            return [[], []];
+            return [[], [self::HOME_AUTH]];
         }
-        $menusList = $this->dao->getMenusRole(['route' => $menuIds]);
-        $unique = $this->dao->getMenusUnique(['unique' => $menuIds]);
+        $excludedAuth = $level ? self::SUPER_ADMIN_ONLY : [];
+        $menusList = $this->dao->getMenusRole(['route' => $menuIds], [], $excludedAuth);
+        $unique = $this->dao->getMenusUnique(['unique' => $menuIds], $excludedAuth);
+        if (!in_array(self::HOME_AUTH, $unique, true)) {
+            $unique[] = self::HOME_AUTH;
+        }
 
         return [Arr::getMenuIviewList($this->getMenusData($menusList)), $unique];
+    }
+
+    public function getSearchList(int $level)
+    {
+        return $this->dao->getSearchList($level ? self::SUPER_ADMIN_ONLY : []);
     }
 
     /**
@@ -248,16 +264,16 @@ class SystemMenuServices extends Service
      */
     public function getMenus($roles): array
     {
-        $field = ['menu_name', 'pid', 'id'];
+        $field = ['menu_name', 'pid', 'id', 'unique_auth'];
         $where = ['is_del' => 0];
         if (!$roles) {
-            $menus = $this->dao->getMenusRole($where, $field);
+            $menus = $this->dao->getMenusRole($where, $field, self::SUPER_ADMIN_ONLY);
         } else {
             /** @var SystemRoleServices $service */
             $service = app(SystemRoleServices::class);
             $roles = is_string($roles) ? explode(',', $roles) : $roles;
             $ids = $service->getRoleIds($roles);
-            $menus = $this->dao->getMenusRole(['rule' => $ids] + $where, $field);
+            $menus = $this->dao->getMenusRole(['rule' => $ids] + $where, $field, self::SUPER_ADMIN_ONLY);
         }
 
         return $this->tidyMenuTier(false, $menus);
@@ -282,7 +298,7 @@ class SystemMenuServices extends Service
             if ($menu['pid'] == $pid) {
                 unset($menusList[$k]);
                 $menu['children'] = $this->tidyMenuTier($adminFilter, $menusList, $menu['id']);
-                if ($pid == 0 && !count($menu['children'])) {
+                if ($pid == 0 && !$menu['children'] && $menu['unique_auth'] !== self::HOME_AUTH) {
                     continue;
                 }
                 if ($menu['children']) {

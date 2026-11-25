@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\DB;
 
 class VersionPlanService extends Service
 {
-    public const PLAN_STATUSES = ['开发中', '待上架', '已上架', '暂停'];
+    public const PLAN_STATUSES = ['开发中', '待上架', '审核中', '已上架', '暂停'];
 
     public const TASK_STATUSES = ['待提交', '已提交', '审核中', '已拒绝', '已上架', '已下架'];
 
