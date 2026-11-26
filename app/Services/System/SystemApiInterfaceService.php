@@ -123,6 +123,10 @@ class SystemApiInterfaceService extends Service
 
     private function paramsToExample(array $params): array
     {
+        if (!array_is_list($params)) {
+            return $params;
+        }
+
         $result = [];
         foreach ($params as $item) {
             if (!is_array($item)) {
@@ -132,7 +136,9 @@ class SystemApiInterfaceService extends Service
             if ($key === '') {
                 continue;
             }
-            $result[$key] = $item['example'] ?? $this->defaultValueByType((string) ($item['type'] ?? 'string'));
+            $result[$key] = array_key_exists('example', $item)
+                ? $item['example']
+                : $this->defaultValueByType((string) ($item['type'] ?? 'string'));
         }
         return $result;
     }

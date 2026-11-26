@@ -33,6 +33,7 @@ Route::middleware($deviceEnv)->group(function () {
     Route::post('risk/activity-events/batch', 'RiskActivityController@batch');
     // 应用基础信息
     Route::post('app/info', 'CommonController@appInfo');
+    // 友盟初始化上报
     Route::post('app/umeng/initialize', 'CommonController@recordUmengInitialization');
     // 应用版本更新
     Route::get('app/update', 'CommonController@appUpdate');
