@@ -16,6 +16,7 @@ use App\Support\Services\AppConfigService;
 use App\Support\Services\ClientRequestContext;
 use App\Services\User\UserWhitelistService;
 use App\Services\System\AppVersionServices;
+use App\Services\Statistics\UmengDeviceService;
 use App\Support\Services\SystemConfigService;
 use App\Services\App\AppApiObfuscationService;
 use App\Support\Services\DeviceEnvRiskService;
@@ -23,6 +24,28 @@ use App\Support\Services\AgreementUrlAliasService;
 
 class CommonController extends Controller
 {
+    public function recordUmengInitialization(Request $request, UmengDeviceService $service)
+    {
+        $oaid = $request->input('oaid');
+        $data = validator([
+            'app_id' => $this->getAppId(),
+            'uuid' => trim((string) $this->getUuid()),
+            'market_channel' => trim((string) $this->getMarketChannel()),
+            'version' => trim((string) $this->getAppVersion()),
+            'oaid' => is_string($oaid) ? trim($oaid) : $oaid,
+        ], [
+            'app_id' => 'required|integer|min:1|exists:system_apps,id,is_del,0',
+            'uuid' => 'required|string|max:64',
+            'market_channel' => 'present|string|max:32',
+            'version' => 'present|string|max:32',
+            'oaid' => 'required|string|max:128',
+        ])->validate();
+
+        $service->record((int) $data['app_id'], $data['uuid'], $data['market_channel'], $data['version'], $data['oaid']);
+
+        return $this->success();
+    }
+
     public function appInfo(AppsService $appsService, Request $request, DeviceEnvRiskService $riskService, AgreementUrlAliasService $agreementUrlAlias, AppApiObfuscationService $obfuscationService)
     {
         // logger()->info('请求信息：',['header'=>$request->headers, 'body'=>$request->all()]);

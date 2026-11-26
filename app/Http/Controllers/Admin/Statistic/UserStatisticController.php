@@ -61,6 +61,7 @@ class UserStatisticController extends Controller
             'end_date' => 'required|date_format:Y-m-d|after_or_equal:start_date',
             'keyword' => 'nullable|string|max:128',
             'registered' => 'nullable|in:0,1',
+            'source' => 'nullable|in:default,umeng',
             'page' => 'nullable|integer|min:1',
             'limit' => 'nullable|integer|min:1|max:100',
         ]);
@@ -76,6 +77,7 @@ class UserStatisticController extends Controller
             'data',
             'start_date',
             'end_date',
+            'source',
         ]);
     }
 

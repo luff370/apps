@@ -2,12 +2,16 @@
 
 namespace Tests\Unit;
 
+use App\Http\Controllers\Api\CommonController;
 use App\Services\Statistics\UserStatisticsService;
+use App\Services\Statistics\UmengDeviceService;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class UserStatisticsChannelTest extends TestCase
@@ -89,18 +93,7 @@ class UserStatisticsChannelTest extends TestCase
 
     public function test_devices_use_first_uuid_rows_and_enrich_without_cross_app_matches(): void
     {
-        Schema::create('system_apps', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-        });
-        Schema::create('user_access_log', function (Blueprint $table) {
-            $table->id();
-            $table->integer('app_id');
-            $table->string('uuid');
-            $table->string('device');
-            $table->string('os');
-            $table->timestamps();
-        });
+        $this->createDeviceLookupTables();
         (require database_path('migrations/2026_11_24_000003_add_user_device_list_indexes.php'))->up();
 
         DB::table('system_apps')->insert([['id' => 1, 'name' => '应用甲'], ['id' => 2, 'name' => '应用乙']]);
@@ -149,4 +142,97 @@ class UserStatisticsChannelTest extends TestCase
         $this->assertSame(3, $service->reportDevices(array_diff_key($filters, ['app_id' => true]))['count']);
     }
 
+    public function test_umeng_reports_use_their_own_first_seen_devices_and_deduplicated_activity(): void
+    {
+        $this->createDeviceLookupTables();
+        (require database_path('migrations/2026_11_26_000001_create_umeng_user_statistics_tables.php'))->up();
+        (require database_path('migrations/2026_11_26_000002_remove_umeng_initialized_from_umeng_user_uuids.php'))->up();
+        $this->assertFalse(Schema::hasColumn('umeng_user_uuids', 'umeng_initialized'));
+        DB::connection()->getPdo()->sqliteCreateFunction('FROM_UNIXTIME', fn ($time) => date('Y-m-d H:i:s', $time), 1);
+        DB::table('system_apps')->insert(['id' => 1, 'name' => '应用甲']);
+
+        $recorder = app(UmengDeviceService::class);
+        $this->travelTo(Carbon::parse('2026-11-26 09:00:00'));
+        try {
+            $headers = [
+                'HTTP_APP_ID' => '1', 'HTTP_UUID' => 'device-a',
+                'HTTP_APP_VERSION' => '1.0', 'HTTP_MARKET_CHANNEL' => 'yyb',
+            ];
+            $controller = app(CommonController::class);
+            foreach ([[], ['oaid' => null], ['oaid' => '   '], ['oaid' => 123]] as $payload) {
+                $request = Request::create('/api/app/umeng/initialize', 'POST', $payload, [], [], $headers);
+                app()->instance('request', $request);
+                try {
+                    $controller->recordUmengInitialization($request, $recorder);
+                    $this->fail('Expected invalid OAID to be rejected');
+                } catch (ValidationException $exception) {
+                    $this->assertArrayHasKey('oaid', $exception->errors());
+                }
+            }
+            $this->assertSame(0, DB::table('umeng_user_uuids')->count());
+            $this->assertSame(0, DB::table('umeng_user_activity')->count());
+
+            $request = Request::create('/api/app/umeng/initialize', 'POST', ['oaid' => ' oaid-alpha '], [], [], $headers);
+            app()->instance('request', $request);
+            $response = $controller->recordUmengInitialization($request, $recorder);
+            $this->assertSame(200, $response->getData(true)['status']);
+            $recorder->record(1, 'device-a', 'yingyongbao', '2.0', 'oaid-alpha');
+            $recorder->record(1, 'device-a', 'huawei', '2.0', 'oaid-alpha');
+            $recorder->record(2, 'device-a', 'oppo', '3.0', 'oaid-beta');
+            $this->travelTo(Carbon::parse('2026-11-27 10:00:00'));
+            $recorder->record(1, 'device-a', 'yyb', '2.0', 'oaid-alpha');
+        } finally {
+            $this->travelBack();
+        }
+
+        DB::table('users')->insert([
+            ['app_id' => 1, 'uuid' => 'device-a', 'is_reg' => 1, 'market_channel' => 'huawei', 'reg_time' => Carbon::parse('2026-11-26 11:00:00')->timestamp],
+            ['app_id' => 1, 'uuid' => 'unreported', 'is_reg' => 1, 'market_channel' => 'huawei', 'reg_time' => Carbon::parse('2026-11-26 11:00:00')->timestamp],
+        ]);
+        DB::table('user_access_log')->insert([
+            'app_id' => 1, 'uuid' => 'device-a', 'device' => '', 'os' => 'Android',
+            'created_at' => '2026-11-28 10:00:00',
+        ]);
+
+        $service = app(UserStatisticsService::class);
+        $range = ['app_id' => 1, 'start_date' => '2026-11-26', 'end_date' => '2026-11-27'];
+        $filters = $range + ['source' => 'umeng'];
+        $this->assertSame(0, $service->reportBasic($range)['new_users']);
+        $this->assertSame(0, $service->reportBasic($range)['active_users']);
+        $this->assertSame([
+            'active_users' => 2, 'new_users' => 1, 'registered_users' => 1, 'register_rate' => 100.0,
+        ], $service->reportBasic($filters));
+        $this->assertSame(1, $service->reportBasic($filters + ['market_channel' => 'huawei'])['active_users']);
+        $this->assertSame(2, $service->reportByApp($filters)[0]['active_users']);
+
+        $channels = array_column($service->reportByChannel($filters), null, 'market_channel');
+        $this->assertSame(1, $channels['yingyongbao']['registered_users']);
+        $this->assertSame(0, $channels['huawei']['registered_users']);
+        $this->assertSame([1, 1], $service->reportTrend($filters)['series'][0]['data']);
+
+        $devices = $service->reportDevices($filters + ['keyword' => 'oaid-alpha', 'registered' => '1']);
+        $this->assertSame(1, $devices['count']);
+        $device = $devices['list'][0];
+        $this->assertSame('oaid-alpha', $device['oaid']);
+        $this->assertSame('1.0', $device['version']);
+        $this->assertSame('2026-11-26 09:00:00', $device['first_seen_at']);
+        $this->assertSame('2026-11-27 10:00:00', $device['last_seen_at']);
+    }
+
+    private function createDeviceLookupTables(): void
+    {
+        Schema::create('system_apps', function (Blueprint $table) {
+            $table->id();
+            $table->string('name');
+            $table->boolean('is_del')->default(false);
+        });
+        Schema::create('user_access_log', function (Blueprint $table) {
+            $table->id();
+            $table->integer('app_id');
+            $table->string('uuid');
+            $table->string('device');
+            $table->string('os');
+            $table->timestamps();
+        });
+    }
 }
