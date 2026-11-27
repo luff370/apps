@@ -38,6 +38,7 @@ class RiskQueryOptimizationTest extends TestCase
             '/admin/risk/event' => 'events',
             '/admin/risk/ip-dossiers/options' => 'dossierOptions',
             '/admin/risk/ip-dossiers/example/relations' => 'relations',
+            '/admin/risk/ip-dossiers/example/score' => 'dossierScore',
             '/admin/risk/publishing-monitor' => 'publishingBoard',
         ] as $path => $method) {
             $route = app('router')->getRoutes()->match(\Illuminate\Http\Request::create($path, 'GET'));
@@ -61,6 +62,17 @@ class RiskQueryOptimizationTest extends TestCase
             'apps' => '[{"id":"1","name":"One"}]', 'tags' => '[{"code": "root", "active": true}]',
             'collected_at' => '2026-10-01 00:00:00', 'last_activity_at' => '2026-10-29 00:00:00',
         ]);
+        if ($state !== 'released') {
+            $this->scoredScope($ip);
+        }
+    }
+
+    private function scoredScope(string $ip): void
+    {
+        DB::table('risk_scopes')->insert([
+            'ip' => $ip, 'app_id' => 1, 'device_identity' => 'scored-device', 'collected_at' => '2026-10-01 00:00:00',
+            'reason_codes' => '["root"]', 'risk_score' => 70,
+        ]);
     }
 
     public function test_compact_dossiers_keep_counts_without_placeholder_arrays_or_options_queries(): void
@@ -74,30 +86,44 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertSame([], $result['list'][0]['devices']);
         $this->assertSame(10000, $result['list'][0]['device_count']);
         $this->assertNull($result['options']);
-        $this->assertCount(2, DB::getQueryLog());
+        $this->assertCount(3, DB::getQueryLog());
         $this->assertSame(1, $this->service()->list(['keyword' => '192.0.2.1', 'compact' => true, 'include_options' => false], 1, 20)['count']);
         $this->assertCount(10000, $this->service()->list(['include_options' => false], 1, 1)['list'][0]['devices']);
     }
 
-    public function test_projection_tag_is_hidden_without_deleting_the_stored_evidence(): void
+    public function test_dossiers_without_scored_tags_are_excluded_and_paused_tags_stay_in_evidence(): void
     {
         $this->dossier('192.0.2.1');
-        DB::table('risk_ip_dossiers')->update(['tags' => '[{"code":"screen_projection","label":"正在投屏"},{"code":"root","label":"已 Root"}]']);
-        $result = $this->service()->list(['compact' => true, 'include_options' => false], 1, 20);
+        $this->dossier('192.0.2.2', 'released');
+        $this->dossier('192.0.2.3', 'released');
+        $this->dossier('192.0.2.4', 'high');
+        $paused = '[{"code":"screen_projection"},{"code":"vpn"},{"code":"sensor_static"},{"code":"env_blocks_ads"},{"code":"imu_static_during_activity"},{"code":"touch_low_entropy"},{"code":"drm_failed"}]';
+        DB::table('risk_ip_dossiers')->whereIn('ip', ['192.0.2.2', '192.0.2.4'])->update(['tags' => $paused]);
+        DB::table('risk_scopes')->where('ip', '192.0.2.4')->update(['reason_codes' => '["vpn"]']);
+        DB::table('risk_ip_dossiers')->where('ip', '192.0.2.1')->update(['tags' => substr($paused, 0, -1).',{"code":"root"}]']);
+        DB::table('risk_ip_dossiers')->where('ip', '192.0.2.4')->update(['tags' => '[{"code":"vpn","active":true},{"code":"root","active":false}]']);
+        $service = $this->service();
+        $result = $service->list(['compact' => true, 'include_options' => false], 1, 20);
+        $this->assertSame(['all' => 2, 'high' => 1, 'watch' => 0, 'released' => 1], $result['state_counts']);
+        $this->assertSame(['192.0.2.1', '192.0.2.3'], array_column($result['list'], 'ip'));
         $this->assertSame(['root'], array_column($result['list'][0]['tags'], 'code'));
-        $this->assertStringContainsString('screen_projection', DB::table('risk_ip_dossiers')->value('tags'));
+        $this->assertSame($paused, DB::table('risk_ip_dossiers')->where('ip', '192.0.2.2')->value('tags'));
+        $this->assertSame(0, $service->list(['reason_code' => 'vpn', 'include_options' => false], 1, 20)['count']);
+        $this->assertNotContains('vpn', array_column($service->options()['tags'], 'code'));
     }
 
     public function test_dossier_tag_stats_count_each_tag_once_per_ip_across_batches(): void
     {
         $rows = [];
         foreach (range(1, 501) as $id) {
+            $ip = '2001:db8::'.dechex($id);
             $rows[] = [
-                'ip' => '2001:db8::'.dechex($id),
+                'ip' => $ip,
                 'state' => 'high',
                 'last_activity_at' => '2026-11-05 12:00:00',
-                'tags' => '[{"code":"vpn"},{"code":"vpn"},{"code":"root"},{"code":"screen_projection"}]',
+                'tags' => '[{"code":"vpn"},{"code":"root"},{"code":"root"},{"code":"screen_projection"}]',
             ];
+            $this->scoredScope($ip);
         }
         foreach (array_chunk($rows, 100) as $batch) {
             DB::table('risk_ip_dossiers')->insert($batch);
@@ -107,8 +133,8 @@ class RiskQueryOptimizationTest extends TestCase
 
         $stats = $this->service()->tagStats(['state' => 'high', 'start_date' => '2026-11-05']);
 
-        $this->assertSame(1002, $stats['total']);
-        $this->assertSame(['vpn' => 501, 'root' => 501], array_column($stats['tags'], 'count', 'code'));
+        $this->assertSame(501, $stats['total']);
+        $this->assertSame(['root' => 501], array_column($stats['tags'], 'count', 'code'));
         $this->assertSame(['tags' => [], 'total' => 0], $this->service()->tagStats(['state' => 'watch', 'start_date' => '2026-11-05']));
     }
 
@@ -136,8 +162,8 @@ class RiskQueryOptimizationTest extends TestCase
         $this->assertSame(4, $first['count']);
         $this->assertSame(['all' => 4, 'high' => 2, 'watch' => 1, 'released' => 1], $first['state_counts']);
         $this->assertSame(['192.0.2.5', '192.0.2.4'], array_column($first['list'], 'ip'));
-        $this->assertCount(2, $queries);
-        foreach ($queries as $query) {
+        $this->assertCount(3, $queries);
+        foreach (array_slice($queries, 0, 2) as $query) {
             $this->assertStringContainsString('"last_activity_at" >= ?', $query['query']);
             $this->assertStringContainsString('"last_activity_at" < ?', $query['query']);
             $this->assertSame(['2026-11-05 00:00:00', '2026-11-07 00:00:00'], array_slice($query['bindings'], 0, 2));
@@ -198,6 +224,7 @@ class RiskQueryOptimizationTest extends TestCase
     {
         $ip = '192.0.2.1';
         $this->dossier($ip);
+        DB::table('risk_scopes')->where('ip', $ip)->delete();
         foreach (range(1, 25) as $n) {
             foreach ([1, 2] as $appId) {
                 DB::table('risk_scopes')->insert([

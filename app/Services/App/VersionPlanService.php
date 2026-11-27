@@ -113,6 +113,7 @@ class VersionPlanService extends Service
                 'id' => (int)$plan->id,
                 'app_id' => $appId,
                 'app_name' => (string)$appNames[$appId],
+                'title' => (string)$plan->title,
                 'status' => $status,
                 'version' => (string)$plan->version,
                 'remark' => $plan->remark_is_html

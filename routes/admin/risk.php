@@ -46,6 +46,7 @@ Route::name('risk')->prefix('risk')->namespace('Risk')->group(function () {
     Route::get('ip-dossiers/tag-stats', 'RiskLedgerController@dossierTagStats');
     Route::get('ip-dossiers/{id}', 'RiskLedgerController@dossier');
     Route::delete('ip-dossiers/{id}', 'RiskLedgerController@removeDossier');
+    Route::get('ip-dossiers/{id}/score', 'RiskLedgerController@dossierScore');
     Route::get('ip-dossiers/{id}/relations', 'RiskLedgerController@relations');
     Route::get('ip-dossiers/{id}/timeline', 'RiskLedgerController@timeline');
 

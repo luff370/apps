@@ -8,6 +8,7 @@ use App\Services\Risk\RiskReleaseEngine;
 use App\Services\Risk\RiskReviewEvidence;
 use Carbon\Carbon;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -109,6 +110,42 @@ class ProjectionRiskRepairTest extends TestCase
         return app(\App\Services\Risk\ProjectionRiskRepair::class)->run($apply, 0, 0, 200, 10);
     }
 
+    public function test_command_automatically_walks_all_batches_and_reports_totals(): void
+    {
+        foreach (['first', 'second'] as $device) {
+            [, $log] = $this->fixture($device, ['vpn']);
+            $log->update(['probe_json' => ['is_vpn' => true]]);
+        }
+        $options = ['--paused-signals' => true, '--all' => true, '--limit' => 1];
+
+        $this->assertSame(0, Artisan::call('app:risk-repair-projection', $options));
+        $preview = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(2, $preview['batches']);
+        $this->assertSame(2, $preview['eligible']);
+        $this->assertSame(0, $preview['released']);
+        $this->assertSame(0, DB::table('risk_releases')->count());
+
+        $this->assertSame(0, Artisan::call('app:risk-repair-projection', $options + ['--apply' => true]));
+        $applied = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertTrue($applied['complete']);
+        $this->assertSame(2, $applied['released']);
+        $this->assertSame(2, DB::table('risk_releases')->count());
+        $this->assertSame(0, Artisan::call('app:risk-repair-projection', $options + ['--apply' => true]));
+        $this->assertSame(0, json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR)['released']);
+    }
+
+    public function test_auto_command_reports_incomplete_when_the_ledger_is_behind(): void
+    {
+        [, $log] = $this->fixture();
+        $log->replicate()->save();
+
+        $this->assertSame(1, Artisan::call('app:risk-repair-projection', ['--all' => true, '--apply' => true]));
+        $output = Artisan::output();
+        $this->assertStringContainsString('"complete": false', $output);
+        $this->assertStringContainsString('"inbox_pending": 1', $output);
+        $this->assertSame(0, DB::table('risk_releases')->count());
+    }
+
     public function test_dry_run_is_read_only_and_apply_is_idempotent_with_original_logs_unchanged(): void
     {
         [$id, $log] = $this->fixture();
@@ -145,6 +182,50 @@ class ProjectionRiskRepairTest extends TestCase
         $this->assertSame(0, DB::table('risk_releases')->value('ip_fully_released'));
     }
 
+    public function test_paused_weight_repair_releases_only_supported_scopes_and_keeps_remaining_ip_risk(): void
+    {
+        [$paused, $log] = $this->fixture('paused', ['vpn', 'env_blocks_ads']);
+        $log->update(['probe_json' => ['is_vpn' => true, 'env_allows_ads' => false]]);
+        [$mixed, $mixedLog] = $this->fixture('mixed', ['sensor_static', 'hook']);
+        $mixedLog->update(['probe_json' => ['sensor_static_score' => 90, 'hook_suspect' => true]]);
+        $repair = app(\App\Services\Risk\ProjectionRiskRepair::class);
+        $this->assertSame(1, $repair->run(false, 0, 0, 200, 10, true)['eligible']);
+        $this->assertSame(1, $repair->run(true, 0, 0, 200, 10, true)['released']);
+        $this->assertSame('released', DB::table('risk_scopes')->where('id', $paused)->value('state'));
+        $this->assertSame('active', DB::table('risk_scopes')->where('id', $mixed)->value('state'));
+        $this->assertSame('high', DB::table('risk_ip_dossiers')->value('state'));
+        $this->assertSame(70, (int) $log->fresh()->risk_score);
+        $details = app(\App\Services\Risk\RiskDossierService::class)->scoreDetails(\App\Services\Risk\Ledger\IpNormalizer::idFor('192.0.2.1'));
+        $this->assertSame(70, $details['score']);
+        $this->assertSame(80, $details['raw_score']);
+        $this->assertSame(['hook' => 80], array_column($details['items'], 'points', 'code'));
+        $this->assertTrue($details['recalculated']);
+        $this->assertTrue($details['reference_only']);
+    }
+
+    public function test_mixed_history_keeps_emulator_in_the_list_and_uses_the_recalculated_score(): void
+    {
+        [$id, $log] = $this->fixture('emulated', ['emulator', 'sensor_static', 'env_blocks_ads']);
+        $log->update(['risk_score' => 75, 'probe_json' => ['is_emulator' => true, 'sensor_static_score' => 90, 'env_allows_ads' => false]]);
+        DB::table('risk_scopes')->where('id', $id)->update(['risk_score' => 75]);
+        $original = $log->fresh()->getRawOriginal();
+        $repair = app(\App\Services\Risk\ProjectionRiskRepair::class);
+        $this->assertSame(1, $repair->run(false, 0, 0, 200, 10, true)['rescore_eligible']);
+        $this->assertSame(75, DB::table('risk_scopes')->value('risk_score'));
+        $this->assertSame(1, $repair->run(true, 0, 0, 200, 10, true)['rescored']);
+        $scope = DB::table('risk_scopes')->find($id);
+        $this->assertSame('active', $scope->state);
+        $this->assertSame('limit', $scope->decision);
+        $this->assertSame(50, $scope->risk_score);
+        $this->assertSame($original, $log->fresh()->getRawOriginal());
+        $dossiers = app(\App\Services\Risk\RiskDossierService::class);
+        $this->assertSame(50, $dossiers->list(['include_options' => false], 1, 1)['list'][0]['risk_score']);
+        $details = $dossiers->scoreDetails(\App\Services\Risk\Ledger\IpNormalizer::idFor('192.0.2.1'));
+        $this->assertSame(50, $details['raw_score']);
+        $this->assertFalse($details['reference_only']);
+        $this->assertSame(0, $repair->run(true, 0, 0, 200, 10, true)['rescored']);
+    }
+
     public function test_source_reassessment_catches_hidden_other_signal_even_if_tags_were_lost(): void
     {
         [$id, $log] = $this->fixture();
@@ -152,6 +233,22 @@ class ProjectionRiskRepairTest extends TestCase
         $log->save();
         $this->assertSame(0, $this->repair()['released']);
         $this->assertSame('active', DB::table('risk_scopes')->where('id', $id)->value('state'));
+    }
+
+    public function test_mixed_history_rescore_preserves_an_independent_blacklist_decision(): void
+    {
+        [$id, $log] = $this->fixture('listed', ['emulator', 'sensor_static']);
+        $log->update(['probe_json' => ['is_emulator' => true, 'sensor_static_score' => 90]]);
+        DB::table('risk_lists')->insert(['app_id' => 1, 'status' => 1, 'target_type' => 'device_identity', 'target_value' => 'listed', 'decision' => 'block']);
+
+        $report = app(\App\Services\Risk\ProjectionRiskRepair::class)->run(true, 0, 0, 200, 10, true);
+
+        $this->assertSame(1, $report['rescored']);
+        $this->assertSame(0, $report['released']);
+        $scope = DB::table('risk_scopes')->find($id);
+        $this->assertSame(50, $scope->risk_score);
+        $this->assertSame('block', $scope->decision);
+        $this->assertSame('active', $scope->state);
     }
 
     public function test_missing_evidence_hard_blocks_and_manual_lists_are_not_released(): void

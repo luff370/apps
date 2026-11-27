@@ -6,6 +6,7 @@ use App\Models\RiskProbeLog;
 use App\Models\SystemApp;
 use App\Services\Risk\Ledger\IpNormalizer;
 use App\Services\Risk\Ledger\ReasonCatalog;
+use App\Support\Services\DeviceEnvRiskService;
 use App\Support\Services\DeviceEnvRiskView;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +24,7 @@ class RiskLedgerService
                 DB::table('risk_ledger_meta')->insertOrIgnore(['id' => 1, 'cursor_id' => 0, 'created_at' => now(), 'updated_at' => now()]);
                 $meta = DB::table('risk_ledger_meta')->where('id', 1)->lockForUpdate()->first();
                 $logs = RiskProbeLog::query()->where('id', '>', $meta->cursor_id)->orderBy('id')->limit(max(1, min(500, $batch)))
-                    ->get(array_unique(array_merge(RiskProbeLog::adminListColumns(), ['route', 'probe_json', 'touch_sample_count', 'click_sample_count', 'swipe_sample_count'])));
+                    ->get(array_unique(array_merge(RiskProbeLog::adminListColumns(), ['route', 'probe_json', 'validation_errors', 'touch_sample_count', 'click_sample_count', 'swipe_sample_count'])));
                 $this->dirtyIps = [];
                 $remaining = $this->applyHistoricalQuiet($logs);
                 foreach ($remaining as $log) {
@@ -114,7 +115,7 @@ class RiskLedgerService
 
         // Old queued probes must not recreate a disposition for a retired signal.
         // Reassess an in-memory copy only; the original audit row remains immutable.
-        $corrected = ProjectionRiskRepair::correctedDecision($log);
+        $corrected = ProjectionRiskRepair::correctedDecision($log) ?? ProjectionRiskRepair::reassessPausedLog($log);
         if ($corrected !== null) {
             $log = clone $log;
             $log->risk_score = $corrected['score'];
@@ -198,12 +199,9 @@ class RiskLedgerService
             if ($device !== '') {
                 app(RiskReviewEvidence::class)->observe((int) $log->app_id, $device, (string) $log->app_version, (string) $log->market_channel, $occurredAt);
             }
-            $risky = in_array($decision, ['verify', 'limit', 'block'], true);
-            // An inherited restriction must not create a new disposition backed only by protocol drift.
-            if (($raw['reasons'] ?? []) === ['native_probe_protocol_mismatch']
-                && $log->risk_reasons === ['native_probe_protocol_mismatch']) {
-                $risky = false;
-            }
+            // Admission needs a current score-bearing signal, independently of inherited policy and manual lists.
+            $risky = in_array($decision, ['verify', 'limit', 'block'], true) && (int) $raw['score'] > 0
+                && array_intersect(array_diff($raw['reasons'] ?? [], ['native_probe_protocol_mismatch']), array_keys(DeviceEnvRiskService::SCORE_WEIGHTS));
             if ($risky && $coverage !== 'visit') {
                 $this->recordAccess('probe:'.$logId, (int) $log->app_id, $device, $probe['_user_id'] ?? null, $ip, (string) $log->app_version, (string) $log->market_channel, 'guard', $decision, $occurredAt, $occurredAt);
             }

@@ -51,11 +51,13 @@ class UsageWindow
                 $accum = 0;
                 $thresholdAt = null;
                 $lastInteraction = null;
+                $frozen = null;
                 $prev = null;
             }
             if ($prev) {
                 $gap = $event['at'] - $prev['at'];
-                $countable = (! isset($event['seq'], $prev['seq']) || $event['seq'] === $prev['seq'] + 1) && $prev['foreground'] && $prev['screen_interactive'] && $lastInteraction !== null;
+                $countable = (! isset($event['seq'], $prev['seq']) || $event['seq'] === $prev['seq'] + 1)
+                    && $foreground && $prev['foreground'] && $prev['screen_interactive'] && $lastInteraction !== null;
                 if ($gap > 0 && $gap <= $gapSeconds && $countable) {
                     $budget = $idleSeconds - ($prev['at'] - $lastInteraction);
                     if ($budget > 0) {

@@ -6,7 +6,9 @@ use App\Exceptions\AdminException;
 use App\Models\SystemApp;
 use App\Services\Risk\Ledger\IpNormalizer;
 use App\Services\Risk\Ledger\ReasonCatalog;
+use App\Support\Services\DeviceEnvRiskService;
 use Carbon\Carbon;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 class RiskDossierService
@@ -23,9 +25,11 @@ class RiskDossierService
         $rows = $query->orderByDesc('last_activity_at')->orderBy('ip')
             ->forPage(max(1, $page), max(1, min(100, $limit)))
             ->get();
+        $scores = $rows->isEmpty() ? collect() : $this->scoredScopes()->whereIn('ip', $rows->pluck('ip'))
+            ->selectRaw('ip, MAX(risk_score) as score')->groupBy('ip')->pluck('score', 'ip');
         $list = [];
         foreach ($rows as $row) {
-            $list[] = $this->present($row, false, ! empty($filter['compact']));
+            $list[] = $this->present($row, false, ! empty($filter['compact'])) + ['risk_score' => isset($scores[$row->ip]) ? (int) $scores[$row->ip] : null];
         }
 
         return [
@@ -38,12 +42,55 @@ class RiskDossierService
         ];
     }
 
+    public function scoreDetails(string $id): ?array
+    {
+        $ip = IpNormalizer::ipFor($id);
+        $scope = $ip === '' ? null : $this->scoredScopes()->where('ip', $ip)
+            ->orderByDesc('risk_score')->orderByDesc('id')->first();
+        if (! $scope) {
+            return null;
+        }
+
+        $score = (int) $scope->risk_score;
+        $source = DB::table('risk_timeline')->where('ip', $ip)->where('scope_id', $scope->id)->where('risk_score', $score)
+            ->whereNotNull('source_log_id')->orderByRaw('CASE WHEN event_type = ? THEN 0 ELSE 1 END', [ProjectionRiskRepair::RESCORE_EVENT])
+            ->orderByDesc('id')->first(['source_log_id', 'event_type']);
+        $log = \App\Models\RiskProbeLog::query()->find($source->source_log_id ?? $scope->source_log_id);
+        $probe = $log?->probe_json;
+        $raw = $probe['_risk_basis']['decision'] ?? null;
+        $corrected = ($source->event_type ?? null) === ProjectionRiskRepair::RESCORE_EVENT;
+        $recalculated = $corrected || ! isset($raw['score_items'], $raw['uncapped_score']);
+        foreach ($raw['score_items'] ?? [] as $item) {
+            if ($item['points'] > 0 && ! isset(DeviceEnvRiskService::SCORE_WEIGHTS[$item['code']])) {
+                $recalculated = true;
+                break;
+            }
+        }
+        if ($recalculated) {
+            $raw = $log?->status === 'ok' && is_array($probe) && $probe !== []
+                ? app(DeviceEnvRiskService::class)->reassessProbe($probe, $log->validation_errors ?? [])
+                : null;
+        }
+
+        return [
+            'score' => $score,
+            'raw_score' => $raw['score'] ?? null,
+            'uncapped_score' => $raw['uncapped_score'] ?? null,
+            'items' => array_values(array_filter($raw['score_items'] ?? [], fn ($item) => $item['points'] > 0)),
+            'source_log_id' => $log?->id,
+            'reference_only' => $raw !== null && (($recalculated && $raw['score'] !== $score)
+                || ($source === null && (int) $log->risk_score !== $score)),
+            'observation' => $scope->review_stage === 'observation',
+            'recalculated' => $recalculated && $raw !== null,
+        ];
+    }
+
     public function tagStats(array $filter): array
     {
         $counts = [];
         $this->filtered($filter, false)->select(['ip', 'tags'])->chunkById(500, function ($rows) use (&$counts) {
             foreach ($rows as $row) {
-                $codes = ReasonCatalog::normalizeList(array_column($this->json($row->tags), 'code'));
+                $codes = array_filter(ReasonCatalog::normalizeList(array_column($this->json($row->tags), 'code')), $this->visibleTag(...));
                 foreach ($codes as $code) {
                     $counts[$code] = ($counts[$code] ?? 0) + 1;
                 }
@@ -79,7 +126,7 @@ class RiskDossierService
                 'user_id' => $scope->user_id,
                 'state' => $scope->state,
                 'decision' => $scope->decision,
-                'reason_codes' => $this->ledger->codes($scope->reason_codes),
+                'reason_codes' => array_values(array_filter($this->ledger->codes($scope->reason_codes), $this->visibleTag(...))),
                 'collected_at' => $this->iso($scope->collected_at),
                 'released_at' => $scope->released_at ? $this->iso($scope->released_at) : null,
             ];
@@ -174,11 +221,12 @@ class RiskDossierService
             $query->where('app_id', $filter['app_id']);
         }
         if (! empty($filter['event_kind'])) {
-            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'manual_release', 'release_revoke', 'risk_downgrade', 'rule_correction']];
+            $kinds = ['risk' => ['risk_hit', 'intake', 'reintake'], 'activity' => ['login', 'access'], 'manual' => ['auto_release', 'manual_release', 'release_revoke', 'risk_downgrade', 'rule_correction', ProjectionRiskRepair::RESCORE_EVENT]];
             $query->whereIn('event_type', $kinds[$filter['event_kind']] ?? [$filter['event_kind']]);
         }
         if (! empty($filter['reason_code'])) {
-            $query->whereJsonContains('reason_codes', (string) $filter['reason_code']);
+            $code = (string) $filter['reason_code'];
+            $this->visibleTag($code) ? $query->whereJsonContains('reason_codes', $code) : $query->whereRaw('1 = 0');
         }
         $count = (clone $query)->count();
         $rows = $query->orderByDesc('occurred_at')->orderByDesc('id')->forPage(max(1, $page), max(1, min(100, $limit)))->get();
@@ -190,7 +238,7 @@ class RiskDossierService
             ->where('ip', $ip)
             ->selectRaw('DATE(occurred_at) as day, COUNT(*) as total')
             ->selectRaw("SUM(event_type IN ('risk_hit','intake','reintake')) as risk_count")
-            ->selectRaw("SUM(event_type IN ('auto_release','manual_release','release_revoke','risk_downgrade','rule_correction')) as action_count")
+            ->selectRaw("SUM(event_type IN ('auto_release','manual_release','release_revoke','risk_downgrade','rule_correction',?)) as action_count", [ProjectionRiskRepair::RESCORE_EVENT])
             ->groupBy(DB::raw('DATE(occurred_at)'))
             ->orderBy('day')
             ->get() : null;
@@ -213,6 +261,15 @@ class RiskDossierService
         if ($endAt !== null) {
             $query->where('last_activity_at', '<', $endAt->toDateTimeString());
         }
+        $query->where(function (Builder $visible) {
+            $visible->where(function (Builder $released) {
+                $released->where('state', 'released');
+                $this->requireScoredCode($released, 'tags');
+            })->orWhere(function (Builder $active) {
+                $active->where('state', '<>', 'released')
+                    ->whereExists($this->scoredScopes()->selectRaw('1')->whereColumn('risk_scopes.ip', 'risk_ip_dossiers.ip'));
+            });
+        });
         $keyword = trim((string) ($filter['keyword'] ?? ''));
         if ($keyword !== '') {
             $normalized = IpNormalizer::normalize($keyword);
@@ -250,7 +307,7 @@ class RiskDossierService
         if (! empty($filter['reason_code'])) {
             $code = preg_replace('/[^a-z0-9_]/', '', strtolower((string) $filter['reason_code']));
             if ($code !== '') {
-                $query->whereJsonContains('tags', ['code' => $code]);
+                $this->visibleTag($code) ? $query->whereJsonContains('tags', ['code' => $code]) : $query->whereRaw('1 = 0');
             }
         }
         if (! $ignoreState && ! empty($filter['state']) && in_array($filter['state'], ['high', 'watch', 'released'], true)) {
@@ -258,6 +315,35 @@ class RiskDossierService
         }
 
         return $query;
+    }
+
+    private function requireScoredCode(Builder $query, string $column): void
+    {
+        $dossierTags = $column === 'tags';
+        $codes = array_keys(DeviceEnvRiskService::SCORE_WEIGHTS);
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            $value = $dossierTags ? "json_extract(tag.value, '$.code')" : 'tag.value';
+            $query->whereExists(fn (Builder $tags) => $tags->selectRaw('1')->fromRaw("json_each($column) as tag")->whereIn(DB::raw($value), $codes));
+
+            return;
+        }
+
+        // JSON encodes each code in quotes, so the pattern matches whole values only.
+        $values = $dossierTags ? "JSON_EXTRACT($column, '$[*].code')" : $column;
+        $query->whereRaw("CAST($values AS CHAR) REGEXP ?", ['"('.implode('|', $codes).')"']);
+    }
+
+    private function scoredScopes(): Builder
+    {
+        $query = DB::table('risk_scopes')->where('state', 'active')->where('risk_score', '>', 0);
+        $this->requireScoredCode($query, 'reason_codes');
+
+        return $query;
+    }
+
+    private function visibleTag(string $code): bool
+    {
+        return $code !== '' && $code !== 'screen_projection' && ! in_array($code, DeviceEnvRiskService::PAUSED_SCORE_REASONS, true);
     }
 
     private function activityDateBounds(array $filter): array
@@ -312,7 +398,9 @@ class RiskDossierService
         $apps = DB::table('risk_scopes')->where('app_id', '>', 0)->distinct()->orderBy('app_id')->pluck('app_id');
         $tags = [];
         foreach (ReasonCatalog::LABELS as $code => $label) {
-            $tags[] = ['code' => $code, 'name' => $label];
+            if ($this->visibleTag($code)) {
+                $tags[] = ['code' => $code, 'name' => $label];
+            }
         }
 
         return [
@@ -326,7 +414,7 @@ class RiskDossierService
     {
         $markets = $this->json($row->markets);
         $apps = $this->json($row->apps);
-        $tags = array_values(array_filter($this->json($row->tags), fn ($tag) => ($tag['code'] ?? '') !== 'screen_projection'));
+        $tags = array_values(array_filter($this->json($row->tags), fn ($tag) => $this->visibleTag($tag['code'] ?? '')));
         $state = (string) $row->state;
         $record = [
             'id' => IpNormalizer::idFor($row->ip),
@@ -445,7 +533,7 @@ class RiskDossierService
 
     private function event(object $row): array
     {
-        $codes = $this->ledger->codes($row->reason_codes);
+        $codes = array_values(array_filter($this->ledger->codes($row->reason_codes), $this->visibleTag(...)));
         $tags = array_map(fn ($code) => ['code' => $code, 'label' => ReasonCatalog::label($code)], $codes);
         $at = Carbon::parse($row->occurred_at);
         $risky = in_array($row->event_type, ['risk_hit', 'intake', 'reintake'], true);

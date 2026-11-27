@@ -258,8 +258,8 @@ class RiskReleaseEngine
             if (! $release) {
                 throw new AdminException('释放记录不存在');
             }
-            if ($release->rule_id === ProjectionRiskRepair::RULE_ID) {
-                throw new AdminException('规则修正记录不支持恢复已下线的投屏处置');
+            if (ProjectionRiskRepair::isCorrection($release->rule_id)) {
+                throw new AdminException('规则修正记录不能恢复已停用计分的处置');
             }
             // A concurrent retry may have committed while this request waited for the IP lock.
             $prior = DB::table('risk_revocations')->where('request_id', $requestId)->lockForUpdate()->first();

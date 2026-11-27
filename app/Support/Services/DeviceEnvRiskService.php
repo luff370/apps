@@ -125,13 +125,39 @@ class DeviceEnvRiskService
         'ver' => 'ver',
     ];
 
-    /**
-     * 接入漂移信号。命中后只加少量分数，且不能单独触发客户端关广告时的合规抬分。
-     */
-    private const SOFT_VALIDATION_REASONS = [
-        'native_probe_protocol_mismatch',
-        'device_env_digest_mismatch',
-        'env_field_count_mismatch',
+    /** 这些信号保留在原始探针和命中记录中，暂不计分。 */
+    public const PAUSED_SCORE_REASONS = [
+        'sensor_static', 'vpn', 'env_blocks_ads', 'imu_static_during_activity', 'touch_low_entropy', 'drm_failed',
+    ];
+
+    public const SCORE_WEIGHTS = [
+        'monkey' => 100,
+        'hook' => 80,
+        'user_ca' => 60,
+        'path_unsafe' => 50,
+        'emulator' => 50,
+        'cloud_phone' => 50,
+        'debugger' => 50,
+        'adb_control_port' => 80,
+        'touch_coordinate_oob' => 80,
+        'sensor_data_dead' => 70,
+        'screen_captured' => 70,
+        'emulator_fingerprint' => 50,
+        'input_not_touchscreen' => 60,
+        'release_debuggable' => 60,
+        'build_type_not_user' => 50,
+        'automation_proc' => 40,
+        'touch_biometrics_synthetic' => 30,
+        'swipe_synthetic' => 25,
+        'click_synthetic' => 20,
+        'sim_absent_wifi' => 20,
+        'root' => 15,
+        'proxy' => 10,
+        'jailbroken' => 15,
+        'suspicious_a11y' => 10,
+        'native_probe_protocol_mismatch' => 5,
+        'device_env_digest_mismatch' => 10,
+        'env_field_count_mismatch' => 5,
     ];
 
     public function inspect(Request $request): array
@@ -378,10 +404,13 @@ class DeviceEnvRiskService
     {
         $score = 0;
         $reasons = [];
+        $scoreItems = [];
 
-        $add = function (bool $condition, int $points, string $reason) use (&$score, &$reasons): void {
+        $add = function (bool $condition, string $reason) use (&$score, &$reasons, &$scoreItems): void {
             if ($condition) {
+                $points = self::SCORE_WEIGHTS[$reason] ?? 0;
                 $score += $points;
+                $scoreItems[] = ['code' => $reason, 'points' => $points];
                 $reasons[] = $reason;
             }
         };
@@ -391,24 +420,24 @@ class DeviceEnvRiskService
          * P0 信号权重高，通常客户端已经通过 env_allows_ads=false 本地关广告；
          * 服务端继续评分是为了同步 compliance_mode、记录原因和进行设备维度统计。
          */
-        $add((bool) ($probe['is_monkey'] ?? false), 100, 'monkey');
-        $add((bool) ($probe['hook_suspect'] ?? false), 80, 'hook');
-        $add((bool) ($probe['has_user_ca'] ?? false), 60, 'user_ca');
-        $add(array_key_exists('path_safe', $probe) && $probe['path_safe'] === false, 50, 'path_unsafe');
-        $add((bool) ($probe['is_emulator'] ?? false), 50, 'emulator');
-        $add((bool) ($probe['is_cloud_phone'] ?? false), 50, 'cloud_phone');
-        $add((bool) ($probe['is_vpn'] ?? false), 50, 'vpn');
-        $add((bool) ($probe['is_debugger'] ?? false), 50, 'debugger');
-        $add((bool) ($probe['adb_control_port_open'] ?? false), 80, 'adb_control_port');
-        $add((bool) ($probe['touch_coordinate_oob'] ?? false), 80, 'touch_coordinate_oob');
-        $add((bool) ($probe['sensor_data_dead'] ?? false), 70, 'sensor_data_dead');
-        $add((bool) ($probe['screen_is_captured'] ?? false), 70, 'screen_captured');
+        $add((bool) ($probe['is_monkey'] ?? false), 'monkey');
+        $add((bool) ($probe['hook_suspect'] ?? false), 'hook');
+        $add((bool) ($probe['has_user_ca'] ?? false), 'user_ca');
+        $add(array_key_exists('path_safe', $probe) && $probe['path_safe'] === false, 'path_unsafe');
+        $add((bool) ($probe['is_emulator'] ?? false), 'emulator');
+        $add((bool) ($probe['is_cloud_phone'] ?? false), 'cloud_phone');
+        $add((bool) ($probe['is_vpn'] ?? false), 'vpn');
+        $add((bool) ($probe['is_debugger'] ?? false), 'debugger');
+        $add((bool) ($probe['adb_control_port_open'] ?? false), 'adb_control_port');
+        $add((bool) ($probe['touch_coordinate_oob'] ?? false), 'touch_coordinate_oob');
+        $add((bool) ($probe['sensor_data_dead'] ?? false), 'sensor_data_dead');
+        $add((bool) ($probe['screen_is_captured'] ?? false), 'screen_captured');
         // Projection is retained in the original probe for audit only; it is not a risk signal.
-        $add((bool) ($probe['build_emulator_fingerprint'] ?? false), 50, 'emulator_fingerprint');
-        $add((bool) ($probe['input_source_not_touchscreen'] ?? false), 60, 'input_not_touchscreen');
-        $add((bool) ($probe['release_debuggable'] ?? false), 60, 'release_debuggable');
-        $add((bool) ($probe['build_type_not_user'] ?? false), 50, 'build_type_not_user');
-        $add((int) ($probe['automation_proc_count'] ?? 0) >= 1, 40, 'automation_proc');
+        $add((bool) ($probe['build_emulator_fingerprint'] ?? false), 'emulator_fingerprint');
+        $add((bool) ($probe['input_source_not_touchscreen'] ?? false), 'input_not_touchscreen');
+        $add((bool) ($probe['release_debuggable'] ?? false), 'release_debuggable');
+        $add((bool) ($probe['build_type_not_user'] ?? false), 'build_type_not_user');
+        $add((int) ($probe['automation_proc_count'] ?? 0) >= 1, 'automation_proc');
 
         $touchSamples = (int) ($probe['touch_sample_count'] ?? 0);
         $clickSamples = (int) ($probe['click_sample_count'] ?? 0);
@@ -423,20 +452,18 @@ class DeviceEnvRiskService
          * - 高直线、高匀速且几乎无微抖动；
          * - 多次点击集中在少量目标且高度贴近中心。
          */
-        $add($touchSamples >= 5 && (int) ($probe['touch_timing_entropy'] ?? 100) < 20 && (int) ($probe['touch_coord_dispersion'] ?? 100) < 15, 35, 'touch_low_entropy');
+        $add($touchSamples >= 5 && (int) ($probe['touch_timing_entropy'] ?? 100) < 20 && (int) ($probe['touch_coord_dispersion'] ?? 100) < 15, 'touch_low_entropy');
         $add(
             $touchSamples >= 5
             && (int) ($probe['touch_pressure_zero_ratio'] ?? 0) > 80
             && (int) ($probe['touch_pressure_variation'] ?? 100) < 15
             && (int) ($probe['touch_contact_variation'] ?? 100) < 15,
-            30,
             'touch_biometrics_synthetic'
         );
         $add(
             ($touchSamples >= 5 || $clickSamples >= 3)
             && (int) ($probe['imu_static_during_touch'] ?? 0) > 85
             && (int) ($probe['gyro_static_score'] ?? 0) > 85,
-            30,
             'imu_static_during_activity'
         );
         $add(
@@ -444,43 +471,38 @@ class DeviceEnvRiskService
             && (int) ($probe['swipe_linearity'] ?? 0) > 92
             && (int) ($probe['swipe_speed_uniformity'] ?? 0) > 85
             && (int) ($probe['swipe_micro_jitter'] ?? 100) < 10,
-            25,
             'swipe_synthetic'
         );
-        $add((int) ($probe['click_sample_count'] ?? 0) >= 3 && (int) ($probe['click_target_entropy'] ?? 100) < 25 && (int) ($probe['click_center_bias'] ?? 0) > 80, 20, 'click_synthetic');
-        $add((int) ($probe['sensor_static_score'] ?? 0) > 85, 25, 'sensor_static');
-        $add((int) ($probe['sim_state'] ?? 0) === 1 && ($probe['network_transport'] ?? '') === 'wifi', 20, 'sim_absent_wifi');
-        $add((bool) ($probe['root_suspect'] ?? false), 15, 'root');
-        $add((bool) ($probe['has_proxy'] ?? false), 10, 'proxy');
-        $add((bool) ($probe['is_jailbroken'] ?? false), 15, 'jailbroken');
-        $add((int) ($probe['suspicious_a11y_count'] ?? 0) >= 1, 10, 'suspicious_a11y');
-        $add(array_key_exists('drm_ok', $probe) && $probe['drm_ok'] === false, 10, 'drm_failed');
+        $add((int) ($probe['click_sample_count'] ?? 0) >= 3 && (int) ($probe['click_target_entropy'] ?? 100) < 25 && (int) ($probe['click_center_bias'] ?? 0) > 80, 'click_synthetic');
+        $add((int) ($probe['sensor_static_score'] ?? 0) > 85, 'sensor_static');
+        $add((int) ($probe['sim_state'] ?? 0) === 1 && ($probe['network_transport'] ?? '') === 'wifi', 'sim_absent_wifi');
+        $add((bool) ($probe['root_suspect'] ?? false), 'root');
+        $add((bool) ($probe['has_proxy'] ?? false), 'proxy');
+        $add((bool) ($probe['is_jailbroken'] ?? false), 'jailbroken');
+        $add((int) ($probe['suspicious_a11y_count'] ?? 0) >= 1, 'suspicious_a11y');
+        $add(array_key_exists('drm_ok', $probe) && $probe['drm_ok'] === false, 'drm_failed');
         // 协议不匹配多见于探针还没采集完，或客户端版本漂移。只作轻量留痕，不能单独关广告或进入合规。
-        $add(in_array('native_probe_protocol_mismatch', $validationErrors, true), 5, 'native_probe_protocol_mismatch');
-        $add(in_array('device_env_digest_mismatch', $validationErrors, true), 10, 'device_env_digest_mismatch');
-        $add(in_array('env_field_count_mismatch', $validationErrors, true), 5, 'env_field_count_mismatch');
+        $add(in_array('native_probe_protocol_mismatch', $validationErrors, true), 'native_probe_protocol_mismatch');
+        $add(in_array('device_env_digest_mismatch', $validationErrors, true), 'device_env_digest_mismatch');
+        $add(in_array('env_field_count_mismatch', $validationErrors, true), 'env_field_count_mismatch');
 
-        // 客户端已经执行硬门禁时，服务端至少提升到合规阈值，保证广告与 AI 策略一致。
-        // 只有协议/摘要/字段数这类接入漂移时不抬分：探针未完成也会上报 env_allows_ads=false，
-        // 若一并抬到合规线，名单会把「设备探针协议不匹配」直接记成高风险阻断。
         $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
-        $softOnly = $reasons !== [] && array_diff($reasons, self::SOFT_VALIDATION_REASONS) === [];
-        $projectionOnly = ! empty($probe['screen_projection_active']) && $reasons === [];
-        if (array_key_exists('env_allows_ads', $probe) && $probe['env_allows_ads'] === false && $score < $complianceThreshold && ! $softOnly && ! $projectionOnly) {
-            $score = $complianceThreshold;
-            $reasons[] = 'env_blocks_ads';
-        }
+        $add(($probe['env_allows_ads'] ?? null) === false, 'env_blocks_ads');
+        $scoredReasons = array_column(array_filter($scoreItems, fn ($item) => $item['points'] > 0), 'code');
+        $uncappedScore = $score;
 
         // 总分保持在 100 分制；阈值可通过环境变量调整，不需要修改评分代码。
         $score = min(100, $score);
         $adBlockThreshold = (int) config('api_obfuscation.device_env.ad_block_score_threshold', 40);
-        $protocolMismatchOnly = $reasons === ['native_probe_protocol_mismatch'];
+        $recordOnly = $scoredReasons === [] || $scoredReasons === ['native_probe_protocol_mismatch'];
 
         return [
             'score' => $score,
             'reasons' => array_values(array_unique($reasons)),
-            'compliance_mode' => ! $protocolMismatchOnly && $score >= $complianceThreshold ? 1 : 0,
-            'ad_switch' => ! $protocolMismatchOnly && $score >= $adBlockThreshold ? 0 : 1,
+            'score_items' => $scoreItems,
+            'uncapped_score' => $uncappedScore,
+            'compliance_mode' => ! $recordOnly && $score >= $complianceThreshold ? 1 : 0,
+            'ad_switch' => ! $recordOnly && $score >= $adBlockThreshold ? 0 : 1,
         ];
     }
 

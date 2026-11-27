@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Models\RiskProbeLog;
 use App\Services\Risk\ActivityEventService;
+use App\Services\Risk\Ledger\IpNormalizer;
+use App\Services\Risk\RiskDossierService;
 use App\Services\Risk\RiskLedgerService;
 use App\Services\Risk\RiskPolicyService;
 use App\Services\Risk\RiskReleaseEngine;
@@ -80,8 +82,8 @@ class RiskIntegrationCompletionTest extends TestCase
 
     private function collect(): object
     {
-        $decision = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
-        $log = RiskProbeLog::query()->create(['app_id' => 1, 'status' => 'ok', 'risk_score' => 80, 'risk_reasons' => ['vpn'],
+        $decision = ['score' => 80, 'reasons' => ['device_env_digest_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $log = RiskProbeLog::query()->create(['app_id' => 1, 'status' => 'ok', 'risk_score' => 80, 'risk_reasons' => ['device_env_digest_mismatch'],
             'compliance_mode' => 1, 'ad_switch' => 0, 'user_uuid' => 'device-a', 'device_sn' => 'install-a',
             'app_version' => '1.0', 'market_channel' => 'huawei', 'client_ip' => '192.0.2.1', 'route' => 'api/report',
             'created_at' => '2026-10-30 10:00:00', 'probe_json' => ['_risk_basis' => ['hash' => RiskPolicyService::basis($decision)], '_identity_kind' => 'device']]);
@@ -107,8 +109,27 @@ class RiskIntegrationCompletionTest extends TestCase
         app(RiskLedgerService::class)->applyLog($log);
 
         $this->assertSame(1, DB::table('risk_scopes')->count());
-        $this->assertSame('vpn', DB::table('risk_reason_evidence')->value('code'));
+        $this->assertSame('device_env_digest_mismatch', DB::table('risk_reason_evidence')->value('code'));
         $this->assertSame(['native_probe_protocol_mismatch'], $log->fresh()->risk_reasons);
+    }
+
+    public function test_zero_score_probe_with_a_manual_block_does_not_create_a_scored_dossier(): void
+    {
+        $log = RiskProbeLog::query()->create([
+            'app_id' => 1, 'status' => 'ok', 'risk_score' => 0, 'risk_reasons' => ['vpn', 'list_blacklist'],
+            'compliance_mode' => 1, 'ad_switch' => 0, 'user_uuid' => 'device-a', 'client_ip' => '192.0.2.1',
+            'probe_json' => ['is_vpn' => true, '_risk_basis' => ['decision' => [
+                'score' => 0, 'reasons' => ['vpn'], 'compliance_mode' => 0, 'ad_switch' => 1,
+                'score_items' => [['code' => 'vpn', 'points' => 0]],
+            ]]],
+        ]);
+
+        app(RiskLedgerService::class)->applyLog($log);
+
+        $this->assertSame(0, DB::table('risk_scopes')->count());
+        $this->assertSame(0, DB::table('risk_ip_dossiers')->count());
+        $this->assertSame(['vpn', 'list_blacklist'], $log->fresh()->risk_reasons);
+        $this->assertSame(1, (int) $log->fresh()->compliance_mode);
     }
 
     public function test_historical_scopes_are_statistics_only_and_new_hits_create_an_independent_policy_scope(): void
@@ -181,11 +202,12 @@ class RiskIntegrationCompletionTest extends TestCase
     public function test_actual_online_usage_releases_same_evidence_new_risk_recollects_and_revoke_restores_policy(): void
     {
         $scope = $this->collect();
-        foreach (range(0, 61) as $i) {
-            $at = Carbon::now()->subSeconds(1830 - $i * 30)->toDateTimeString();
+        DB::table('risk_scopes')->where('id', $scope->id)->update(['reason_codes' => '["device_env_digest_mismatch","vpn","imu_static_during_activity"]']);
+        foreach (range(0, 11) as $i) {
+            $at = Carbon::now()->subSeconds(1980 - $i * 180)->toDateTimeString();
             DB::table('risk_activity_events')->insert(['event_id' => 'live-'.$i, 'session_id' => 'live', 'app_id' => 1, 'device_identity' => 'device-a',
-                'event_seq' => $i + 1, 'monotonic_elapsed_ms' => $i * 30000, 'online_verified' => 1, 'projected_at' => now(),
-                'foreground' => 1, 'screen_interactive' => 1, 'interaction' => 1, 'occurred_at' => $at, 'received_at' => $at]);
+                'event_seq' => $i + 1, 'monotonic_elapsed_ms' => $i * 180000, 'online_verified' => 1, 'projected_at' => now(),
+                'foreground' => 1, 'screen_interactive' => 1, 'interaction' => (int) ($i % 3 === 0 || $i === 11), 'occurred_at' => $at, 'received_at' => $at]);
         }
         $downgrade = app(RiskReleaseEngine::class)->tryRelease($scope);
         $this->assertTrue($downgrade['downgraded']);
@@ -198,15 +220,16 @@ class RiskIntegrationCompletionTest extends TestCase
         Carbon::setTestNow(Carbon::now()->addSeconds(30));
         $at = Carbon::now()->toDateTimeString();
         DB::table('risk_activity_events')->insert(['event_id' => 'live-after-review', 'session_id' => 'live', 'app_id' => 1, 'device_identity' => 'device-a',
-            'event_seq' => 63, 'monotonic_elapsed_ms' => 1860000, 'online_verified' => 1, 'projected_at' => now(),
+            'event_seq' => 13, 'monotonic_elapsed_ms' => 2010000, 'online_verified' => 1, 'projected_at' => now(),
             'foreground' => 1, 'screen_interactive' => 1, 'interaction' => 1, 'occurred_at' => $at, 'received_at' => $at]);
         $confirmed = $engine->tryRelease($scope);
         $this->assertSame('released', $confirmed['state']);
         $this->assertSame('continuous-use-release', DB::table('risk_releases')->value('rule_id'));
+        $this->assertSame('5', DB::table('risk_releases')->value('rule_version'));
         $this->assertSame('auto_release', DB::table('risk_timeline')->whereNotNull('release_id')->value('event_type'));
         $this->assertNull($engine->tryRelease($scope));
         $release = ['id' => $confirmed['release_id']];
-        $base = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $base = ['score' => 80, 'reasons' => ['device_env_digest_mismatch', 'drm_failed'], 'compliance_mode' => 1, 'ad_switch' => 0];
         $policy = app(RiskPolicyService::class);
         DB::flushQueryLog();
         DB::enableQueryLog();
@@ -229,7 +252,7 @@ class RiskIntegrationCompletionTest extends TestCase
     {
         $scope = $this->collect();
         DB::table('risk_scopes')->where('id', $scope->id)->update(['review_stage' => 'observation',
-            'reviewed_at' => now()->subHour(), 'review_reasons' => json_encode(['vpn', 'hook'])]);
+            'reviewed_at' => now()->subHour(), 'review_reasons' => json_encode(['device_env_digest_mismatch', 'hook'])]);
         foreach (range(0, 61) as $i) {
             $at = Carbon::now()->subSeconds(1830 - $i * 30)->toDateTimeString();
             DB::table('risk_activity_events')->insert(['event_id' => 'mixed-'.$i, 'session_id' => 'mixed', 'app_id' => 1, 'device_identity' => 'device-a',
@@ -239,12 +262,20 @@ class RiskIntegrationCompletionTest extends TestCase
         $engine = app(RiskReleaseEngine::class);
         $this->assertNull($engine->tryRelease($scope));
         $this->assertSame('manual_confirmation_required', DB::table('risk_scopes')->value('last_skip_reason'));
-        DB::table('risk_scopes')->where('id', $scope->id)->update(['review_reasons' => json_encode(['vpn', 'native_probe_protocol_mismatch'])]);
+        DB::table('risk_scopes')->where('id', $scope->id)->update(['review_reasons' => json_encode(['device_env_digest_mismatch', 'native_probe_protocol_mismatch'])]);
         DB::table('risk_hard_blocks')->insert(['app_id' => 1, 'device_identity' => 'device-a', 'kind' => 'reviewing_visit',
             'evidence_key' => 'observe-hard', 'evidence' => '{}', 'occurred_at' => now()]);
         $this->assertNull($engine->tryRelease($scope));
         $this->assertSame('reviewing_visit', DB::table('risk_scopes')->value('last_skip_reason'));
         $this->assertSame(0, DB::table('risk_releases')->count());
+    }
+
+    public function test_paused_reasons_alone_do_not_qualify_for_timed_release(): void
+    {
+        $workflow = app(\App\Services\Risk\RiskReviewWorkflow::class);
+        $scope = (object) ['reviewed_at' => now(), 'review_reasons' => '["vpn","sensor_static"]', 'reason_codes' => '["env_blocks_ads","drm_failed"]'];
+
+        $this->assertFalse($workflow->canReleaseAutomatically($scope));
     }
 
     public function test_qualified_online_usage_still_enters_observation_after_the_worker_is_late(): void
@@ -281,7 +312,7 @@ class RiskIntegrationCompletionTest extends TestCase
         $this->assertSame('safe', DB::table('risk_scopes')->value('review_stage'));
         $this->assertSame('manual-reviewed-safe', DB::table('risk_releases')->value('rule_id'));
         $this->assertSame('低风险确认进入安全区', DB::table('risk_timeline')->where('event_type', 'manual_release')->value('title'));
-        $base = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $base = ['score' => 80, 'reasons' => ['device_env_digest_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0];
         $this->assertSame(0, app(RiskPolicyService::class)->overlay($base, 1, 'device-a', [])['compliance_mode']);
         $this->assertSame($safe, $engine->removeIp('192.0.2.1', 7, '运营甲', $second));
         $this->assertSame(1, DB::table('risk_releases')->count());
@@ -289,7 +320,7 @@ class RiskIntegrationCompletionTest extends TestCase
 
     public function test_reviewed_subset_and_version_change_do_not_recollect_but_new_risk_escalates(): void
     {
-        $base = ['score' => 60, 'reasons' => ['sensor_static', 'native_probe_protocol_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $base = ['score' => 60, 'reasons' => ['touch_biometrics_synthetic', 'native_probe_protocol_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0];
         $log = RiskProbeLog::query()->create(['app_id' => 1, 'status' => 'ok', 'risk_score' => 60,
             'risk_reasons' => $base['reasons'], 'compliance_mode' => 1, 'ad_switch' => 0,
             'user_uuid' => 'device-a', 'device_sn' => 'install-a', 'client_ip' => '192.0.2.1',
@@ -377,7 +408,7 @@ class RiskIntegrationCompletionTest extends TestCase
         DB::table('app_version_plans')->insert(['id' => 1, 'app_id' => 1]);
         DB::table('app_version_plan_tasks')->insert(['plan_id' => 1, 'version' => '1.0', 'market_channel' => 'huawei', 'submitted_at' => '2026-10-30 12:00:00', 'status' => '审核中']);
         app(RiskReviewEvidence::class)->captureApp(1);
-        $raw = ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0];
+        $raw = ['score' => 80, 'reasons' => ['device_env_digest_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0];
         $this->assertSame(1, app(RiskPolicyService::class)->overlay($raw, 1, 'device-a', ['app_version' => '1.0', 'market_channel' => 'huawei'])['compliance_mode']);
         $source = RiskProbeLog::query()->first()->replicate();
         $source->created_at = Carbon::now();
@@ -478,7 +509,7 @@ class RiskIntegrationCompletionTest extends TestCase
         DB::enableQueryLog();
         app(\App\Support\Services\RiskProbeAuditService::class)->record($request, [
             'status' => 'ok', 'package_name' => 'example.app', 'app_id' => 1, 'probe' => [], 'validation' => [],
-            'score' => 80, 'reasons' => ['vpn'], 'decision' => ['score' => 80, 'reasons' => ['vpn'], 'compliance_mode' => 1, 'ad_switch' => 0],
+            'score' => 80, 'reasons' => ['device_env_digest_mismatch'], 'decision' => ['score' => 80, 'reasons' => ['device_env_digest_mismatch'], 'compliance_mode' => 1, 'ad_switch' => 0],
         ]);
         $queries = DB::getQueryLog();
         DB::disableQueryLog();
@@ -593,6 +624,30 @@ class RiskIntegrationCompletionTest extends TestCase
         $this->assertSame(0, $ledger->sync(50, 1));
         $this->assertSame(20, DB::table('risk_day_flags')->value('unclassified_logs'));
         $this->assertSame(0, DB::table('risk_access_facts')->count());
+    }
+
+    public function test_dossier_score_details_use_the_event_that_produced_the_highest_active_score(): void
+    {
+        $ip = '192.0.2.10';
+        $time = '2026-11-27 12:00:00';
+        $scope = ['app_id' => 1, 'ip' => $ip, 'device_identity' => 'd1', 'collected_at' => $time, 'reason_codes' => '["root","emulator","vpn"]'];
+        $scopeId = DB::table('risk_scopes')->insertGetId($scope + ['risk_score' => 100]);
+        DB::table('risk_scopes')->insert($scope + ['risk_score' => 95]);
+        DB::table('risk_scopes')->insert(array_replace($scope, ['risk_score' => 100, 'reason_codes' => '["vpn"]']));
+        $items = [['code' => 'root', 'points' => 80], ['code' => 'emulator', 'points' => 50], ['code' => 'vpn', 'points' => 0]];
+        $logId = DB::table('risk_probe_logs')->insertGetId(['risk_score' => 100, 'status' => 'ok', 'probe_json' => json_encode([
+            '_risk_basis' => ['decision' => ['score' => 100, 'uncapped_score' => 130, 'score_items' => $items]],
+        ])]);
+        DB::table('risk_timeline')->insert(['ip' => $ip, 'scope_id' => $scopeId, 'risk_score' => 100, 'source_log_id' => $logId,
+            'event_type' => 'risk_hit', 'occurred_at' => $time]);
+
+        $details = app(RiskDossierService::class)->scoreDetails(IpNormalizer::idFor($ip));
+
+        $this->assertSame(100, $details['score']);
+        $this->assertSame(100, $details['raw_score']);
+        $this->assertSame(130, $details['uncapped_score']);
+        $this->assertSame(array_slice($items, 0, 2), $details['items']);
+        $this->assertFalse($details['recalculated']);
     }
 
     public function test_incremental_sync_publishes_cursor_and_dossier_together_and_is_idempotent(): void

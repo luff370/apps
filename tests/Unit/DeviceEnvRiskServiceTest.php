@@ -235,13 +235,13 @@ class DeviceEnvRiskServiceTest extends TestCase
 
         $context = $this->service->inspect($this->requestWith($this->seal($payload)));
 
-        $this->assertSame(['native_probe_protocol_mismatch'], $context['reasons']);
+        $this->assertSame(['native_probe_protocol_mismatch', 'env_blocks_ads'], $context['reasons']);
         $this->assertSame(5, $context['score']);
         $this->assertSame(0, $context['decision']['compliance_mode']);
         $this->assertSame(1, $context['decision']['ad_switch']);
     }
 
-    public function test_client_ad_block_still_reaches_compliance_when_a_hard_signal_is_present(): void
+    public function test_vpn_and_client_ad_block_are_both_recorded_without_scoring(): void
     {
         $context = $this->inspectPayload([
             'vp' => true,
@@ -250,9 +250,26 @@ class DeviceEnvRiskServiceTest extends TestCase
 
         $this->assertContains('vpn', $context['reasons']);
         $this->assertContains('env_blocks_ads', $context['reasons']);
-        $this->assertSame(60, $context['score']);
-        $this->assertSame(1, $context['decision']['compliance_mode']);
-        $this->assertSame(0, $context['decision']['ad_switch']);
+        $this->assertSame(0, $context['score']);
+        $this->assertSame([0, 0], array_column($context['raw_decision']['score_items'], 'points'));
+        $this->assertSame(0, $context['decision']['compliance_mode']);
+        $this->assertSame(1, $context['decision']['ad_switch']);
+    }
+
+    public function test_all_six_paused_signals_are_recorded_at_zero_alongside_other_scored_signals(): void
+    {
+        $result = $this->service->reassessProbe([
+            'is_vpn' => true, 'env_allows_ads' => false, 'sensor_static_score' => 90, 'drm_ok' => false,
+            'touch_sample_count' => 5, 'touch_timing_entropy' => 10, 'touch_coord_dispersion' => 10,
+            'imu_static_during_touch' => 90, 'gyro_static_score' => 90,
+            'hook_suspect' => true, 'is_emulator' => true,
+        ]);
+        $points = array_column($result['score_items'], 'points', 'code');
+        foreach (DeviceEnvRiskService::PAUSED_SCORE_REASONS as $code) {
+            $this->assertSame(0, $points[$code]);
+        }
+        $this->assertSame(130, $result['uncapped_score']);
+        $this->assertSame(100, $result['score']);
     }
 
     public function test_behavior_rules_require_complete_signal_combinations(): void
@@ -268,7 +285,7 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertContains('imu_static_during_activity', $incomplete['reasons']);
 
         // IMU 完整组合本身为 30 分；其余两组因缺字段均不能加分。
-        $this->assertSame(30, $incomplete['score']);
+        $this->assertSame(0, $incomplete['score']);
     }
 
     public function test_complete_behavior_combinations_trigger_compliance_and_cap_score(): void
@@ -281,7 +298,7 @@ class DeviceEnvRiskServiceTest extends TestCase
             'gy' => 95, 'iu' => 95, 'sg' => 95,
         ], 'behavior-complete');
 
-        $this->assertSame(100, $context['score']);
+        $this->assertSame(75, $context['score']);
         $this->assertSame(1, $context['decision']['compliance_mode']);
         $this->assertContains('touch_biometrics_synthetic', $context['reasons']);
         $this->assertContains('swipe_synthetic', $context['reasons']);
@@ -293,7 +310,7 @@ class DeviceEnvRiskServiceTest extends TestCase
         $sensor = $this->inspectPayload(['sg' => 90], 'sensor-alone');
         $gyro = $this->inspectPayload(['gy' => 90], 'gyro-alone');
 
-        $this->assertSame(25, $sensor['score']);
+        $this->assertSame(0, $sensor['score']);
         $this->assertSame(1, $sensor['decision']['ad_switch']);
         $this->assertSame(0, $gyro['score']);
     }
@@ -304,7 +321,7 @@ class DeviceEnvRiskServiceTest extends TestCase
             $context = $this->inspectPayload(['pj' => true, 'ea' => $allowsAds], 'projection-only-'.(int) $allowsAds);
             $this->assertTrue($context['probe']['screen_projection_active']);
             $this->assertSame(0, $context['score']);
-            $this->assertSame([], $context['reasons']);
+            $this->assertSame($allowsAds ? [] : ['env_blocks_ads'], $context['reasons']);
             $this->assertSame(0, $context['decision']['compliance_mode']);
             $this->assertSame(1, $context['decision']['ad_switch']);
         }

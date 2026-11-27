@@ -58,7 +58,40 @@ class RiskLedgerRulesTest extends TestCase
         }
         $idleResult = UsageWindow::measure($idle);
         $this->assertFalse($idleResult['qualified']);
-        $this->assertLessThanOrEqual(300, $idleResult['effective_seconds']);
+        $this->assertLessThanOrEqual(600, $idleResult['effective_seconds']);
+    }
+
+    public function test_three_minute_foreground_reports_count_with_interactions_inside_the_idle_budget(): void
+    {
+        $events = [];
+        for ($i = 0; $i <= 11; $i++) {
+            $at = $i * 180;
+            $events[] = $this->point($at, $i + 1, 'sparse', $i % 3 === 0 || $i === 11)
+                + ['received_at' => $at, 'monotonic_ms' => $at * 1000];
+        }
+
+        $this->assertFalse(UsageWindow::measure($events, gapSeconds: 90)['qualified']);
+        $this->assertFalse(UsageWindow::measure($events, idleSeconds: 300)['qualified']);
+        $this->assertFalse(UsageWindow::measure(array_slice($events, 0, -1))['qualified']);
+        $result = UsageWindow::measure($events);
+        $this->assertTrue($result['qualified']);
+        $this->assertSame(1800, $result['threshold_reached_at']);
+        $this->assertSame(1980, $result['qualifying_interaction_at']);
+    }
+
+    public function test_a_long_background_break_clears_past_qualification_and_counts_no_background_interval(): void
+    {
+        $events = [];
+        for ($i = 0; $i <= 11; $i++) {
+            $events[] = $this->point($i * 180, $i + 1, 's');
+        }
+        $this->assertTrue(UsageWindow::measure($events)['qualified']);
+        $background = $this->point(2160, 13, 's');
+        $background['foreground'] = false;
+        $this->assertSame(0, UsageWindow::measure([$events[11], $background])['effective_seconds']);
+        $events[] = $background;
+        $events[] = $this->point(2520, 14, 's');
+        $this->assertFalse(UsageWindow::measure($events)['qualified']);
     }
 
     public function test_background_or_locked_interaction_cannot_trigger_release(): void

@@ -97,6 +97,13 @@ class RiskLedgerController extends Controller
         return $this->success($this->dossiers->options());
     }
 
+    public function dossierScore($id)
+    {
+        $score = $this->dossiers->scoreDetails((string) $id);
+
+        return $score === null ? $this->fail('当前没有有效的风险评分') : $this->success($score);
+    }
+
     public function dossier($id)
     {
         $data = $this->dossiers->detail((string) $id, request()->boolean('include_relations', true));

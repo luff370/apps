@@ -142,8 +142,8 @@ class RiskReleaseQuery
             'day' => $releasedAt->format('Y-m-d'),
             'time' => $releasedAt->format('H:i:s'),
             'status' => $row->status,
-            'can_revoke' => $row->status === 'released' && $row->rule_id !== ProjectionRiskRepair::RULE_ID,
-            'rule' => $row->rule_id === ProjectionRiskRepair::RULE_ID ? '投屏规则历史修正' : ($row->rule_id === 'manual-reviewed-safe' ? '人工确认进入安全区' : '连续使用达到 30 分钟'),
+            'can_revoke' => $row->status === 'released' && ! ProjectionRiskRepair::isCorrection($row->rule_id),
+            'rule' => $row->rule_id === ProjectionRiskRepair::PAUSED_RULE_ID ? '暂停计分历史修正' : ($row->rule_id === ProjectionRiskRepair::RULE_ID ? '投屏规则历史修正' : ($row->rule_id === 'manual-reviewed-safe' ? '人工确认进入安全区' : '连续使用达到 30 分钟')),
             'code' => $row->rule_id ?: ReleaseRule::ID,
             'version' => 'v'.($row->rule_version ?: ReleaseRule::VERSION),
             'condition' => (string) $row->explanation,
@@ -182,7 +182,7 @@ class RiskReleaseQuery
     private function timeline(object $row, ?object $revocation, Carbon $releasedAt): array
     {
         $items = [[
-            'title' => $row->rule_id === ProjectionRiskRepair::RULE_ID ? '投屏历史处置修正' : ($row->rule_id === 'manual-reviewed-safe' ? '人工确认进入安全区' : '自动释放完成'),
+            'title' => $row->rule_id === ProjectionRiskRepair::PAUSED_RULE_ID ? '暂停计分后解除处置' : ($row->rule_id === ProjectionRiskRepair::RULE_ID ? '投屏历史处置修正' : ($row->rule_id === 'manual-reviewed-safe' ? '人工确认进入安全区' : '自动释放完成')),
             'at' => $releasedAt->format('Y-m-d H:i:s'),
             'operator' => (json_decode((string) $row->evidence, true)['operator_name'] ?? '自动规则引擎'),
             'detail' => (string) $row->explanation,

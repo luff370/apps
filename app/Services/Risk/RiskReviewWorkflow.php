@@ -5,6 +5,7 @@ namespace App\Services\Risk;
 use App\Exceptions\AdminException;
 use App\Services\Risk\Ledger\ReasonCatalog;
 use App\Services\Risk\Ledger\ReleaseRule;
+use App\Support\Services\DeviceEnvRiskService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -13,7 +14,7 @@ class RiskReviewWorkflow
 {
     public function canReleaseAutomatically(object $scope): bool
     {
-        $signals = array_diff($this->baseline($scope), ['env_blocks_ads']);
+        $signals = $this->dispositionReasons($this->baseline($scope));
 
         return $scope->reviewed_at !== null && $signals !== []
             && array_diff($signals, ReleaseRule::AUTO_SAFE_REASONS) === [];
@@ -23,18 +24,14 @@ class RiskReviewWorkflow
     {
         $scopes = DB::table('risk_scopes')->where('app_id', $appId)->where('device_identity', $device)
             ->whereIn('review_stage', ['observation', 'safe'])->orderByDesc('reviewed_at')->orderByDesc('id')->get();
-        $reasons = ReasonCatalog::normalizeList($decision['reasons'] ?? []);
+        $reasons = $this->dispositionReasons($decision['reasons'] ?? []);
         if ($reasons === [] && (int) ($decision['score'] ?? 0) > 0) {
             return null;
         }
-        if ($reasons === ['env_blocks_ads']) {
-            return null;
-        }
-        $reasons = array_values(array_diff($reasons, ['env_blocks_ads']));
         foreach ($scopes as $scope) {
             $baseline = json_decode((string) $scope->review_reasons, true);
             // Never grant a blanket exemption for records without a precise reviewed baseline.
-            if (! is_array($baseline) || $baseline === [] || array_diff($reasons, $baseline)) {
+            if (! is_array($baseline) || $baseline === [] || array_diff($reasons, $this->dispositionReasons($baseline))) {
                 continue;
             }
             if (($scope->review_stage === 'safe' && $scope->state !== 'released') || ($scope->review_stage === 'observation' && $scope->state !== 'active')) {
@@ -110,6 +107,11 @@ class RiskReviewWorkflow
         $old = json_decode((string) ($scope->review_reasons ?? ''), true) ?: [];
 
         return array_values(array_unique(array_merge($old, ReasonCatalog::normalizeList(json_decode((string) $scope->reason_codes, true) ?: []))));
+    }
+
+    private function dispositionReasons(array $reasons): array
+    {
+        return array_diff(ReasonCatalog::normalizeList($reasons), DeviceEnvRiskService::PAUSED_SCORE_REASONS);
     }
 
     public function record(string $ip, int $operatorId, string $operatorName, string $requestId, string $from, string $to, array $before, array $result): array
