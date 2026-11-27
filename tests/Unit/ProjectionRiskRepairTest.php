@@ -125,7 +125,7 @@ class ProjectionRiskRepairTest extends TestCase
         $this->assertSame(0, $preview['released']);
         $this->assertSame(0, DB::table('risk_releases')->count());
 
-        $this->assertSame(0, Artisan::call('app:risk-repair-projection', $options + ['--apply' => true]));
+        $this->assertSame(0, Artisan::call('app:risk-repair-projection', ['--apply-paused' => true, '--limit' => 1]));
         $applied = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
         $this->assertTrue($applied['complete']);
         $this->assertSame(2, $applied['released']);
@@ -143,6 +143,31 @@ class ProjectionRiskRepairTest extends TestCase
         $output = Artisan::output();
         $this->assertStringContainsString('"complete": false', $output);
         $this->assertStringContainsString('"inbox_pending": 1', $output);
+        $this->assertStringContainsString('"ledger_progress"', $output);
+        $this->assertSame(0, DB::table('risk_releases')->count());
+    }
+
+    public function test_ip_preview_finds_paused_signals_missing_from_the_scope_summary(): void
+    {
+        [$opening, $log] = $this->fixture('opening-probe', ['vpn', 'screen_projection']);
+        $log->update(['probe_json' => ['is_vpn' => true, 'screen_projection_active' => true]]);
+        DB::table('risk_reason_evidence')->where('scope_id', $opening)->delete();
+
+        [$evidence, $log] = $this->fixture('linked-evidence', ['vpn']);
+        $log->update(['risk_reasons' => [], 'probe_json' => ['is_vpn' => true, '_risk_basis' => ['decision' => ['reasons' => ['vpn']]]]]);
+        DB::table('risk_scopes')->whereIn('id', [$opening, $evidence])->update(['reason_codes' => '[]']);
+
+        $options = ['--paused-signals' => true, '--all' => true, '--ip' => '192.0.2.1'];
+        $this->assertSame(0, Artisan::call('app:risk-repair-projection', $options));
+        $preview = json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(2, $preview['active_scopes_for_ip']);
+        $this->assertSame(2, $preview['scanned']);
+        $this->assertSame([$opening, $evidence], $preview['eligible_sample']);
+        $this->assertSame(0, DB::table('risk_releases')->count());
+
+        $this->assertSame(0, Artisan::call('app:risk-repair-projection', array_replace($options, ['--ip' => '192.0.2.2'])));
+        $this->assertSame(0, json_decode(Artisan::output(), true, 512, JSON_THROW_ON_ERROR)['scanned']);
+        $this->assertSame(2, Artisan::call('app:risk-repair-projection', array_replace($options, ['--ip' => 'invalid', '--apply' => true])));
         $this->assertSame(0, DB::table('risk_releases')->count());
     }
 
@@ -201,6 +226,47 @@ class ProjectionRiskRepairTest extends TestCase
         $this->assertSame(['hook' => 80], array_column($details['items'], 'points', 'code'));
         $this->assertTrue($details['recalculated']);
         $this->assertTrue($details['reference_only']);
+    }
+
+    public function test_historical_protocol_mismatch_alone_is_hidden_and_released_after_proof(): void
+    {
+        $code = 'native_probe_protocol_mismatch';
+        [$id, $log] = $this->fixture('protocol-only', [$code]);
+        $log->update(['risk_score' => 65, 'validation_errors' => [$code], 'probe_json' => ['native_probe_ok' => false]]);
+        DB::table('risk_scopes')->where('id', $id)->update(['risk_score' => 65]);
+        $dossiers = app(\App\Services\Risk\RiskDossierService::class);
+        $this->assertSame(0, $dossiers->list(['include_options' => false], 1, 20)['count']);
+        $this->assertNull($dossiers->scoreDetails(\App\Services\Risk\Ledger\IpNormalizer::idFor('192.0.2.1')));
+
+        [$mixed, $mixedLog] = $this->fixture('also-emulator', [$code, 'emulator']);
+        $mixedLog->update(['validation_errors' => [$code], 'probe_json' => ['is_emulator' => true]]);
+        $repair = app(\App\Services\Risk\ProjectionRiskRepair::class);
+        $this->assertSame(1, $repair->run(false, 0, 0, 200, 10, true)['eligible']);
+        $applied = $repair->run(true, 0, 0, 200, 10, true);
+        $this->assertSame(1, $applied['released']);
+        $this->assertSame(1, $applied['rescored']);
+        $this->assertSame('released', DB::table('risk_scopes')->where('id', $id)->value('state'));
+        $this->assertSame('active', DB::table('risk_scopes')->where('id', $mixed)->value('state'));
+        $this->assertSame(50, (int) DB::table('risk_scopes')->where('id', $mixed)->value('risk_score'));
+        $this->assertSame(65, (int) $log->fresh()->risk_score);
+    }
+
+    public function test_queued_probe_with_a_previously_scored_protocol_snapshot_uses_the_current_weight(): void
+    {
+        $code = 'native_probe_protocol_mismatch';
+        $log = RiskProbeLog::query()->create([
+            'app_id' => 1, 'status' => 'ok', 'risk_score' => 55, 'risk_reasons' => ['emulator', $code], 'validation_errors' => [$code],
+            'compliance_mode' => 0, 'ad_switch' => 0, 'user_uuid' => 'legacy-snapshot', 'client_ip' => '192.0.2.1',
+            'probe_json' => ['is_emulator' => true, '_risk_basis' => ['decision' => [
+                'score' => 55, 'reasons' => ['emulator', $code], 'compliance_mode' => 0, 'ad_switch' => 0,
+                'score_items' => [['code' => 'emulator', 'points' => 50], ['code' => $code, 'points' => 5]],
+            ]]],
+        ]);
+
+        app(RiskLedgerService::class)->applyLog($log);
+
+        $this->assertSame(50, (int) DB::table('risk_scopes')->value('risk_score'));
+        $this->assertSame(55, (int) $log->fresh()->risk_score);
     }
 
     public function test_mixed_history_keeps_emulator_in_the_list_and_uses_the_recalculated_score(): void

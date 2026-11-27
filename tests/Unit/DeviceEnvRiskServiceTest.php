@@ -210,7 +210,7 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertContains('env_field_count_mismatch', $context['validation']['errors']);
         $this->assertContains('device_env_digest_mismatch', $context['validation']['errors']);
         $this->assertContains('native_probe_protocol_mismatch', $context['validation']['errors']);
-        $this->assertSame(20, $context['score']);
+        $this->assertSame(15, $context['score']);
         $this->assertSame(0, $context['decision']['compliance_mode']);
         $this->assertSame(1, $context['decision']['ad_switch']);
     }
@@ -236,7 +236,7 @@ class DeviceEnvRiskServiceTest extends TestCase
         $context = $this->service->inspect($this->requestWith($this->seal($payload)));
 
         $this->assertSame(['native_probe_protocol_mismatch', 'env_blocks_ads'], $context['reasons']);
-        $this->assertSame(5, $context['score']);
+        $this->assertSame(0, $context['score']);
         $this->assertSame(0, $context['decision']['compliance_mode']);
         $this->assertSame(1, $context['decision']['ad_switch']);
     }
@@ -256,14 +256,14 @@ class DeviceEnvRiskServiceTest extends TestCase
         $this->assertSame(1, $context['decision']['ad_switch']);
     }
 
-    public function test_all_six_paused_signals_are_recorded_at_zero_alongside_other_scored_signals(): void
+    public function test_all_paused_signals_are_recorded_at_zero_alongside_other_scored_signals(): void
     {
         $result = $this->service->reassessProbe([
             'is_vpn' => true, 'env_allows_ads' => false, 'sensor_static_score' => 90, 'drm_ok' => false,
             'touch_sample_count' => 5, 'touch_timing_entropy' => 10, 'touch_coord_dispersion' => 10,
             'imu_static_during_touch' => 90, 'gyro_static_score' => 90,
             'hook_suspect' => true, 'is_emulator' => true,
-        ]);
+        ], [DeviceEnvRiskService::PROTOCOL_MISMATCH]);
         $points = array_column($result['score_items'], 'points', 'code');
         foreach (DeviceEnvRiskService::PAUSED_SCORE_REASONS as $code) {
             $this->assertSame(0, $points[$code]);

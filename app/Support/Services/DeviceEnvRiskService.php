@@ -125,9 +125,11 @@ class DeviceEnvRiskService
         'ver' => 'ver',
     ];
 
+    public const PROTOCOL_MISMATCH = 'native_probe_protocol_mismatch';
+
     /** 这些信号保留在原始探针和命中记录中，暂不计分。 */
     public const PAUSED_SCORE_REASONS = [
-        'sensor_static', 'vpn', 'env_blocks_ads', 'imu_static_during_activity', 'touch_low_entropy', 'drm_failed',
+        'sensor_static', 'vpn', 'env_blocks_ads', 'imu_static_during_activity', 'touch_low_entropy', 'drm_failed', self::PROTOCOL_MISMATCH,
     ];
 
     public const SCORE_WEIGHTS = [
@@ -155,7 +157,6 @@ class DeviceEnvRiskService
         'proxy' => 10,
         'jailbroken' => 15,
         'suspicious_a11y' => 10,
-        'native_probe_protocol_mismatch' => 5,
         'device_env_digest_mismatch' => 10,
         'env_field_count_mismatch' => 5,
     ];
@@ -481,20 +482,19 @@ class DeviceEnvRiskService
         $add((bool) ($probe['is_jailbroken'] ?? false), 'jailbroken');
         $add((int) ($probe['suspicious_a11y_count'] ?? 0) >= 1, 'suspicious_a11y');
         $add(array_key_exists('drm_ok', $probe) && $probe['drm_ok'] === false, 'drm_failed');
-        // 协议不匹配多见于探针还没采集完，或客户端版本漂移。只作轻量留痕，不能单独关广告或进入合规。
-        $add(in_array('native_probe_protocol_mismatch', $validationErrors, true), 'native_probe_protocol_mismatch');
+        // 协议不匹配暂时只记录，暂停计分。
+        $add(in_array(self::PROTOCOL_MISMATCH, $validationErrors, true), self::PROTOCOL_MISMATCH);
         $add(in_array('device_env_digest_mismatch', $validationErrors, true), 'device_env_digest_mismatch');
         $add(in_array('env_field_count_mismatch', $validationErrors, true), 'env_field_count_mismatch');
 
         $complianceThreshold = (int) config('api_obfuscation.device_env.compliance_score_threshold', 60);
         $add(($probe['env_allows_ads'] ?? null) === false, 'env_blocks_ads');
-        $scoredReasons = array_column(array_filter($scoreItems, fn ($item) => $item['points'] > 0), 'code');
         $uncappedScore = $score;
 
         // 总分保持在 100 分制；阈值可通过环境变量调整，不需要修改评分代码。
         $score = min(100, $score);
         $adBlockThreshold = (int) config('api_obfuscation.device_env.ad_block_score_threshold', 40);
-        $recordOnly = $scoredReasons === [] || $scoredReasons === ['native_probe_protocol_mismatch'];
+        $recordOnly = $score === 0;
 
         return [
             'score' => $score,
@@ -546,7 +546,7 @@ class DeviceEnvRiskService
             }
 
             if (($probe['native_probe_ok'] ?? null) === false) {
-                $errors[] = 'native_probe_protocol_mismatch';
+                $errors[] = self::PROTOCOL_MISMATCH;
             }
             if (($probe['native_channel_ok'] ?? null) === false) {
                 $errors[] = 'native_channel_mismatch';

@@ -201,7 +201,7 @@ class RiskLedgerService
             }
             // Admission needs a current score-bearing signal, independently of inherited policy and manual lists.
             $risky = in_array($decision, ['verify', 'limit', 'block'], true) && (int) $raw['score'] > 0
-                && array_intersect(array_diff($raw['reasons'] ?? [], ['native_probe_protocol_mismatch']), array_keys(DeviceEnvRiskService::SCORE_WEIGHTS));
+                && array_intersect($raw['reasons'] ?? [], array_keys(DeviceEnvRiskService::SCORE_WEIGHTS));
             if ($risky && $coverage !== 'visit') {
                 $this->recordAccess('probe:'.$logId, (int) $log->app_id, $device, $probe['_user_id'] ?? null, $ip, (string) $log->app_version, (string) $log->market_channel, 'guard', $decision, $occurredAt, $occurredAt);
             }

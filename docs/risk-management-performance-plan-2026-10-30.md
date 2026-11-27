@@ -499,7 +499,7 @@ RISK_REDIS_INTEGRATION=1 DB_CONNECTION=sqlite DB_DATABASE=:memory: vendor/bin/ph
 
 ## 14. 投屏历史修复与三阶段处置（2026-11-19）
 
-后台处置流程为 **高风险 → 低风险观察 → 安全区**。自动规则 v5 保留同一 App、设备及会话累计满 30 分钟的要求。进入观察后要有一次新的有效在线操作，且剩余原因只包含探针协议、摘要或字段数校验提示，才可自动进入安全区。停计分标签保留原始证据，在判断释放资格和匹配复核原因时忽略。仅由停计分标签触发的历史处置由专项修正命令核验。审核、测试账号、名单硬限制及其他风险继续走现有处置流程。
+后台处置流程为 **高风险 → 低风险观察 → 安全区**。自动规则 v5 保留同一 App、设备及会话累计满 30 分钟的要求。进入观察后要有一次新的有效在线操作，且剩余原因只包含探针摘要或字段数校验提示，才可自动进入安全区。停计分标签（含设备探针协议不匹配）保留原始证据，在判断释放资格和匹配复核原因时忽略。仅由停计分标签触发的历史处置由专项修正命令核验。审核、测试账号、名单硬限制及其他风险继续走现有处置流程。
 
 ### 14.1 防止重新收录循环
 
@@ -523,11 +523,10 @@ php artisan app:risk-repair-projection --apply --limit=200 --max-seconds=10
 
 候选范围来自 scope 原始原因及其源探针原因，按 scope 主键限量分页；不新增原始探针索引，不全量重算历史日志。返回 until_id、last_scope_id、has_more，继续批次时固定首次的 until_id，并把 last_scope_id 传入 --after-id。若有未处理的探针/活动，先让 Worker 或补偿命令追平，再从头预览被跳过的范围。
 
-使用 `--all` 时，命令自动固定范围并逐批推进，最后汇总结果。六个暂停计分标签的线上修正命令如下，先预览再写入。
+使用 `--apply-paused` 可直接分批写入全部暂不计分标签的历史修正。命令自动固定范围并逐批推进，最后汇总结果。
 
 ```bash
-php artisan app:risk-repair-projection --paused-signals --all
-php artisan app:risk-repair-projection --paused-signals --all --apply
+php artisan app:risk-repair-projection --apply-paused -v
 ```
 
 加 `-v` 可查看分批进度。如果汇总显示 `complete: false` 且有 `inbox_pending`，等风控账本追平后重跑同一条命令，已完成的处置不会重复修正。

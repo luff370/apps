@@ -64,9 +64,10 @@ class ProjectionRiskRepair
     {
         $probe = $log->probe_json;
         $codes = self::codes($log->risk_reasons);
+        $items = $probe['_risk_basis']['decision']['score_items'] ?? null;
         if ($log->status !== 'ok' || ! is_array($probe) || $probe === []
             || ! array_intersect($codes, DeviceEnvRiskService::PAUSED_SCORE_REASONS)
-            || array_key_exists('score_items', $probe['_risk_basis']['decision'] ?? [])) {
+            || (is_array($items) && ! self::hasPausedContribution($items))) {
             return null;
         }
 
@@ -76,30 +77,54 @@ class ProjectionRiskRepair
         return array_diff($otherCodes, $decision['reasons']) ? null : $decision;
     }
 
-    private function candidates(int $after, int $until, bool $paused)
+    private static function hasPausedContribution(array $items): bool
+    {
+        foreach ($items as $item) {
+            if ($item['points'] > 0 && in_array($item['code'], DeviceEnvRiskService::PAUSED_SCORE_REASONS, true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function candidates(int $after, int $until, bool $paused, ?string $ip)
     {
         return DB::table('risk_scopes')->where('state', 'active')->where('id', '>', $after)->where('id', '<=', $until)
+            ->when($ip !== null, fn ($query) => $query->where('ip', $ip))
             ->where(function ($q) use ($paused) {
                 $codes = $paused ? DeviceEnvRiskService::PAUSED_SCORE_REASONS : ['screen_projection'];
                 foreach ($codes as $code) {
                     $q->orWhere('reason_codes', 'like', '%"'.$code.'"%');
                 }
-                if (! $paused) {
-                    $q->orWhereExists(function ($source) {
-                        $source->selectRaw('1')->from('risk_probe_logs')->whereColumn('risk_probe_logs.id', 'risk_scopes.source_log_id')
-                            ->where('risk_reasons', 'like', '%"screen_projection"%');
+                $q->orWhereExists(function ($source) use ($codes) {
+                    $source->selectRaw('1')->from('risk_probe_logs')->whereColumn('risk_probe_logs.id', 'risk_scopes.source_log_id')
+                        ->where(function ($reasons) use ($codes) {
+                            foreach ($codes as $code) {
+                                $reasons->orWhere('risk_reasons', 'like', '%"'.$code.'"%');
+                            }
+                        });
+                });
+                if ($paused) {
+                    $q->orWhereExists(function ($evidence) use ($codes) {
+                        $evidence->selectRaw('1')->from('risk_reason_evidence')->whereColumn('risk_reason_evidence.scope_id', 'risk_scopes.id')
+                            ->whereIn('code', $codes);
                     });
                 }
             });
     }
 
-    public function run(bool $apply, int $after, int $until, int $limit, int $seconds, bool $paused = false): array
+    public function run(bool $apply, int $after, int $until, int $limit, int $seconds, bool $paused = false, ?string $ip = null): array
     {
         $started = microtime(true);
         $until = $until ?: (int) DB::table('risk_scopes')->max('id');
         $report = ['mode' => $apply ? 'apply' : 'dry-run', 'until_id' => $until, 'last_scope_id' => $after,
             'scanned' => 0, 'eligible' => 0, 'released' => 0, 'rescore_eligible' => 0, 'rescored' => 0, 'skipped' => [], 'eligible_sample' => []];
-        foreach ($this->candidates($after, $until, $paused)->orderBy('id')->limit(max(1, min(1000, $limit)))->get() as $scope) {
+        if ($ip !== null) {
+            $report['active_scopes_for_ip'] = DB::table('risk_scopes')->where('ip', $ip)->where('state', 'active')->count();
+            $report['skipped_scope_sample'] = [];
+        }
+        foreach ($this->candidates($after, $until, $paused, $ip)->orderBy('id')->limit(max(1, min(1000, $limit)))->get() as $scope) {
             $result = $apply ? DB::transaction(function () use ($scope, $paused) {
                 $this->ledger->lockIp($scope->ip);
                 $current = DB::table('risk_scopes')->where('id', $scope->id)->lockForUpdate()->first();
@@ -126,12 +151,15 @@ class ProjectionRiskRepair
             } else {
                 $reason = $result['reason'];
                 $report['skipped'][$reason] = ($report['skipped'][$reason] ?? 0) + 1;
+                if ($ip !== null && count($report['skipped_scope_sample']) < 20) {
+                    $report['skipped_scope_sample'][] = ['scope_id' => (int) $scope->id, 'reason' => $reason];
+                }
             }
             if (microtime(true) - $started >= $seconds) {
                 break;
             }
         }
-        $report['has_more'] = $this->candidates($report['last_scope_id'], $until, $paused)->exists();
+        $report['has_more'] = $this->candidates($report['last_scope_id'], $until, $paused, $ip)->exists();
 
         return $report;
     }
@@ -181,7 +209,8 @@ class ProjectionRiskRepair
             }
             if ((int) $log->id === (int) $matchingSource) {
                 $snapshot = $probe['_risk_basis']['decision'] ?? [];
-                $matchingFormula = (isset($snapshot['score_items']) ? (int) $snapshot['score'] : $raw['score']) === (int) $scope->risk_score;
+                $hasCurrentItems = isset($snapshot['score_items']) && ! self::hasPausedContribution($snapshot['score_items']);
+                $matchingFormula = ($hasCurrentItems ? (int) $snapshot['score'] : $raw['score']) === (int) $scope->risk_score;
             }
             $allReasons = array_merge($allReasons, $raw['reasons']);
             if ($peak === null || $raw['score'] >= $peak['score']) {
@@ -199,9 +228,12 @@ class ProjectionRiskRepair
         if (array_diff($codes, $retired, $allReasons)) {
             return ['reason' => 'unverified_other_risk'];
         }
-        if ($peak['score'] > (int) $scope->risk_score || ($peak['score'] === (int) $scope->risk_score
+        if ($peak['score'] > (int) $scope->risk_score) {
+            return ['reason' => 'recalculated_score_higher'];
+        }
+        if ($peak['score'] === (int) $scope->risk_score
             && ($matchingFormula || DB::table('risk_timeline')->where('ip', $scope->ip)->where('scope_id', $scope->id)
-                ->where('event_type', self::RESCORE_EVENT)->where('risk_score', $scope->risk_score)->exists()))) {
+                ->where('event_type', self::RESCORE_EVENT)->where('risk_score', $scope->risk_score)->exists())) {
             return ['reason' => 'score_needs_no_reduction'];
         }
 
@@ -252,7 +284,7 @@ class ProjectionRiskRepair
         if (! $scope || $scope->state !== 'active') {
             return $skip('not_active');
         }
-        $allowed = $paused ? array_merge(DeviceEnvRiskService::PAUSED_SCORE_REASONS, ['native_probe_protocol_mismatch']) : self::ALLOWED;
+        $allowed = $paused ? array_merge(DeviceEnvRiskService::PAUSED_SCORE_REASONS, ['screen_projection']) : self::ALLOWED;
         // Read raw persisted codes, never the display normalizer which hides retired signals.
         $codes = self::codes($scope->reason_codes);
         $evidenceCodes = DB::table('risk_reason_evidence')->where('scope_id', $scope->id)->pluck('code')->all();
@@ -274,7 +306,7 @@ class ProjectionRiskRepair
             $blockers = array_filter($blockers, fn ($blocker) => $blocker['type'] !== 'review_status_unknown');
         }
         if ($blockers !== []) {
-            return $skip('release_blocker_or_unknown_review');
+            return $skip(reset($blockers)['type']);
         }
         $events = $this->sourceEvents($scope);
         if ($events->isEmpty() || $events->count() > 5000 || ! $scope->source_log_id) {
@@ -300,7 +332,9 @@ class ProjectionRiskRepair
                 || \App\Services\Risk\Ledger\IpNormalizer::normalize($log->client_ip) !== $scope->ip || ($paused ? ! $this->pausedLogPasses($log, $allowed) : self::correctedDecision($log) === null)) {
                 return $skip('source_has_other_or_unknown_risk');
             }
-            $hasRetiredSignal = $hasRetiredSignal || array_intersect($retired, self::codes($log->risk_reasons)) !== [];
+            $hasRetiredSignal = $hasRetiredSignal || array_intersect($retired, array_merge(
+                self::codes($log->risk_reasons), self::codes($log->probe_json['_risk_basis']['decision']['reasons'] ?? [])
+            )) !== [] || ($paused && in_array(DeviceEnvRiskService::PROTOCOL_MISMATCH, $log->validation_errors ?? [], true));
         }
         if (! $hasRetiredSignal) {
             return $skip('retired_signal_not_proven');
@@ -353,7 +387,7 @@ class ProjectionRiskRepair
         $releaseId = DB::table('risk_releases')->insertGetId([
             'ip' => $scope->ip, 'released_at' => $now, 'status' => 'released', 'rule_id' => $rule, 'rule_version' => '1',
             'resource_version' => 1, 'idempotency_key' => $rule.':scope:'.$scope->id,
-            'evidence' => json_encode($proof, JSON_UNESCAPED_UNICODE), 'explanation' => $paused ? '暂停计分后，关联原始证据不再满足风控名单收录条件。' : '投屏规则下线：核验全部关联原始证据，仅投屏导致的历史评分修正为 0，并解除本范围处置。',
+            'evidence' => json_encode($proof, JSON_UNESCAPED_UNICODE), 'explanation' => $paused ? '按现行计分规则，关联原始证据不再满足风控名单收录条件。' : '投屏规则下线：核验全部关联原始证据，仅投屏导致的历史评分修正为 0，并解除本范围处置。',
             'ip_fully_released' => 0, 'created_at' => $now, 'updated_at' => $now,
         ]);
         DB::table('risk_release_scopes')->insert([
@@ -374,7 +408,7 @@ class ProjectionRiskRepair
         }
         DB::table('risk_releases')->where('id', $releaseId)->update(['ip_fully_released' => (int) $fully]);
         $this->ledger->timeline($scope->ip, 'rule_correction', $now, null, $scope->device_identity, [], 'pass', 'normal', (int) $scope->id,
-            $paused ? '暂停计分后解除处置' : '投屏历史处置修正', $releaseId, 'system', '规则修正');
+            $paused ? '历史计分修正后解除处置' : '投屏历史处置修正', $releaseId, 'system', '规则修正');
         $this->ledger->refreshDossier($scope->ip);
     }
 }

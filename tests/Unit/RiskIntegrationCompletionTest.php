@@ -329,7 +329,7 @@ class RiskIntegrationCompletionTest extends TestCase
         $ledger->applyLog($log);
         $engine = app(RiskReleaseEngine::class);
         $engine->removeIp('192.0.2.1', 1, 'admin', ['request_id' => 'subset-lower', 'expected_state' => 'high', 'expected_version' => 1]);
-        $subset = ['score' => 5, 'reasons' => ['native_probe_protocol_mismatch'], 'compliance_mode' => 0, 'ad_switch' => 1];
+        $subset = ['score' => 0, 'reasons' => ['native_probe_protocol_mismatch'], 'compliance_mode' => 0, 'ad_switch' => 1];
         $policy = app(RiskPolicyService::class);
         $effective = $policy->overlay($subset, 1, 'device-a', ['app_version' => '2.6.4', 'market_channel' => 'huawei']);
         $this->assertSame(0, $effective['compliance_mode']);

@@ -10,7 +10,7 @@ class ReleaseRule
 
     public const THRESHOLD_SECONDS = 1800;
 
-    public const AUTO_SAFE_REASONS = ['native_probe_protocol_mismatch', 'device_env_digest_mismatch', 'env_field_count_mismatch'];
+    public const AUTO_SAFE_REASONS = ['device_env_digest_mismatch', 'env_field_count_mismatch'];
 
     /** 以下三项是联调默认值，尚未作为已确认产品事实。缺字段时不自动释放。 */
     public const IDLE_STOP_SECONDS = 600;
